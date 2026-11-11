@@ -1,3 +1,12 @@
+## Active Fix Execution — Kling 4.0 sound contract and customer-facing copy (2026-11-11)
+
+- Baseline: `main@45197e2d0393c59e251482a221490f18dea0eddc` (prior #589 production), branch `fix/kling4-audio-ux-contract-20261111`.
+- User screenshot shows raw supplier names in `keep_original_sound`, `elements`, `voices` controls. This leaks internal routing and implies audio absence. KSU native adapter currently omits `generate_audio` when submitting compatible Kling 4.0 video. Current live upstream guide at `https://api.нейроныч.online/guide` confirms `generate_audio=true` by default and `false` means silent output; it does not document original-audio preservation or named elements/voices. KIE callable contract does support `keep_original_sound=true` with video.
+- Root cause: product intent and provider-specific capabilities were exposed directly in UI, and the upstream generated-audio contract relied on an implicit default; the original-audio capability remains upstream-incompatible and must keep using the capable route, never silently change to generated sound.
+- Scope: user-friendly provider-agnostic controls and errors, explicit native `generate_audio=true` for compatible Kling 4.0, no mutation of requested `keep_original_sound=true`; verify wire snapshots and frozen idempotency; tests for API/Telegram notices, batch and ordinary routes, and browser screenshot-equivalent labels. No schema/tariff/admin-route changes.
+- Read: KSU AGENTS and relevant provider/UI/test modules; project `.agents` index paths not present in current remote branch; companion guidance from `Bambale0/claw` frontend QA, `dev-agents-pack` API Integrator, `wondelai/skills` release-it, `anthropics/skills` WebApp, `agentskills` specification; `Bambale0/skills` primary repo README, no current matching skill found.
+- Release gate: PR exact-SHA CI, admin, batch, ROXY E2E, main Chromium/WebKit, release gate and immutable-image deployment plus read-only production contract verification; do not run unapproved paid provider calls.
+
 ## Active Fix Execution — Kling 4 preserved audio and exhausted KIE (2026-11-11)
 
 - Production cause proven via database/log correlation: route revision 10 is Neironych→KIE, but `keep_original_sound=true` with video forces pre-spend KIE fallback. KIE rejects some videos with insufficient supplier credits; several generations succeed with KIE. KIE API balance at inspection: 119.73 credits, not a sufficient guarantee for any selected task duration. No user-level route overrides.
