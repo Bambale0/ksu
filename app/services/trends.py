@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import hashlib
 import uuid
 from decimal import Decimal
@@ -20,6 +21,7 @@ from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_routing import video_references
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
 from app.services.reference_static import ReferenceStaticStorage
+from app.services.template_video import TemplateVideoService
 from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.seedance25_contract import SEEDANCE25_MAX_VIDEO_REFS
 from app.services.trend_collections import TrendCollectionService
@@ -112,6 +114,23 @@ class TrendService:
                 "Video references are not supported in trends; preview videos are display-only. "
                 "Use @VideoN slots for user uploads instead of static video inputs."
             )
+        template_video_raw = payload.get("template_video_url")
+        template_video_url = (
+            TrendService._safe_http_url(template_video_raw, field="template_video_url")
+            if template_video_raw else None
+        )
+        if template_video_url:
+            if spec.id != "kling-4.0":
+                raise TrendRecipeError("Pinned template video is supported only by Kling 4.0 Omni")
+            if input_mode != "image" or payload.get("min_references") != 2 or payload.get("max_references") != 2:
+                raise TrendRecipeError("Pinned Kling 4.0 trend requires exactly two customer images")
+            if str(parameters.get("aspect_ratio") or "") not in {"16:9", "9:16", "1:1", "21:9"}:
+                raise TrendRecipeError("Pinned Kling 4.0 trend requires a fixed aspect ratio")
+            if str(parameters.get("resolution") or "") not in {"720p", "1080p"}:
+                raise TrendRecipeError("Pinned Kling 4.0 trend requires a fixed video resolution")
+            for token in ("image_?1", "image_?2", "video_?1"):
+                if not re.search(r"@" + token + r"\b", prompt, flags=re.IGNORECASE):
+                    raise TrendRecipeError(f"Pinned Kling 4.0 prompt must mention @{token.replace('_?', '_')}")
         video_reference_count = int(seedance_requirements["video"])
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
@@ -177,6 +196,7 @@ class TrendService:
             "billing_seconds": billing_seconds,
             "input_mode": input_mode,
             "video_reference_count": video_reference_count,
+            "template_video_url": template_video_url,
             "min_references": min_references,
             "max_references": max_references,
             "tags": clean_tags,
@@ -193,18 +213,21 @@ class TrendService:
             return await TrendWorkflowService.validate_recipe(session, recipe)
         from app.services.template_audio import TemplateAudioService
 
+        if recipe["template_video_url"]:
+            await TemplateVideoService.verified(session, recipe["template_video_url"])
         if TemplateAudioService.audio_urls(recipe["parameters"]):
             await TemplateAudioService.lock(session)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs, template=True)
         try:
-            await TrendService._prepare_recipe(
-                session, recipe,
-                model_id=recipe["model_id"],
-                prompt=recipe["prompt"],
-                parameters=parameters,
-                billing_seconds=recipe["billing_seconds"],
-            )
+            with TemplateVideoService.authorized(session, recipe["template_video_url"]):
+                await TrendService._prepare_recipe(
+                    session, recipe,
+                    model_id=recipe["model_id"],
+                    prompt=recipe["prompt"],
+                    parameters=parameters,
+                    billing_seconds=recipe["billing_seconds"],
+                )
             await TemplateAudioService.pin_recipe(session, recipe["parameters"])
         except ValueError as exc:
             raise TrendRecipeError(f"Trend generation recipe is invalid: {exc}") from exc
@@ -282,13 +305,14 @@ class TrendService:
             return await TrendWorkflowService.public_trend_view(session, item, recipe)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs, template=True)
-        spec, _clean, cost, seconds, _unit = await TrendService._prepare_recipe(
-            session, recipe,
-            model_id=recipe["model_id"],
-            prompt=recipe["prompt"],
-            parameters=parameters,
-            billing_seconds=recipe["billing_seconds"],
-        )
+        with TemplateVideoService.authorized(session, recipe["template_video_url"]):
+            spec, _clean, cost, seconds, _unit = await TrendService._prepare_recipe(
+                session, recipe,
+                model_id=recipe["model_id"],
+                prompt=recipe["prompt"],
+                parameters=parameters,
+                billing_seconds=recipe["billing_seconds"],
+            )
         return {
             "id": str(item.id),
             "title": item.title,
@@ -301,7 +325,7 @@ class TrendService:
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
             "billing_seconds": seconds,
             "reference_requirements": {
-                "kind": "multimodal" if recipe["video_reference_count"] and recipe["max_references"]
+                "kind": "image" if recipe["template_video_url"] else "multimodal" if recipe["video_reference_count"] and recipe["max_references"]
                 else "video" if recipe["video_reference_count"] else recipe["input_mode"],
                 "min": recipe["min_references"] + recipe["video_reference_count"],
                 "max": recipe["max_references"] + recipe["video_reference_count"],
@@ -309,7 +333,7 @@ class TrendService:
                 "video": {"min": recipe["video_reference_count"], "max": recipe["video_reference_count"]},
             },
             "user_fields": recipe["user_fields"],
-            "aspect_ratio_options": TrendService._aspect_ratio_options(recipe),
+            "aspect_ratio_options": [] if recipe["template_video_url"] else TrendService._aspect_ratio_options(recipe),
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
             "sort_order": recipe["sort_order"],
@@ -318,7 +342,7 @@ class TrendService:
             "created_at": item.created_at.isoformat(),
             **(
                 {"quality_options": await TrendService._quality_options(session, recipe, refs)}
-                if TrendService._resolution_options(recipe)
+                if TrendService._resolution_options(recipe) and not recipe["template_video_url"]
                 else {}
             ),
         }
@@ -379,16 +403,17 @@ class TrendService:
             rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
         except TrendUserFieldsError as exc:
             raise TrendRecipeError(str(exc)) from exc
-        generation = await GenerationService.create(
-            session,
-            redis,
-            user_id=user_id,
-            model_id=recipe["model_id"],
-            prompt=rendered_prompt,
-            parameters=parameters,
-            billing_seconds=recipe["billing_seconds"],
-            action_type="trend",
-        )
+        with TemplateVideoService.authorized(session, recipe["template_video_url"]):
+            generation = await GenerationService.create(
+                session,
+                redis,
+                user_id=user_id,
+                model_id=recipe["model_id"],
+                prompt=rendered_prompt,
+                parameters=parameters,
+                billing_seconds=recipe["billing_seconds"],
+                action_type="trend",
+            )
         try:
             locked = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update())
             if locked is not None:
@@ -451,6 +476,8 @@ class TrendService:
             videos = [f"https://example.invalid/trend-video-{i + 1}.mp4" for i in range(recipe["video_reference_count"])]
         if videos:
             parameters["reference_video_urls"] = videos
+        if recipe.get("template_video_url"):
+            parameters["video_urls"] = [recipe["template_video_url"]]
         if not reference_urls:
             return parameters
         field = TrendService._reference_field(spec)
@@ -487,6 +514,10 @@ class TrendService:
         aspect_ratio: str | None,
         required: bool = False,
     ) -> None:
+        if recipe.get("template_video_url"):
+            if aspect_ratio not in (None, ""):
+                raise TrendRecipeError("This trend uses a fixed aspect ratio")
+            return
         options = TrendService._aspect_ratio_options(recipe)
         if not options:
             if aspect_ratio not in (None, ""):
@@ -536,6 +567,10 @@ class TrendService:
         *,
         resolution: str | None,
     ) -> None:
+        if recipe.get("template_video_url"):
+            if resolution not in (None, ""):
+                raise TrendRecipeError("This trend uses a fixed video quality")
+            return
         if resolution in (None, ""):
             return
         selected = str(resolution).strip()
