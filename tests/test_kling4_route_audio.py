@@ -6,6 +6,7 @@ Neironych treats omission / false as native generated-audio behavior.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 import pytest
 
 from app.services.generation_provider_routing import select_kling4_route
@@ -147,3 +148,50 @@ async def test_route_selection_happens_at_create_before_rox_debit(monkeypatch):
             )
         after = await session.scalar(select(Wallet.balance).where(Wallet.user_id == user.id))
         assert before == after
+
+@pytest.mark.asyncio
+async def test_batch_enqueue_uses_same_capability_route_before_item_debit(monkeypatch):
+    from app.db.models import User, Wallet
+    from app.db.session import SessionFactory
+    from app.services.batch_generation_core import PreparedBatchItem, enqueue_generation
+    from app.services.model_catalog import ModelCatalog
+
+    async def route(_session, _model, *, user_id=None):
+        return ("neironych", "kie"), 10
+
+    monkeypatch.setattr("app.services.batch_generation_core.configured_route", route)
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14)
+        session.add(user)
+        await session.flush()
+        session.add(Wallet(user_id=user.id, balance=Decimal("1000")))
+        await session.commit()
+        item = PreparedBatchItem(
+            input_url="https://cdn.example/visitor.png",
+            spec=ModelCatalog.get("kling-4.0"),
+            clean={**BASE, "keep_original_sound": True},
+            cost=Decimal("10"),
+            billing_seconds=10,
+            unit_price=Decimal("1"),
+        )
+        generation = await enqueue_generation(
+            session, user_id=user.id, batch_id=uuid.uuid4(),
+            item_id=uuid.uuid4(), ordinal=1, prepared=item, prompt=BASE["prompt"],
+        )
+        assert generation.provider == "kie"
+        assert generation.parameters["_provider_route"] == ["kie"]
+        assert generation.parameters["_provider_route_reason"] == "original_sound"
+
+
+def test_public_model_schema_explains_original_sound_requires_kie():
+    from app.services.model_ui import build_model_ui_schema
+    from app.services.model_catalog import ModelCatalog
+    spec = ModelCatalog.get("kling-4.0")
+    schema = build_model_ui_schema({
+        "id": spec.id, "known_fields": spec.known_fields,
+        "required_fields": spec.required_fields, "price_mode": spec.price_mode,
+    })
+    field = next(item for item in schema["fields"] if item["name"] == "keep_original_sound")
+    assert field["control"] == "toggle"
+    assert "KIE" in field["label"]
+    assert "Нейроныч" in field["label"]
