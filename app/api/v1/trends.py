@@ -247,7 +247,14 @@ async def inline_admin_trend_create(
         account = await _inline_admin(session, user_id=user.id)
         title = payload.title.strip()
         recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
-        trend_id = uuid.uuid4()
+        command_key = _command_key(idempotency_key)
+        # The ledger matches target_id as well as the idempotency key. A
+        # random UUID here made an uncertain 502 retry conflict even if the
+        # first create had already committed. Keep the target stable per admin
+        # and request, as already done for folder trend creates.
+        trend_id = uuid.uuid5(
+            uuid.NAMESPACE_URL, f"ksu:inline-trend:{account.id}:{command_key}",
+        )
 
         async def operation() -> dict[str, Any]:
             item = AdminTrend(
@@ -269,7 +276,7 @@ async def inline_admin_trend_create(
 
         result, replayed = await AdminCommandLedger.execute(
             session,
-            idempotency_key=_command_key(idempotency_key),
+            idempotency_key=command_key,
             admin_user_id=account.id,
             request_id=_request_id(request),
             action="social.moderate",
