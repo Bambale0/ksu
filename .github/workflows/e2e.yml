@@ -100,7 +100,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
           python -m pip install 'playwright>=1.50,<2'
-          python -m playwright install --with-deps chromium
+          # Runner browser libraries are preinstalled; avoid apt repository
+          # DNS failures. Real browser journeys still fail if dependencies are missing.
+          python -m playwright install chromium
 
       - name: Build Mini App static export
         run: |
