@@ -237,6 +237,11 @@ def prepare_neironych_kling_input(input_data: dict[str, Any]) -> dict[str, Any]:
     ):
         raise NeironychVideoUnsupportedInput("Neironych Kling cannot preserve elements, voices or original-sound controls")
     payload = {key: source[key] for key in ("prompt", "duration", "resolution", "aspect_ratio") if key in source}
+    # Always request a generated soundtrack explicitly on the native path.
+    # The upstream guide defines generate_audio=True by default, but relying
+    # on implicit defaults makes a paid video contract harder to verify.
+    # The original soundtrack is a different capability and is never replaced.
+    payload["generate_audio"] = True
     for field, native in (("image_urls", "reference_images"), ("video_urls", "reference_videos")):
         if source.get(field):
             payload[native] = [{"url": url} for url in source[field]]
