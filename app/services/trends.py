@@ -335,7 +335,7 @@ class TrendService:
                 "video": {"min": recipe["video_reference_count"], "max": recipe["video_reference_count"]},
             },
             "user_fields": recipe["user_fields"],
-            "aspect_ratio_options": [] if recipe["template_video_url"] else TrendService._aspect_ratio_options(recipe),
+            "aspect_ratio_options": TrendService._aspect_ratio_options(recipe),
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
             "sort_order": recipe["sort_order"],
@@ -492,6 +492,8 @@ class TrendService:
 
     @staticmethod
     def _aspect_ratio_options(recipe: dict[str, Any]) -> list[str]:
+        if recipe.get("template_video_url"):
+            return []
         model_id = str(recipe["model_id"])
         spec = ModelCatalog.get(model_id)
         if "aspect_ratio" not in set(spec.known_fields):
