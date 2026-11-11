@@ -972,3 +972,52 @@ def test_invalid_reference_recipe_is_http_422_not_gateway_502():
     error = _domain_error(TrendRecipeError("В промпте требуется второе фото"))
     assert error.status_code == 422
     assert "второе фото" in error.detail
+
+
+@pytest.mark.asyncio
+async def test_inline_kling_trend_create_replays_same_id_after_lost_gateway_response():
+    from sqlalchemy import func, select
+    from starlette.requests import Request
+
+    from app.api.v1.trends import InlineTrendWriteRequest, inline_admin_trend_create
+    from app.db.admin_models import AdminTrend
+    from app.db.models import AdminAccount, User
+    from app.db.session import SessionFactory
+
+    key = "kling-two-photos-502:" + str(uuid.uuid4())
+    body = InlineTrendWriteRequest(
+        title="МОИ СЛЕЗЫ",
+        payload={
+            "model_id": "kling-4.0", "media_type": "video",
+            "prompt": "Singer @image_1 and listener @image_2",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image", "min_references": 1, "max_references": 1,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        },
+    )
+    request = Request({
+        "type": "http", "method": "POST",
+        "path": "/api/v1/trends/manage", "headers": [],
+    })
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14)
+        session.add(user)
+        await session.flush()
+        session.add(AdminAccount(user_id=user.id, role="owner", is_active=True))
+        await session.commit()
+
+        first = await inline_admin_trend_create(
+            body, request, user, session, idempotency_key=key,
+        )
+        second = await inline_admin_trend_create(
+            body, request, user, session, idempotency_key=key,
+        )
+        assert first["id"] == second["id"]
+        assert first["idempotency_replayed"] is False
+        assert second["idempotency_replayed"] is True
+        count = await session.scalar(
+            select(func.count(AdminTrend.id)).where(
+                AdminTrend.id == uuid.UUID(str(first["id"]))
+            )
+        )
+        assert count == 1
