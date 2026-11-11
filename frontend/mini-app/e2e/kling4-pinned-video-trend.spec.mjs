@@ -92,6 +92,7 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: [], models: [model] });
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://media.example/preview.jpg', reference: { kind: 'image' } }, 201);
     if (path === '/api/v1/uploads/template-video') return json({
       url: VIDEO, name: 'motion.mp4', mime_type: 'video/mp4', size: 1024, duration_ms: 5000,
       probe_status: 'ready', reference: { id: 'admin-video', kind: 'video' },
@@ -116,6 +117,7 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
   await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
   await expect(form.getByLabel('Минимум фото')).toBeDisabled();
+  await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].payload.template_video_url).toBe(VIDEO);
