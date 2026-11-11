@@ -885,3 +885,66 @@ async def test_invalid_trend_date_never_reaches_generation(monkeypatch, value) -
         )
 
     create.assert_not_awaited()
+
+
+@pytest.mark.parametrize("prompt", [
+    "В кадре @image_1 поёт, @image_2 слушает",
+    "Close up @IMAGE_1 with @Image_2",
+])
+def test_kling_trend_infers_two_required_images_from_hidden_prompt(prompt) -> None:
+    recipe = TrendService.normalize_recipe("МОИ СЛЕЗЫ", {
+        "model_id": "kling-4.0",
+        "media_type": "video",
+        "prompt": prompt,
+        "preview_url": "https://cdn.example.invalid/preview.jpg",
+        "input_mode": "image",
+        "min_references": 1,
+        "max_references": 1,
+        "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+    })
+    assert recipe["input_mode"] == "image"
+    assert recipe["min_references"] == 2
+    assert recipe["max_references"] == 2
+    params = TrendService._parameters_with_references(
+        recipe, TrendService._validation_reference_urls(recipe["min_references"]),
+        template=True,
+    )
+    assert len(params["image_urls"]) == 2
+    assert params["image_urls"][0] != params["image_urls"][1]
+
+
+def test_kling_prompt_photos_make_optional_input_mode_required():
+    recipe = TrendService.normalize_recipe("Video", {
+        "model_id": "kling-4.0",
+        "media_type": "video",
+        "prompt": "@image_1 follows @image_2",
+        "preview_url": "https://cdn.example.invalid/preview.jpg",
+        "input_mode": "none",
+        "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+    })
+    assert recipe["input_mode"] == "image"
+    assert recipe["min_references"] == 2
+    assert recipe["max_references"] >= 2
+
+
+def test_kling_prompt_with_undeclared_video_requires_admin_pin():
+    with pytest.raises(TrendRecipeError, match="видео"):
+        TrendService.normalize_recipe("No video", {
+            "model_id": "kling-4.0",
+            "prompt": "@image_1 and @image_2 follow @video_1",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image",
+            "min_references": 2, "max_references": 2,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
+
+
+def test_kling_trend_reference_index_out_of_capacity_fails_early():
+    with pytest.raises(TrendRecipeError, match="фото"):
+        TrendService.normalize_recipe("Too many", {
+            "model_id": "kling-4.0",
+            "prompt": "@image_100 falls",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image",
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
