@@ -144,7 +144,37 @@ class GenerationProviderService:
     ) -> SubmissionDisposition:
         disposition = cls._submission_error_disposition(exc)
         if disposition == "permanent":
-            await cls.fail_and_refund(session, generation_id, str(exc))
+            public_error = str(exc)
+            supplier_balance_rejected = (
+                isinstance(exc, KieProviderError) and (
+                    exc.code == 402 or "credits insufficient" in public_error.lower()
+                )
+            ) or (
+                isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 402
+            )
+            if supplier_balance_rejected:
+                current = await session.get(Generation, generation_id)
+                params = current.parameters if current is not None else {}
+                original_sound = (
+                    (params or {}).get("_model_id") == "kling-4.0"
+                    and (params or {}).get("keep_original_sound") is True
+                    and bool((params or {}).get("video_urls"))
+                )
+                charged = current is not None and Decimal(current.cost_rox) > 0
+                public_error = (
+                    "На стороне провайдера KIE недостаточно кредитов для генерации. "
+                    + ("Оплаченные ROX возвращены." if charged else "ROX не списаны.")
+                )
+                if original_sound:
+                    public_error += (
+                        " Для использования Нейроныча выключите «Сохранить исходный звук» "
+                        "и повторите генерацию: оригинальная аудиодорожка не сохранится."
+                    )
+                logger.warning(
+                    "kie_insufficient_provider_credits generation_id=%s model_id=%s",
+                    generation_id, str((params or {}).get("_model_id") or "unknown"),
+                )
+            await cls.fail_and_refund(session, generation_id, public_error)
             return disposition
 
         generation = await session.scalar(

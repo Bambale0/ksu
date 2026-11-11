@@ -153,6 +153,39 @@ async def configured_route(
     return tuple(scoped.get(model, config["routes"][model])), config["revision"]
 
 
+def select_kling4_route(
+    model_id: str,
+    parameters: dict[str, Any],
+    route: tuple[str, ...] | None,
+) -> tuple[tuple[str, ...] | None, str | None]:
+    """Preselect the only supplier that can preserve a Kling 4 request.
+
+    This is a request-local route snapshot, not an admin configuration change.
+    Incompatible provider attempts must be filtered before a debit/outbox.
+    """
+    if model_id != "kling-4.0" or not route:
+        return route, None
+    reason: str | None = None
+    if parameters.get("elements"):
+        reason = "elements"
+    elif parameters.get("voices"):
+        reason = "voices"
+    elif parameters.get("keep_original_sound") is True and parameters.get("video_urls"):
+        reason = "original_sound"
+    elif parameters.get("aspect_ratio") == "auto" and not any(
+        parameters.get(field) for field in ("image_urls", "video_urls", "elements", "voices")
+    ):
+        reason = "automatic_geometry"
+    if reason is None:
+        return route, None
+    if "kie" not in route:
+        raise ValueError(
+            "Для выбранных параметров Kling 4.0 необходим KIE, но этот провайдер "
+            "недоступен в настройках маршрута. Измените параметры или обратитесь к администратору."
+        )
+    return ("kie",), reason
+
+
 def route_for_model(model_id: str) -> tuple[str, ...] | None:
     return _PROVIDER_ROUTES.get(str(model_id or "").strip().lower())
 

@@ -227,7 +227,14 @@ def prepare_neironych_kling_input(input_data: dict[str, Any]) -> dict[str, Any]:
         source = normalize_kling4_input("kling-4.0/reference-to-video", input_data)
     except Kling4ContractError as exc:
         raise NeironychVideoContractError(str(exc)) from exc
-    if source.get("elements") or source.get("voices") or "keep_original_sound" in source:
+    # Kie's documented default is keep_original_sound=False. A supplied False
+    # is equivalent to omission and must not force a paid KIE fallback.
+    # True only changes semantics when video_urls exists; never silently drop
+    # an actual request to retain a video reference's original soundtrack.
+    if (
+        source.get("elements") or source.get("voices")
+        or (source.get("keep_original_sound") is True and bool(source.get("video_urls")))
+    ):
         raise NeironychVideoUnsupportedInput("Neironych Kling cannot preserve elements, voices or original-sound controls")
     payload = {key: source[key] for key in ("prompt", "duration", "resolution", "aspect_ratio") if key in source}
     for field, native in (("image_urls", "reference_images"), ("video_urls", "reference_videos")):

@@ -104,7 +104,7 @@ async def test_kling_service_translates_roles_and_freezes_original_request(monke
 @pytest.mark.parametrize("controls", [
     {"elements": [{"name": "Hero", "image_urls": ["https://cdn.example/a.png"] * 2}]},
     {"voices": [{"name": "Voice", "audio_url": "https://cdn.example/a.wav"}]},
-    {"keep_original_sound": True}, {"keep_original_sound": False}, {"aspect_ratio": "auto"},
+    {"keep_original_sound": True, "video_urls": ["https://cdn.example/reference.mp4"]}, {"aspect_ratio": "auto"},
 ])
 async def test_kling_unrepresentable_controls_do_not_freeze_or_mutate(monkeypatch, controls):
     async def resolve(session, gen, raw):
