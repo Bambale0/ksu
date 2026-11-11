@@ -143,7 +143,7 @@ class TrendService:
             # the admin's default minimum of one image and rejected @image_2.
             image_indexes = [
                 int(match.group(1))
-                for match in re.finditer(r"@image_([1-9][0-9]*)(?!\\w)", prompt, flags=re.I)
+                for match in re.finditer(r"@image_([1-9][0-9]*)(?!\w)", prompt, flags=re.I)
             ]
             if image_indexes:
                 required_user_images = max(required_user_images, max(image_indexes))
@@ -154,7 +154,7 @@ class TrendService:
                 )
             video_indexes = [
                 int(match.group(1))
-                for match in re.finditer(r"@video_([1-9][0-9]*)(?!\\w)", prompt, flags=re.I)
+                for match in re.finditer(r"@video_([1-9][0-9]*)(?!\w)", prompt, flags=re.I)
             ]
             if video_indexes and (not template_video_url or max(video_indexes) > 1):
                 raise TrendRecipeError(
