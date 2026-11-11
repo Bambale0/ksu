@@ -126,3 +126,58 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   expect(writes[0].payload.parameters).toMatchObject({ aspect_ratio: '9:16', resolution: '720p', duration: 5 });
   expect(errors).toEqual([]);
 });
+
+
+test('Kling trend infers two photo fields and retries an uncertain 502 with the same write key', async ({ page }) => {
+  const writes = [];
+  const model = {
+    id: 'kling-4.0', title: 'Kling 4.0', family: 'kling',
+    media_type: 'video', operation: 'multimodal_video', reference_capacity: 8,
+    known_fields: ['prompt', 'image_urls', 'video_urls', 'duration', 'resolution', 'aspect_ratio'],
+    required_fields: ['prompt'],
+    ui_schema: { defaults: { duration: 5, resolution: '720p', aspect_ratio: '9:16' }, groups: [], fields: [] },
+  };
+  await init(page, true);
+  await page.route('**/api/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status, contentType: 'application/json', body: JSON.stringify(body),
+    });
+    if (path === '/api/v1/me') return json({ id: 'admin', first_name: 'Admin', is_admin: true, balance_rox: '1000' });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: [], models: [model] });
+    if (path === '/api/v1/uploads/kie') return json({
+      url: 'https://media.example/preview.jpg', reference: { kind: 'image' },
+    }, 201);
+    if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
+      writes.push({ payload: request.postDataJSON(), key: request.headers()['idempotency-key'] });
+      if (writes.length === 1) return json({}, 502); // The server may already have committed.
+      return json({ id: ID, is_active: true, ...request.postDataJSON(), idempotency_replayed: true }, 201);
+    }
+    if (request.method() === 'GET') return json({ items: [], has_more: false });
+    return json({ detail: 'Unexpected mutation' }, 400);
+  });
+  await page.goto('/mini-app/?route=home');
+  await page.getByRole('button', { name: 'Управлять трендами' }).click();
+  await page.getByRole('button', { name: '＋ Новый тренд' }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
+  await form.getByLabel('Скрытый промпт').fill('Singer @image_1 looks at listener @image_2');
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
+  const save = form.getByRole('button', { name: 'Опубликовать тренд' });
+  await save.click();
+  await expect(form.getByRole('alert')).toContainText('временная ошибка связи с сервером');
+  expect(writes).toHaveLength(1);
+  expect(writes[0].payload.payload.input_mode).toBe('image');
+  expect(writes[0].payload.payload.min_references).toBe(2);
+  expect(writes[0].payload.payload.max_references).toBe(2);
+  await save.click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[0].key).toBeTruthy();
+  expect(writes[1].key).toBe(writes[0].key);
+  await expect(form).toHaveCount(0);
+});
