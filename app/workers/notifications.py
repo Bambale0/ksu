@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.generation_errors import prompt_length_failure_message
+from app.core.generation_errors import prompt_length_failure_message, kling4_public_failure_message
 from app.core.logging import configure_logging
 from app.core.observability import record_worker_heartbeat, request_id_var
 from app.db.models import Generation, Notification, User
@@ -352,7 +352,7 @@ def _generation_failure_text(generation: Generation) -> str:
     return (
         "❌ Генерация не выполнена\n\n"
         f"{_generation_model_title(generation)}\n"
-        f"{_friendly_generation_error(generation.error)}"
+        f"{kling4_public_failure_message(generation.error) if (generation.parameters or {}).get('_model_id') == 'kling-4.0' else _friendly_generation_error(generation.error)}"
         f"{refund}\n\nUUID задачи: {generation.id}"
     )
 
