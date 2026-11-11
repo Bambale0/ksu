@@ -162,17 +162,13 @@ class GenerationProviderService:
                 )
                 charged = current is not None and Decimal(current.cost_rox) > 0
                 public_error = (
-                    "На стороне провайдера KIE недостаточно кредитов для генерации. "
-                    + ("Оплаченные ROX возвращены." if charged else "ROX не списаны.")
-                )
-                if original_sound:
-                    public_error += (
-                        " Для использования Нейроныча выключите «Сохранить исходный звук» "
-                        "и повторите генерацию: оригинальная аудиодорожка не сохранится."
-                    )
+                    "Создание видео временно недоступно. "
+                    if (params or {}).get("_model_id") == "kling-4.0"
+                    else "Генерация временно недоступна. "
+                ) + ("Оплаченные ROX возвращены." if charged else "ROX не списаны.")
                 logger.warning(
-                    "kie_insufficient_provider_credits generation_id=%s model_id=%s",
-                    generation_id, str((params or {}).get("_model_id") or "unknown"),
+                    "kie_insufficient_provider_credits generation_id=%s model_id=%s original_sound=%s",
+                    generation_id, str((params or {}).get("_model_id") or "unknown"), original_sound,
                 )
             await cls.fail_and_refund(session, generation_id, public_error)
             return disposition

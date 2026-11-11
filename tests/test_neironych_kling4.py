@@ -91,6 +91,7 @@ async def test_kling_service_translates_roles_and_freezes_original_request(monke
         key=f"generation:{gen.id}:provider:0", base_url=settings.neironych_api_base_url))
     assert body == {"model": "kling-4.0", "prompt": "@Image 1 and @Image 2 follow @Video 1",
         "duration": 3, "resolution": "720p", "aspect_ratio": "adaptive",
+        "generate_audio": True,
         "reference_images": [{"url": "https://cdn.example/a.png"}] * 2,
         "reference_videos": [{"url": "https://cdn.example/v.mp4"}]}
     assert {k:v for k,v in gen.parameters.items() if k != SNAPSHOT_KEY} == before
@@ -162,7 +163,9 @@ async def test_kling_submission_or_pre_spend_fallback_preserves_source(monkeypat
             assert result.provider == "neironych"
             assert result.status == "generating"
             assert result.external_id == task_id
-            assert json.loads(posted[0]["request_body"]) == {"model": "kling-4.0", **params}
+            assert json.loads(posted[0]["request_body"]) == {
+                "model": "kling-4.0", **params, "generate_audio": True,
+            }
             await NeironychGenerationProviderService.submit(session, gen.id)
             assert len(posted) == 1
 
