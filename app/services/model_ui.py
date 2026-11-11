@@ -387,8 +387,8 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
             "image_urls": {**KLING4_IMAGE_FIELD, "max_items": 10, "label": "Изображения · @image_1…"},
             "video_urls": {"accept": "video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm", "max_size_mb": 10, "max_items": 5, "label": "Видео · @video_1… (2–30 с, всего до 30 с)"},
             "keep_original_sound": {"label": "Сохранить исходный звук (только KIE; Нейроныч создаёт новый звук)", "control": "toggle", "group": "references"},
-            "elements": {"label": "Персонажи и объекты", "control": "json", "editor": "kling_elements", "max_items": 7, "group": "references"},
-            "voices": {"label": "Голоса", "control": "json", "editor": "kling_voices", "max_items": 3, "group": "references"},
+            "elements": {"label": "Персонажи и объекты · только KIE", "control": "json", "editor": "kling_elements", "max_items": 7, "group": "references"},
+            "voices": {"label": "Голоса · только KIE", "control": "json", "editor": "kling_voices", "max_items": 3, "group": "references"},
         },
     },
     "kling-4.0-keyframe": {
