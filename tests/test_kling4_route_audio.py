@@ -197,3 +197,6 @@ def test_public_model_schema_explains_original_sound_requires_kie():
     assert field["control"] == "toggle"
     assert "KIE" in field["label"]
     assert "Нейроныч" in field["label"]
+    for name in ("elements", "voices"):
+        other = next(item for item in schema["fields"] if item["name"] == name)
+        assert "KIE" in other["label"]
