@@ -86,3 +86,21 @@ class TemplateAudioReference(TimestampMixin, Base):
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     duration_ms: Mapped[int | None] = mapped_column(BigInteger)
     probe_status: Mapped[str | None] = mapped_column(String(16))
+
+class TemplateVideoReference(TimestampMixin, Base):
+    """Verified product-owned Kling video; uploader can disappear independently."""
+
+    __tablename__ = "template_video_references"
+    __table_args__ = (
+        CheckConstraint("status IN ('ready', 'deleted')", name="ck_template_video_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger)
+    probe_status: Mapped[str | None] = mapped_column(String(16))
