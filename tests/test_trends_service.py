@@ -927,9 +927,12 @@ def test_kling_prompt_photos_make_optional_input_mode_required():
     assert recipe["max_references"] >= 2
 
 
-def test_kling_prompt_with_undeclared_video_requires_admin_pin():
+@pytest.mark.asyncio
+async def test_kling_prompt_with_undeclared_video_requires_admin_pin():
+    # Legacy recipes may be normalized for read/duplication, but saving must
+    # reject an undeclared video before provider submission or any ROX debit.
     with pytest.raises(TrendRecipeError, match="видео"):
-        TrendService.normalize_recipe("No video", {
+        await TrendService.validate_recipe(AsyncMock(), title="No video", payload={
             "model_id": "kling-4.0",
             "prompt": "@image_1 and @image_2 follow @video_1",
             "preview_url": "https://cdn.example.invalid/preview.jpg",
