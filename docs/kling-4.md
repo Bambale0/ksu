@@ -78,3 +78,33 @@ Kling 4.0 is now published by Neironych's authenticated catalog enable gate.
 KSU rollout still requires partner-native acceptance, exact-head CI, deployment
 verification and the audited admin route switch. Until that switch, Kie remains
 primary; this section does not claim an already completed KSU rollout.
+
+## Audio preservation and provider admission (2026-11-11)
+
+For `kling-4.0`, the configured production preference is read from the
+audited `generation_provider_routes` setting. Compatible requests remain on
+the configured primary supplier; an explicit `keep_original_sound=false` is
+equivalent to omission (the KIE upstream contract defaults to false) and does
+**not** trigger a Neironych→KIE fallback. It is never silently converted to
+`generate_audio=false`: Neironych generates its normal native audio.
+
+`keep_original_sound=true` with `video_urls` **requires KIE** because the
+currently reviewed Neironych Kling API has no native equivalent. A request
+containing `elements` or `voices` also requires KIE. At admission, before
+any ROX debit/outbox, only provider-capable branches are retained in the
+immutable per-generation route snapshot. Unsupported configurations with a
+Neironych-only route fail before wallet debit, with a user-readable error.
+Other models and already-accepted/frozen generations keep existing routes.
+
+The Mini App labels the original-audio toggle as KIE-only. A certain KIE
+supplier-credit rejection (HTTP or payload code 402) is classified as
+permanent, refunded idempotently, and localized to Russian. Users may disable
+original-audio preservation to use Neironych's generated audio, **only by
+explicit choice**; original-audio requests are never degraded in the backend.
+No provider API key, supplier purchase cost, route, model, or retail ROX tariff
+is hardcoded. KIE supplier credits still require an actual KIE top-up; code
+cannot create provider funds.
+
+Regression cases cover absent/false/true audio flag, pre-debit routing,
+KIE-only restrictions, no source mutation, upstream wire body, and 402 vs
+ambiguous submission error handling.
