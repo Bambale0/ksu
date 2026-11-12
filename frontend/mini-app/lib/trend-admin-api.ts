@@ -258,9 +258,9 @@ export const trendAdminApi = {
   list: async (): Promise<TrendAdminList> => {
     const [managed, publicCatalog] = await Promise.all([
       request<TrendAdminList>("/api/v1/trends/manage"),
-      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models"),
+      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models").catch(() => null),
     ]);
-    const publicModels = new Map((publicCatalog.models || []).map((model) => [model.id, model]));
+    const publicModels = new Map((publicCatalog?.models || []).map((model) => [model.id, model]));
     return {
       ...managed,
       models: (managed.models || []).map((model) => ({
