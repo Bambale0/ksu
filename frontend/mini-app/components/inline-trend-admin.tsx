@@ -1090,7 +1090,7 @@ export function InlineTrendAdmin() {
               prompt,
               inputMode: count ? "image" : current.inputMode,
               minReferences: current.minReferences === previous
-                ? count
+                ? Math.max(current.templateVideoUrl ? 0 : 1, count)
                 : Math.max(current.minReferences, count),
               maxReferences: Math.min(capacity, Math.max(current.maxReferences || capacity, count)),
             };
