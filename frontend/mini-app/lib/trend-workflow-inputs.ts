@@ -1,5 +1,17 @@
 import type { TrendAdminInput } from "./trend-admin-api";
 
+
+// The ordinary Kling trend is different from two-step photo→video workflows.
+// Its @image_1/@image_2 (and compact @image1/@image2) references are
+// user-upload slots, not dynamic text variables.
+export function klingImageSlotCount(prompt: string): number {
+  const slots = Array.from(
+    prompt.matchAll(/(?<!\\w)@image_?([1-9][0-9]*)(?!\\w)/gi),
+    (match) => Number(match[1]),
+  );
+  return Math.max(0, ...slots);
+}
+
 // The recipe schema accepts at most sixteen inputs across all types.
 const MAX_INPUTS = 16;
 
@@ -84,6 +96,13 @@ export function workflowInputError(inputs: TrendAdminInput[], prompt: string, ca
 
 export function trendSaveError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
+  if (/\\bHTTP\\s*(502|503|504)\\b|bad gateway|gateway timeout/i.test(message)) {
+    return "Сервер временно недоступен. Проверьте подключение и повторите попытку.";
+  }
+  if (/undeclared reference @image_?([1-9][0-9]*)/i.test(message)) {
+    const match = /@image_?([1-9][0-9]*)/i.exec(message);
+    return `В промпте указано фото №${match?.[1] || "?"}. Добавьте нужное количество фотографий в настройках тренда.`;
+  }
   if (message.includes("@ImageN") || message.includes("ordered image input slots")) {
     return "Проверьте поля фото и номера @Image в промптах обоих шагов. В шаге видео используется только @Image1.";
   }
