@@ -227,14 +227,17 @@ export const trendAdminApi = {
       })),
     };
   },
-  create: async (body: TrendWriteBody) => {
+  create: async (body: TrendWriteBody, retryKey?: string) => {
     const collectionId = targetCollection();
     const path = collectionId
       ? `/api/v1/trend-collections/manage/${encodeURIComponent(collectionId)}/items`
       : "/api/v1/trends/manage";
     const item = await request<TrendAdminItem>(path, {
       method: "POST",
-      headers: writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
+      headers: {
+        ...writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
+        ...(retryKey ? { "Idempotency-Key": retryKey } : {}),
+      },
       body: JSON.stringify(normalizeWriteBody(body)),
     });
     clearTrendCollectionTarget();
