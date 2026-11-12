@@ -1,4 +1,4 @@
-"""Kling 4 curated two-photo + one administrator-pinned video regression."""
+"""Kling 4 curated flexible customer photos + administrator-pinned video regression."""
 from __future__ import annotations
 
 import pytest
@@ -40,7 +40,6 @@ def test_kling_template_preserves_pinned_video_and_two_user_photo_slots():
 
 @pytest.mark.parametrize("updates", [
     {"min_references": 1},
-    {"max_references": 3},
     {"input_mode": "none", "min_references": 0, "max_references": 0},
     {"model_id": "kling-4.0-keyframe"},
     {"model_id": "seedance-2.5"},
@@ -48,9 +47,42 @@ def test_kling_template_preserves_pinned_video_and_two_user_photo_slots():
     {"parameters": {"duration": 5, "aspect_ratio": "auto", "resolution": "720p"}},
     {"parameters": {"duration": 5, "aspect_ratio": "9:16", "video_urls": [VIDEO]}},
 ])
-def test_pinned_template_rejects_other_models_or_not_exactly_two_photos(updates):
+def test_pinned_template_rejects_invalid_model_or_required_inputs(updates):
     with pytest.raises(TrendRecipeError):
         TrendService.normalize_recipe("Invalid", recipe(**updates))
+
+
+@pytest.mark.parametrize("count", [0, 1, 3, 8, 10])
+def test_pinned_template_accepts_model_supported_image_counts(count):
+    # The hidden prompt requires only its indexed slots; additional
+    # optional customer photos are allowed up to the actual model capacity.
+    urls = [f"https://roxy.example/uploads/refs/image/visitor-{i}.jpg" for i in range(1, count + 1)]
+    prompt = "Follow @video_1" + "".join(f" with @image_{i}" for i in range(1, count + 1))
+    normalized = TrendService.normalize_recipe("Flexible", recipe(
+        prompt=prompt, input_mode="image" if count else "none",
+        min_references=count, max_references=count,
+    ))
+    assert normalized["min_references"] == count
+    assert normalized["max_references"] == count
+    params = TrendService._parameters_with_references(normalized, urls)
+    assert params.get("image_urls", []) == urls
+    assert params["video_urls"] == [VIDEO]
+
+
+def test_pinned_template_allows_customer_chosen_optional_photos():
+    normalized = TrendService.normalize_recipe("Flexible", recipe(
+        prompt="Follow @video_1 with @image_1", min_references=1, max_references=10,
+    ))
+    assert normalized["min_references"] == 1
+    assert normalized["max_references"] == 10
+    assert len(TrendService._parameters_with_references(normalized, IMAGES)["image_urls"]) == 2
+
+
+def test_pinned_template_enforces_real_model_capacity_not_two_photos():
+    with pytest.raises(TrendRecipeError, match="не более"):
+        TrendService.normalize_recipe("Invalid", recipe(
+            prompt="@video_1 with @image_11", min_references=11, max_references=11,
+        ))
 
 
 def test_pinned_template_cannot_change_private_quality_or_ratio():
