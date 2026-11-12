@@ -444,6 +444,7 @@ export function InlineTrendAdmin() {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -480,13 +481,13 @@ export function InlineTrendAdmin() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const result = await trendAdminApi.list();
       setItems(result.items || []);
       setModels((result.models || []) as TrendAdminModel[]);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить тренды");
+    } catch {
+      setLoadError("Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».");
     } finally {
       setLoading(false);
     }
@@ -987,9 +988,9 @@ export function InlineTrendAdmin() {
           <button className="inline-trend-secondary" type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 
-        {error && !formOpen ? <div className="inline-trend-error" role="alert">{error}</div> : null}
+        {!formOpen && (error || loadError) ? <div className="inline-trend-error" role="alert">{error || loadError}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
-        {!loading && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !loadError && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
 
         <div className="inline-trend-admin-list">
           {items.map((item) => {
