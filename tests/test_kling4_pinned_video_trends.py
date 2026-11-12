@@ -39,8 +39,6 @@ def test_kling_template_preserves_pinned_video_and_two_user_photo_slots():
 
 
 @pytest.mark.parametrize("updates", [
-    {"min_references": 1},
-    {"input_mode": "none", "min_references": 0, "max_references": 0},
     {"model_id": "kling-4.0-keyframe"},
     {"model_id": "seedance-2.5"},
     {"parameters": {"duration": 5, "resolution": "720p"}},
@@ -67,6 +65,14 @@ def test_pinned_template_accepts_model_supported_image_counts(count):
     params = TrendService._parameters_with_references(normalized, urls)
     assert params.get("image_urls", []) == urls
     assert params["video_urls"] == [VIDEO]
+
+
+def test_pinned_template_infers_missing_image_slots_from_prompt():
+    normalized = TrendService.normalize_recipe("Legacy draft", recipe(
+        min_references=1, max_references=1,
+    ))
+    assert normalized["min_references"] == 2
+    assert normalized["max_references"] == 2
 
 
 def test_pinned_template_allows_customer_chosen_optional_photos():
