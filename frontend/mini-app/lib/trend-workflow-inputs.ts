@@ -89,6 +89,16 @@ export function klingTrendRequiredImages(prompt: string): number {
   return values.length ? Math.max(...values) : 0;
 }
 
+
+/** Pinned Kling trends have exactly two customer image slots; video is admin-owned. */
+export function klingPinnedPhotoLimitError(prompt: string, hasPinnedVideo: boolean): string {
+  if (!hasPinnedVideo && !/@video_1\\b/i.test(prompt)) return "";
+  const count = klingTrendRequiredImages(prompt);
+  return count > 2
+    ? `Для тренда с постоянным видео разрешено только два фото. Уберите @image_${count} из скрытого промпта.`
+    : "";
+}
+
 export function trendSaveError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
   if (/Undeclared reference @image[_ ]?([1-9][0-9]*)/i.test(message)) {
