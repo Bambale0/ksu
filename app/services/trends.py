@@ -47,7 +47,7 @@ _REFERENCE_SINGLE_FIELDS = (
 # Kling accepts @image_2 and its compact @image2 alias. We infer the actual
 # number of customer uploads before template preflight, so the admin does not
 # accidentally persist a 0/1-slot recipe with a two-image prompt.
-_KLING_IMAGE_SLOT_RE = re.compile(r"(?<!\\w)@image_?([1-9][0-9]*)(?!\\w)", re.I)
+_KLING_IMAGE_SLOT_RE = re.compile(r"(?<!\w)@image_?([1-9][0-9]*)(?!\w)", re.I)
 
 
 class TrendRecipeError(ValueError):
