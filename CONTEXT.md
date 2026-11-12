@@ -1,3 +1,9 @@
+## Active Fix — Kling 4.0 two-photo ordinary trends and transient 502 (2026-11-12)
+
+- Root: ordinary trend v1 did not infer Kling `@image_2` required slots, unlike Seedance; client input_mode and min/max remained at 0/1, producing an upstream undeclared-reference validation error. Two public catalog requests were coupled, so model-enrichment 502 broke independent admin list. Raw HTML 502 and invalid recipe are separate failure modes, not a proven shared gateway error.
+- Fix: infer Kling image refs in backend and admin UI, retain model capability limit and immutable preview semantics, isolate catalog enrichment failure, distinguish server load failure from empty catalog, localize backend 422 and transient UI errors, add backend + WebKit/Chromium regressions. No price/provider changes, no paid calls.
+- [Execution log](docs/agents/EXECUTION/trend-kling4-two-reference-502-20261112.md). Draft PR #588 for *pinned administrator video* is still separate and not in production; do not conflate it with ordinary v1.
+
 ## Active Fix Execution — Kling 4.0 sound contract and customer-facing copy (2026-11-11)
 
 - Baseline: `main@45197e2d0393c59e251482a221490f18dea0eddc` (prior #589 production), branch `fix/kling4-audio-ux-contract-20261111`.
