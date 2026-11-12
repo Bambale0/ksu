@@ -58,6 +58,8 @@ jobs:
           if-no-files-found: ignore
       - name: Run iPhone/iPad WebKit responsive and crash audit
         if: always()
+        env:
+          ROXY_REUSE_CI_TEST_SERVER: '1'
         working-directory: frontend/mini-app
         run: >-
           npx playwright test
@@ -101,9 +103,13 @@ jobs:
           if-no-files-found: ignore
       - name: Verify personalized trend keyboards in iPhone WebKit
         if: ${{ !cancelled() }}
+        env:
+          ROXY_REUSE_CI_TEST_SERVER: '1'
         working-directory: frontend/mini-app
         run: npx playwright test e2e/all-user-surfaces.spec.mjs --project=webkit-mobile --grep 'personalized trend|catalog personalization'
       - name: Verify upload deadlines in iPhone WebKit
+        env:
+          ROXY_REUSE_CI_TEST_SERVER: '1'
         working-directory: frontend/mini-app
         run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --project=webkit-mobile --grep 'trend preview upload'
       - name: Upload Playwright report
