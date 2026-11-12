@@ -5,7 +5,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
+import { klingPinnedPhotoLimitError, klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -908,6 +908,13 @@ export function InlineTrendAdmin() {
         setError(`В промпте указано фото №${klingImages}, но модель поддерживает не более ${capacity} фото.`);
         return;
       }
+      const pinnedPhotoError = model.id === "kling-4.0"
+        ? klingPinnedPhotoLimitError(draft.prompt, Boolean(draft.templateVideoUrl))
+        : "";
+      if (pinnedPhotoError) {
+        setError(pinnedPhotoError);
+        return;
+      }
       if (model.id === "kling-4.0" && /@video_1\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
         setError("В промпте указано видео @video_1. Сначала загрузите постоянное видео для шаблона.");
         return;
@@ -1091,7 +1098,11 @@ export function InlineTrendAdmin() {
               maxReferences: current.templateVideoUrl ? 2 : Math.max(current.maxReferences, count),
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
-          {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
+          {draft.modelId === "kling-4.0" && klingPinnedPhotoLimitError(draft.prompt, Boolean(templateVideoUrl))
+            ? <small role="status" className="inline-trend-error">{klingPinnedPhotoLimitError(draft.prompt, Boolean(templateVideoUrl))}</small>
+            : draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0
+              ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small>
+              : null}
         {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
           <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Пользователь загружает только два фото (@image_1 и @image_2). Превью — отдельное поле.</small>
