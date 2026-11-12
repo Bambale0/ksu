@@ -17,6 +17,7 @@ from app.db.models import Generation
 from app.providers.nexus import NANO_BANANA_MAX_REFERENCES, NANO_BANANA_MODELS
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
+from app.services.kling4_contract import KLING4_MAX_IMAGE_REFERENCES
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_routing import video_references
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
@@ -124,15 +125,12 @@ class TrendService:
                 raise TrendRecipeError("Upload a separate public trend preview; pinned video is a private recipe input")
             if spec.id != "kling-4.0":
                 raise TrendRecipeError("Pinned template video is supported only by Kling 4.0 Omni")
-            if input_mode != "image" or payload.get("min_references") != 2 or payload.get("max_references") != 2:
-                raise TrendRecipeError("Pinned Kling 4.0 trend requires exactly two customer images")
             if str(parameters.get("aspect_ratio") or "") not in {"16:9", "9:16", "1:1", "21:9"}:
                 raise TrendRecipeError("Pinned Kling 4.0 trend requires a fixed aspect ratio")
             if str(parameters.get("resolution") or "") not in {"720p", "1080p"}:
                 raise TrendRecipeError("Pinned Kling 4.0 trend requires a fixed video resolution")
-            for token in ("image_?1", "image_?2", "video_?1"):
-                if not re.search(r"@" + token + r"\b", prompt, flags=re.IGNORECASE):
-                    raise TrendRecipeError(f"Pinned Kling 4.0 prompt must mention @{token.replace('_?', '_')}")
+            if not re.search(r"@video_?1\b", prompt, flags=re.IGNORECASE):
+                raise TrendRecipeError("Pinned Kling 4.0 prompt must mention @video_1")
         video_reference_count = int(seedance_requirements["video"])
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
@@ -143,7 +141,7 @@ class TrendService:
             # the admin's default minimum of one image and rejected @image_2.
             image_indexes = [
                 int(match.group(1))
-                for match in re.finditer(r"@image_([1-9][0-9]*)(?!\w)", prompt, flags=re.I)
+                for match in re.finditer(r"@image_?([1-9][0-9]*)(?!\w)", prompt, flags=re.I)
             ]
             if image_indexes:
                 required_user_images = max(required_user_images, max(image_indexes))
@@ -156,7 +154,7 @@ class TrendService:
             input_mode = "image"
         min_references = max(
             required_user_images,
-            int(payload.get("min_references", 1 if input_mode == "image" else 0)),
+            int(payload.get("min_references", 0 if template_video_url else 1 if input_mode == "image" else 0)),
         )
         max_references = max(
             min_references,
@@ -471,6 +469,8 @@ class TrendService:
             return 1
         if spec.id in NANO_BANANA_MODELS:
             return NANO_BANANA_MAX_REFERENCES
+        if spec.id == "kling-4.0":
+            return KLING4_MAX_IMAGE_REFERENCES
         return 8
 
     @staticmethod
