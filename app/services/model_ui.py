@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.core.config import settings
+
 
 FIELD_DEFINITIONS: dict[str, dict[str, Any]] = {
     "prompt": {
@@ -385,7 +387,7 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
         "field_overrides": {
             **KLING4_COMMON_FIELD_OVERRIDES,
             "image_urls": {**KLING4_IMAGE_FIELD, "max_items": 10, "label": "Изображения · @image_1…"},
-            "video_urls": {"accept": "video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm", "max_size_mb": 10, "max_items": 5, "label": "Видео · @video_1… (2–30 с, всего до 30 с)"},
+            "video_urls": {"accept": "video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm", "max_size_mb": settings.kling4_reference_video_max_mb, "max_items": 5, "label": "Видео · @video_1… (2–30 с, всего до 30 с)"},
             "keep_original_sound": {"label": "Сохранить звук исходного видео", "control": "toggle", "group": "references"},
             "elements": {"label": "Персонажи и объекты", "control": "json", "editor": "kling_elements", "max_items": 7, "group": "references"},
             "voices": {"label": "Голоса", "control": "json", "editor": "kling_voices", "max_items": 3, "group": "references"},

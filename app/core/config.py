@@ -250,6 +250,9 @@ class Settings(BaseSettings):
     # Must be at least as large as the biggest per-model upload advertised in
     # ui_schema. Seedance 2.5 currently accepts reference videos up to 200 MB.
     kie_upload_max_bytes: int = 200 * 1024 * 1024
+    # Bounded, operator-configurable limit for Kling 4 Omni video references.
+    # Keep below the production API proxy's 128 MB request-body limit.
+    kling4_reference_video_max_mb: int = Field(default=100, ge=1, le=120)
     kie_webhook_hmac_key: str = ""
 
     @field_validator("kie_upload_max_bytes")

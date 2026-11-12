@@ -8,11 +8,12 @@ from typing import Iterator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.reference_models import TemplateVideoReference
 from app.services.reference_static import ReferenceStaticStorage
 
-# The same input constraints as the current Kling 4 provider contract.
-KLING_VIDEO_MAX_BYTES = 10 * 1024 * 1024
+# Shared operator-configured Kling 4 video limit, also exposed in model UI.
+KLING_VIDEO_MAX_BYTES = settings.kling4_reference_video_max_mb * 1024 * 1024
 KLING_VIDEO_MIN_DURATION_MS = 2_000
 KLING_VIDEO_MAX_DURATION_MS = 30_000
 
@@ -50,7 +51,10 @@ class TemplateVideoService:
             or not KLING_VIDEO_MIN_DURATION_MS <= row.duration_ms <= KLING_VIDEO_MAX_DURATION_MS
             or not ReferenceStaticStorage.local_url_exists(row.source_url)
         ):
-            raise ValueError("Template video must be an available verified 2–30s ROXY upload (max 10 MB)")
+            raise ValueError(
+                f"Template video must be an available verified 2–30s ROXY upload "
+                f"(max {settings.kling4_reference_video_max_mb} MB)"
+            )
         return row
 
     @classmethod

@@ -81,6 +81,7 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
         { name: 'duration', label: 'Длительность', control: 'number', min: 3, max: 30 },
         { name: 'resolution', label: 'Разрешение', control: 'combobox', suggestions: ['720p', '1080p'] },
         { name: 'aspect_ratio', label: 'Формат', control: 'combobox', suggestions: ['16:9', '9:16', '1:1'] },
+        { name: 'video_urls', label: 'Видео', control: 'files', max_size_mb: 100 },
       ],
     },
   };
@@ -108,6 +109,7 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   await page.getByRole('button', { name: 'Управлять трендами' }).click();
   await page.getByRole('button', { name: '＋ Новый тренд' }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await expect(form.getByText('Загрузить видео MP4/MOV · 2–30 с, до 100 МБ')).toBeVisible();
   await form.getByLabel('Название', { exact: true }).fill('Танец вдвоём');
   await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1 and @image_2');
   await form.getByLabel('Загрузить постоянное видео Kling 4.0').setInputFiles({

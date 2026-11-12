@@ -117,10 +117,32 @@ async def test_pinned_upload_rejects_disallowed_media_before_persistence(monkeyp
 @pytest.mark.asyncio
 async def test_pinned_upload_honors_kling_provider_size_limit(monkeypatch):
     monkeypatch.setattr("app.api.v1.trends._inline_admin", AsyncMock())
-    monkeypatch.setattr("app.api.v1.uploads._upload_size", lambda *_: 11 * 1024 * 1024)
+    monkeypatch.setattr("app.api.v1.uploads._upload_size", lambda *_: 101 * 1024 * 1024)
     persist = Mock()
     monkeypatch.setattr(ReferenceStaticStorage, "persist_stream", persist)
     with pytest.raises(HTTPException) as error:
         await upload_template_video(User(id=uuid.uuid4()), AsyncMock(), AsyncMock(), upload())
     assert error.value.status_code == 413
+    persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pinned_video_at_100_mb_reaches_media_probe_without_size_rejection(monkeypatch):
+    from app.core.config import settings
+
+    assert settings.kling4_reference_video_max_mb == 100
+    monkeypatch.setattr("app.api.v1.trends._inline_admin", AsyncMock())
+    monkeypatch.setattr("app.api.v1.uploads._upload_size", lambda *_: 100 * 1024 * 1024)
+    rate_limit = AsyncMock()
+    monkeypatch.setattr(AbuseProtectionService, "upload_rate_and_bytes", rate_limit)
+    probe = Mock(return_value=MediaProbe(status="failed"))
+    monkeypatch.setattr("app.api.v1.uploads.probe_media_stream", probe)
+    persist = Mock()
+    monkeypatch.setattr(ReferenceStaticStorage, "persist_stream", persist)
+    with pytest.raises(HTTPException) as error:
+        await upload_template_video(User(id=uuid.uuid4()), AsyncMock(), AsyncMock(), upload())
+    # 422 is the deliberately mocked invalid media probe, not 413 for size.
+    assert error.value.status_code == 422
+    rate_limit.assert_awaited_once()
+    probe.assert_called_once()
     persist.assert_not_called()

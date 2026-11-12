@@ -110,6 +110,20 @@ def test_every_per_second_model_has_a_billing_source() -> None:
         assert has_provider_duration or has_explicit_billing or has_server_billing, model["id"]
 
 
+def test_kling4_video_reference_size_is_100_mb_without_changing_other_models() -> None:
+    from app.core.config import settings
+
+    assert settings.kling4_reference_video_max_mb == 100
+    models = {model["id"]: model for model in ModelCatalog.list()}
+    schema = build_public_model_ui_schema(models["kling-4.0"])
+    fields = {field["name"]: field for field in schema["fields"]}
+    assert fields["video_urls"]["max_size_mb"] == settings.kling4_reference_video_max_mb
+    assert fields["image_urls"]["max_size_mb"] == 10
+    assert fields["video_urls"]["max_items"] == 5
+    keyframe_fields = {field["name"]: field for field in build_public_model_ui_schema(models["kling-4.0-keyframe"])["fields"]}
+    assert keyframe_fields["first_frame_url"]["max_size_mb"] == 10
+
+
 def test_kling_motion_upload_limits_match_provider_contract() -> None:
     models = {model["id"]: model for model in ModelCatalog.list()}
     schema = build_public_model_ui_schema(models["kling-motion-3.0"])

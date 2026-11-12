@@ -185,6 +185,8 @@ async def test_pinned_video_must_be_verified_and_product_owned(monkeypatch):
     with pytest.raises(ValueError, match="Template video"):
         await TemplateVideoService.verified(session, VIDEO)
     row.status = "ready"
-    row.size_bytes = 11 * 1024 * 1024
-    with pytest.raises(ValueError, match="10 MB"):
+    row.size_bytes = 100 * 1024 * 1024
+    assert await TemplateVideoService.verified(session, VIDEO) is row
+    row.size_bytes = 101 * 1024 * 1024
+    with pytest.raises(ValueError, match="100 MB"):
         await TemplateVideoService.verified(session, VIDEO)

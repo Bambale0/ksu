@@ -526,6 +526,7 @@ export function InlineTrendAdmin() {
   const referenceAllowed = draft.mode === "legacy" && modelAcceptsReferences(selectedModel);
   const audioAllowed = draft.mode === "legacy" && Boolean(selectedModel?.known_fields?.includes("reference_audio_urls"));
   const klingPinnedAllowed = draft.mode === "legacy" && draft.modelId === "kling-4.0";
+  const pinnedVideoMaxMb = selectedModel?.ui_schema?.fields?.find((field) => field.name === "video_urls")?.max_size_mb;
   const templateVideoUrl = draft.mode === "legacy" ? draft.templateVideoUrl : "";
   const pinnedParameters = useMemo(() => {
     if (draft.mode !== "legacy") return {};
@@ -666,7 +667,11 @@ export function InlineTrendAdmin() {
   const uploadTemplateVideo = async (file?: File) => {
     if (!file || uploading || saving || !klingPinnedAllowed || draft.mode !== "legacy") return;
     if (!["video/mp4", "video/quicktime"].includes(file.type)) {
-      setError("Для Kling 4.0 загрузите MP4 или MOV (2–30 секунд, до 10 МБ)");
+      setError("Для Kling 4.0 загрузите MP4 или MOV (2–30 секунд)");
+      return;
+    }
+    if (typeof pinnedVideoMaxMb === "number" && pinnedVideoMaxMb > 0 && file.size > pinnedVideoMaxMb * 1024 * 1024) {
+      setError(`Видео слишком большое. Максимальный размер — ${pinnedVideoMaxMb} МБ.`);
       return;
     }
     let parameters: Record<string, unknown>;
@@ -1090,7 +1095,7 @@ export function InlineTrendAdmin() {
         {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
           <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Пользователь загружает только два фото (@image_1 и @image_2). Превью — отдельное поле.</small>
-          <label><span>Загрузить видео MP4/MOV · 2–30 с, до 10 МБ</span>
+          <label><span>Загрузить видео MP4/MOV · 2–30 с{pinnedVideoMaxMb ? `, до ${pinnedVideoMaxMb} МБ` : ""}</span>
             <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov"
               aria-label="Загрузить постоянное видео Kling 4.0" disabled={uploading || saving}
               onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadTemplateVideo(file); }} />
