@@ -598,3 +598,38 @@ test('Kling 4 admin rejects image references beyond model limit before POST', as
   await expect(form.getByRole('alert')).toContainText('не более 8 фото');
   expect(state.writes).toEqual([]);
 });
+
+
+test('ambiguous HTML 502 on trend create retries with the same idempotency key', async ({ page }) => {
+  const state = await setup(page);
+  const attempts = [];
+  await page.route('**/api/v1/trends/manage', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    attempts.push({
+      key: route.request().headers()['idempotency-key'],
+      body: route.request().postDataJSON(),
+    });
+    if (attempts.length === 1) return route.fulfill({
+      status: 502, contentType: 'text/html',
+      body: '<!doctype html><h1>Bad Gateway</h1>',
+    });
+    return route.fallback();
+  });
+
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('Безопасное сохранение');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/preview.jpg');
+  await form.getByLabel('Модель', { exact: true }).selectOption(photoModel.id);
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('Сценарий фото');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('Сервер временно недоступен');
+  await expect(form.getByLabel('Название', { exact: true })).toHaveValue('Безопасное сохранение');
+
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toMatch(/^trend-create:/);
+  expect(attempts[1].key).toBe(attempts[0].key);
+  expect(attempts[1].body).toEqual(attempts[0].body);
+  expect(state.errors).toEqual([]);
+});
