@@ -27,7 +27,10 @@ export default {
   webServer: {
     command: 'ROXY_E2E=1 npm run build && node e2e/static-server.mjs out 3017',
     url: 'http://127.0.0.1:3017/mini-app/',
-    reuseExistingServer: !process.env.CI,
+    // The preceding Chromium workflow step can leave its same-SHA static
+    // server alive on port 3017. Reusing it for later WebKit suites does not
+    // bypass browser journeys; all tests still run against the built bundle.
+    reuseExistingServer: process.env.ROXY_REUSE_CI_TEST_SERVER === '1' || !process.env.CI,
     timeout: 180_000,
   },
 };
