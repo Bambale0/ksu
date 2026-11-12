@@ -587,12 +587,11 @@ export function InlineTrendAdmin() {
   const chooseInputMode = (inputMode: "none" | "image") => {
     if (draft.mode !== "legacy") return;
     if (inputMode === "image" && !referenceAllowed) return;
-    if (draft.templateVideoUrl && inputMode === "none") return;
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       inputMode,
-      minReferences: inputMode === "image" ? 1 : 0,
-      maxReferences: inputMode === "image" ? Math.min(capacity, Math.max(1, current.maxReferences || capacity)) : 0,
+      minReferences: inputMode === "image" ? Math.max(klingTrendRequiredImages(current.prompt), current.templateVideoUrl ? 0 : 1) : 0,
+      maxReferences: inputMode === "image" ? Math.min(capacity, Math.max(klingTrendRequiredImages(current.prompt), current.maxReferences || capacity)) : 0,
     }) : current);
   };
 
@@ -701,8 +700,8 @@ export function InlineTrendAdmin() {
         ...current,
         templateVideoUrl: uploaded.url,
         inputMode: "image",
-        minReferences: 2,
-        maxReferences: 2,
+        minReferences: Math.max(current.minReferences, klingTrendRequiredImages(current.prompt)),
+        maxReferences: Math.min(capacity, Math.max(current.maxReferences || capacity, klingTrendRequiredImages(current.prompt))),
         parameters: JSON.stringify(parameters, null, 2),
       }) : current);
     } catch (cause) {
@@ -899,16 +898,16 @@ export function InlineTrendAdmin() {
       const klingImages = model.id === "kling-4.0" ? klingTrendRequiredImages(draft.prompt) : 0;
       const imageMode = draft.templateVideoUrl || klingImages > 0 ? "image" : draft.inputMode;
       const imageMinimum = imageMode === "image"
-        ? draft.templateVideoUrl ? 2 : Math.max(1, draft.minReferences, klingImages)
+        ? Math.max(draft.templateVideoUrl ? 0 : 1, draft.minReferences, klingImages)
         : 0;
       const imageMaximum = imageMode === "image"
-        ? draft.templateVideoUrl ? 2 : Math.min(capacity, Math.max(imageMinimum, draft.maxReferences))
+        ? Math.min(capacity, Math.max(imageMinimum, draft.maxReferences))
         : 0;
       if (klingImages > capacity) {
         setError(`В промпте указано фото №${klingImages}, но модель поддерживает не более ${capacity} фото.`);
         return;
       }
-      if (model.id === "kling-4.0" && /@video_1\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
+      if (model.id === "kling-4.0" && /@video_?1\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
         setError("В промпте указано видео @video_1. Сначала загрузите постоянное видео для шаблона.");
         return;
       }
@@ -1084,17 +1083,22 @@ export function InlineTrendAdmin() {
             const prompt = event.target.value;
             if (current.modelId !== "kling-4.0") return { ...current, prompt };
             const count = klingTrendRequiredImages(prompt);
-            if (!count || count > capacity) return { ...current, prompt };
+            if (count > capacity) return { ...current, prompt };
+            const previous = klingTrendRequiredImages(current.prompt);
             return {
-              ...current, prompt, inputMode: "image",
-              minReferences: current.templateVideoUrl ? 2 : Math.max(current.minReferences, count),
-              maxReferences: current.templateVideoUrl ? 2 : Math.max(current.maxReferences, count),
+              ...current,
+              prompt,
+              inputMode: count ? "image" : current.inputMode,
+              minReferences: current.minReferences === previous
+                ? count
+                : Math.max(current.minReferences, count),
+              maxReferences: Math.min(capacity, Math.max(current.maxReferences || capacity, count)),
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
           {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
         {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
-          <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Пользователь загружает только два фото (@image_1 и @image_2). Превью — отдельное поле.</small>
+          <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Количество пользовательских фото задаётся промптом и настройками ниже. Превью — отдельное поле.</small>
           <label><span>Загрузить видео MP4/MOV · 2–30 с{pinnedVideoMaxMb ? `, до ${pinnedVideoMaxMb} МБ` : ""}</span>
             <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov"
               aria-label="Загрузить постоянное видео Kling 4.0" disabled={uploading || saving}
@@ -1106,7 +1110,7 @@ export function InlineTrendAdmin() {
               onClick={() => setDraft((current) => current.mode === "legacy" ? { ...current, templateVideoUrl: "" } : current)}>
               Убрать видео из тренда
             </button>
-            <small>Референсы пользователя: ровно два фото, видео уже загружено администратором.</small>
+            <small>Количество фото выбирается в настройках ниже. Постоянное видео уже загружено администратором.</small>
           </div> : <small>Видео ещё не закреплено. Обычный тренд продолжит работать без него.</small>}
           {templateVideoUrl ? <ModelParameterControls model={selectedModel || undefined} parameters={pinnedParameters} onChange={updatePinnedParameter} /> : null}
         </div> : null}
@@ -1166,11 +1170,16 @@ export function InlineTrendAdmin() {
           </div>
 
           <div className="inline-trend-two-cols">
-          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none" disabled={Boolean(templateVideoUrl)}>Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
+          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none" disabled={Boolean(templateVideoUrl) && klingTrendRequiredImages(draft.prompt) > 0}>Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
           </div>
 
-          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" disabled={Boolean(templateVideoUrl)} min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }) : current)} /></label><label><span>Максимум фото</span><input type="number" disabled={Boolean(templateVideoUrl)} min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }) : current)} /></label></div> : null}
+          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={templateVideoUrl ? 0 : 1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => {
+            if (current.mode !== "legacy") return current;
+            const required = current.modelId === "kling-4.0" ? klingTrendRequiredImages(current.prompt) : 0;
+            const next = Math.min(capacity, Math.max(required, current.templateVideoUrl ? 0 : 1, Number(event.target.value || 0)));
+            return { ...current, minReferences: next, maxReferences: Math.max(current.maxReferences, next) };
+          })} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || 0))) }) : current)} /></label></div> : null}
 
           <details className="inline-trend-advanced"><summary>Дополнительные параметры модели</summary><label><span>JSON параметров</span><textarea rows={7} spellCheck={false} value={draft.parameters} disabled={uploading} onChange={(event) => setDraft((current) => ({ ...current, parameters: event.target.value }))} /></label></details>
         </>}
