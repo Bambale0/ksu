@@ -38,6 +38,17 @@ def test_kling_template_preserves_pinned_video_and_two_user_photo_slots():
     assert "template_video_url" not in params
 
 
+
+def test_pinned_template_rejects_prompt_referencing_third_customer_photo():
+    # The request advertises two uploads, so normalization must not silently
+    # raise the actual minimum to three when the hidden prompt references @image_3.
+    with pytest.raises(TrendRecipeError, match="только два фото"):
+        TrendService.normalize_recipe(
+            "Invalid extra customer image",
+            recipe(prompt="@image_1, @image_2 and @image_3 follow @video_1"),
+        )
+
+
 @pytest.mark.parametrize("updates", [
     {"min_references": 1},
     {"max_references": 3},
