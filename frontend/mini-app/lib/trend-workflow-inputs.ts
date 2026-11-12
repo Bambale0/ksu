@@ -96,7 +96,7 @@ export function workflowInputError(inputs: TrendAdminInput[], prompt: string, ca
 
 export function trendSaveError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
-  if (/\\bHTTP\\s*(502|503|504)\\b|bad gateway|gateway timeout/i.test(message)) {
+  if (/\bHTTP\s*(502|503|504)\b|bad gateway|gateway timeout/i.test(message)) {
     return "Сервер временно недоступен. Проверьте подключение и повторите попытку.";
   }
   if (/undeclared reference @image_?([1-9][0-9]*)/i.test(message)) {
