@@ -18,7 +18,7 @@ elements), and 3 named voices, with at most 15 entries combined. Video reference
 and video elements together are limited to 5 and 30 seconds in total. Individual
 reference clips must be 2–30 seconds; character clips must be 3–8 seconds.
 Video duration must come from the authenticated owner's measured ROXY uploads.
-Images and videos are limited to 10 MB each. Image elements need 2–4 views.
+Images remain limited to 10 MB in ROXY. Kling 4 Omni reference videos (`video_urls`, including administrator-pinned trend clips) accept up to `KLING4_REFERENCE_VIDEO_MAX_MB` (default 100 MB); other input types retain their own limits. Image elements need 2–4 views.
 Names must be unique ignoring case, 1–20 Latin/Chinese letters, digits or `_`;
 provider-reserved names cannot be used. Descriptions are limited to 100 characters.
 Voices can also be attached to a character. Voice detection and single-shot
