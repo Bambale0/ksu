@@ -439,6 +439,9 @@ export function InlineTrendAdmin() {
   const [uploading, setUploading] = useState(false);
   const draftVersion = useRef(0);
   const formRef = useRef<HTMLFormElement | null>(null);
+  // Reuse the exact same create command if a gateway loses the response.
+  // Changing the draft payload yields a fresh key, preventing false replays.
+  const createRetry = useRef<{ body: string; key: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -534,6 +537,7 @@ export function InlineTrendAdmin() {
 
   const beginCreate = () => {
     draftVersion.current += 1;
+    createRetry.current = null;
     setUploading(false);
     const modelId = models[0]?.id || "";
     setEditingId(null);
@@ -546,12 +550,14 @@ export function InlineTrendAdmin() {
   const chooseDraftMode = (mode: "legacy" | "workflow") => {
     if (mode === draft.mode) return;
     draftVersion.current += 1;
+    createRetry.current = null;
     setError("");
     setDraft(mode === "workflow" ? emptyWorkflowDraft(models) : emptyDraft(models[0]?.id || ""));
   };
 
   const beginEdit = (item: TrendAdminItem, duplicate = false) => {
     draftVersion.current += 1;
+    createRetry.current = null;
     setUploading(false);
     setOpen(true);
     setEditingId(duplicate ? null : item.id);
@@ -869,9 +875,20 @@ export function InlineTrendAdmin() {
     setError("");
     try {
       const body = { title: draft.title.trim(), payload, is_active: draft.isActive };
-      if (editingId) await trendAdminApi.update(editingId, body);
-      else await trendAdminApi.create(body);
+      if (editingId) {
+        await trendAdminApi.update(editingId, body);
+      } else {
+        const fingerprint = JSON.stringify(body);
+        if (createRetry.current?.body !== fingerprint) {
+          createRetry.current = {
+            body: fingerprint,
+            key: `trend-create:${crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
+          };
+        }
+        await trendAdminApi.create(body, createRetry.current.key);
+      }
       if (draftVersion.current !== version) return;
+      createRetry.current = null;
       setFormOpen(false);
       setEditingId(null);
       await refresh();
