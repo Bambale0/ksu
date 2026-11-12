@@ -896,7 +896,7 @@ export function InlineTrendAdmin() {
         return;
       }
       const klingImages = model.id === "kling-4.0" ? klingTrendRequiredImages(draft.prompt) : 0;
-      const imageMode = draft.templateVideoUrl || klingImages > 0 ? "image" : draft.inputMode;
+      const imageMode = klingImages > 0 ? "image" : draft.inputMode;
       const imageMinimum = imageMode === "image"
         ? Math.max(draft.templateVideoUrl ? 0 : 1, draft.minReferences, klingImages)
         : 0;
