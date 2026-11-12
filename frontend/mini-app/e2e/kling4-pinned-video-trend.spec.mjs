@@ -16,7 +16,7 @@ function init(page, admin = false) {
   }, { admin });
 }
 
-test('Kling 4 customer trend only asks for two photos, not video, prompt or quality', async ({ page }) => {
+test('Kling 4 customer can choose more photos than the prompt minimum, without uploading the pinned video', async ({ page }) => {
   const runs = [];
   let uploaded = 0;
   const errors = [];
@@ -30,7 +30,7 @@ test('Kling 4 customer trend only asks for two photos, not video, prompt or qual
       id: ID, title: 'Танец вдвоём', media_type: 'video',
       model: { id: 'kling-4.0', title: 'Kling 4.0' }, preview_url: null,
       cost_rox: '300.00', aspect_ratio_options: [],
-      reference_requirements: { kind: 'image', min: 2, max: 2, image: { min: 2, max: 2 }, video: { min: 0, max: 0 } },
+      reference_requirements: { kind: 'image', min: 2, max: 5, image: { min: 2, max: 5 }, video: { min: 0, max: 0 } },
     });
     if (path === `/api/v1/trends/${ID}/run`) {
       runs.push(request.postDataJSON());
@@ -48,24 +48,25 @@ test('Kling 4 customer trend only asks for two photos, not video, prompt or qual
   await page.goto(`/mini-app/trend/?id=${ID}`);
   const run = page.getByRole('button', { name: /Сгенерировать · 300 ROX/ });
   await expect(run).toBeDisabled();
-  await expect(page.getByText('Добавьте 2 изображения.')).toBeVisible();
+  await expect(page.getByText('Добавьте от 2 до 5 изображений. Генерация начнётся только после нажатия кнопки.')).toBeVisible();
   await expect(page.getByLabel('Видеореференсы тренда')).toHaveCount(0);
   await expect(page.getByRole('radiogroup', { name: 'Формат кадра' })).toHaveCount(0);
-  await page.locator('input[accept="image/*"]').setInputFiles([photo('face-1.png'), photo('face-2.png')]);
+  await page.locator('input[accept="image/*"]').setInputFiles([photo('face-1.png'), photo('face-2.png'), photo('face-3.png')]);
   await expect(page.getByText('face-1.png')).toBeVisible();
   await expect(page.getByText('face-2.png')).toBeVisible();
+  await expect(page.getByText('face-3.png')).toBeVisible();
   await expect(run).toBeEnabled();
   await run.click();
   await expect.poll(() => runs.length).toBe(1);
   expect(runs[0].reference_urls).toEqual([
-    'https://media.example/visitor-1.png', 'https://media.example/visitor-2.png',
+    'https://media.example/visitor-1.png', 'https://media.example/visitor-2.png', 'https://media.example/visitor-3.png',
   ]);
   expect(runs[0].video_reference_urls || []).toEqual([]);
   expect(JSON.stringify(runs[0])).not.toContain(VIDEO);
   expect(errors).toEqual([]);
 });
 
-test('admin attaches permanent video and publishes locked 2-photo Kling trend', async ({ page }) => {
+test('admin attaches permanent video and publishes configurable 3-to-5 photo Kling trend', async ({ page }) => {
   const writes = [];
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -111,20 +112,20 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
   await expect(form.getByText('Загрузить видео MP4/MOV · 2–30 с, до 100 МБ')).toBeVisible();
   await form.getByLabel('Название', { exact: true }).fill('Танец вдвоём');
-  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1 and @image_2');
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1, @image_2 and @image_3');
   await form.getByLabel('Загрузить постоянное видео Kling 4.0').setInputFiles({
     name: 'motion.mp4', mimeType: 'video/mp4', buffer: Buffer.from('synthetic video'),
   });
-  await expect(form.getByText('Референсы пользователя: ровно два фото')).toBeVisible();
-  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Минимум фото')).toBeDisabled();
+  await expect(form.getByText('Количество фото выбирается в настройках ниже.')).toBeVisible();
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('3');
+  await expect(form.getByLabel('Минимум фото')).toBeEnabled();
+  await form.getByLabel('Максимум фото').fill('5');
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].payload.template_video_url).toBe(VIDEO);
-  expect(writes[0].payload.min_references).toBe(2);
-  expect(writes[0].payload.max_references).toBe(2);
+  expect(writes[0].payload.min_references).toBe(3);
+  expect(writes[0].payload.max_references).toBe(5);
   expect(writes[0].payload.parameters).toMatchObject({ aspect_ratio: '9:16', resolution: '720p', duration: 5 });
   expect(errors).toEqual([]);
 });
