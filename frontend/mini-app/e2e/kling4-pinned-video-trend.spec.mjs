@@ -66,6 +66,43 @@ test('Kling 4 customer can choose more photos than the prompt minimum, without u
   expect(errors).toEqual([]);
 });
 
+
+test('optional photo references remain available even with zero required uploads', async ({ page }) => {
+  await init(page);
+  const writes = [];
+  await page.route('**/api/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === `/api/v1/trends/${ID}`) return json({
+      id: ID, title: 'Optional photos', media_type: 'video',
+      model: { id: 'kling-4.0', title: 'Kling 4.0' }, cost_rox: '300.00',
+      reference_requirements: { kind: 'image', min: 0, max: 5, image: { min: 0, max: 5 }, video: { min: 0, max: 0 } },
+      aspect_ratio_options: [],
+    });
+    if (path === `/api/v1/trends/${ID}/run`) {
+      writes.push(request.postDataJSON());
+      return json({ id: 'created', status: 'queued' }, 202);
+    }
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://media.example/optional.png' }, 201);
+    if (path === '/api/v1/me') return json({ id: 'viewer', is_admin: false, balance_rox: '1000' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    return json({ items: [], models: [], families: [] });
+  });
+  await page.goto(`/mini-app/trend/?id=${ID}`);
+  await expect(page.getByText('Можно добавить до 5 изображений или запустить без них.')).toBeVisible();
+  const input = page.locator('input[accept="image/*"]');
+  await expect(input).toBeAttached();
+  const launch = page.getByRole('button', { name: /Сгенерировать · 300 ROX/ });
+  await expect(launch).toBeEnabled();
+  await input.setInputFiles(photo('optional.png'));
+  await expect(page.getByText('optional.png')).toBeVisible();
+  await launch.click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].reference_urls).toEqual(['https://media.example/optional.png']);
+});
+
+
 test('admin attaches permanent video and publishes configurable 3-to-5 photo Kling trend', async ({ page }) => {
   const writes = [];
   const errors = [];
