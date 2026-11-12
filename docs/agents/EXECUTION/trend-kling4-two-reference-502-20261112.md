@@ -18,3 +18,9 @@
 - No migration, wallet or provider switching, secret changes or paid generations.
 - Confirm exact-head PR checks, merge-gated full E2E, release SHA and API availability. Live authenticated admin draft creation should be smoke-tested only with intentionally test-scoped data, not publish a real trend without content approval. PR #588 will require a separate gated release.
 - GitHub instruction sources: KSU AGENTS.md; `.agents/AGENTS.md`, `.agents/README.md`, `.agents/SKILLS_INDEX.md` are absent remotely; `Bambale0/skills` README (engineering workflow), `Bambale0/claw` backend-integration, `wondelai/skills` release-it, `Bambale0/dev-agents-pack` API-integrator, `agentskills/agentskills` format, `anthropics/skills` browser-test procedure.
+
+## Ambiguous create response and duplicate protection
+- API `inline_admin_trend_create` previously generated a new UUID *before* idempotency-ledger lookup. Repeating an identical `Idempotency-Key` after a gateway 502 thus used a different ledger target and produced an idempotency conflict. A new key could create a duplicate instead.
+- The server now derives the trend UUID from `account.id + command_key` with `uuid.uuid5`, reusing the established collection trend pattern. The first committed command is replayed without duplicate inserts.
+- The Mini App stores a stable per-body create key across a failed 502 response; modifications to the body or opening a new draft produce a new key. No automatic unbounded retries, no false success before server acknowledgement.
+- Regression cases: repeat identical POST with one real PostgreSQL AdminTrend + completed AdminCommand, and mocked WebView receiving HTML 502 then retry using the same `Idempotency-Key`.
