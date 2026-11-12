@@ -350,7 +350,7 @@ async def upload_template_video(
         raise HTTPException(status_code=415, detail="Upload an MP4 or MOV video")
     size_bytes = _upload_size(file)
     if size_bytes > min(settings.kie_upload_max_bytes, KLING_VIDEO_MAX_BYTES):
-        raise HTTPException(status_code=413, detail="Kling 4 videos must not exceed 10 MB")
+        raise HTTPException(status_code=413, detail=f"Kling 4 videos must not exceed {settings.kling4_reference_video_max_mb} MB")
     await AbuseProtectionService.upload_rate_and_bytes(redis, user_id=user.id, size_bytes=size_bytes)
     filename = file.filename or "reference.mp4"
     probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
