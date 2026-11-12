@@ -6,7 +6,7 @@ import type { TrendAdminInput } from "./trend-admin-api";
 // user-upload slots, not dynamic text variables.
 export function klingImageSlotCount(prompt: string): number {
   const slots = Array.from(
-    prompt.matchAll(/(?<!\\w)@image_?([1-9][0-9]*)(?!\\w)/gi),
+    prompt.matchAll(/(?<!\w)@image_?([1-9][0-9]*)(?!\w)/gi),
     (match) => Number(match[1]),
   );
   return Math.max(0, ...slots);
