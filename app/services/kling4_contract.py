@@ -11,6 +11,7 @@ MODEL_PROVIDERS = {
     "kling-4.0": "kling-4.0/reference-to-video",
     "kling-4.0-keyframe": "kling-4.0/keyframe-to-video",
 }
+KLING4_MAX_IMAGE_REFERENCES = 10
 COMMON_FIELDS = ("prompt", "duration", "resolution", "aspect_ratio")
 REFERENCE_FIELDS = (*COMMON_FIELDS, "image_urls", "video_urls", "keep_original_sound", "elements", "voices")
 KEYFRAME_FIELDS = (*COMMON_FIELDS, "first_frame_url", "keyframe_urls", "last_frame_url")
@@ -125,7 +126,7 @@ def normalize_kling4_input(model: str, source: dict[str, Any]) -> dict[str, Any]
             raise Kling4ContractError("Too many Kling 4 frames for the selected duration")
         declared.update(f"keyframe_{i + 1}" for i in range(len(middle)))
     else:
-        images = _urls(data, "image_urls", 10)
+        images = _urls(data, "image_urls", KLING4_MAX_IMAGE_REFERENCES)
         videos = _urls(data, "video_urls", 5)
         elements = _array(data, "elements", 7)
         voices = _array(data, "voices", 3)
