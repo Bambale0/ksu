@@ -324,3 +324,63 @@ async def upload_template_audio(
         'probe_status': 'ready', 'duration_ms': probe.duration_ms,
         'reference': {'id': str(row.id), 'kind': 'audio', 'url': url},
     }
+
+@router.post('/template-video', status_code=status.HTTP_201_CREATED)
+async def upload_template_video(
+    user: CurrentUserDep,
+    redis: RedisDep,
+    session: SessionDep,
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    """Only privileged editors may create independent, persistent Kling 4 clips."""
+    import uuid
+
+    from app.api.v1.trends import _inline_admin
+    from app.db.reference_models import TemplateVideoReference
+    from app.services.admin_policy import AdminPolicyError
+    from app.services.template_video import KLING_VIDEO_MAX_BYTES
+
+    try:
+        await _inline_admin(session, user_id=user.id)
+    except AdminPolicyError as exc:
+        raise HTTPException(status_code=403, detail="Admin permission required") from exc
+
+    content_type = _upload_content_type(file)
+    if content_type not in {"video/mp4", "video/quicktime"}:
+        raise HTTPException(status_code=415, detail="Upload an MP4 or MOV video")
+    size_bytes = _upload_size(file)
+    if size_bytes > min(settings.kie_upload_max_bytes, KLING_VIDEO_MAX_BYTES):
+        raise HTTPException(status_code=413, detail="Kling 4 videos must not exceed 10 MB")
+    await AbuseProtectionService.upload_rate_and_bytes(redis, user_id=user.id, size_bytes=size_bytes)
+    filename = file.filename or "reference.mp4"
+    probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
+    content_type = _probed_content_type(content_type, probe)
+    if (
+        content_type not in {"video/mp4", "video/quicktime"} or probe.has_video is not True
+        or probe.status != "ready" or probe.duration_ms is None
+        or not 2000 <= probe.duration_ms <= 30000
+    ):
+        raise HTTPException(status_code=422, detail="Kling 4 requires a verified 2–30 second MP4/MOV")
+    file_hash = await asyncio.to_thread(_sha256_stream, file.file)
+    reference_id = uuid.uuid4()
+    try:
+        url, _path, stored_size = await asyncio.to_thread(partial(
+            ReferenceStaticStorage.persist_stream, file.file, user_id=reference_id,
+            kind="video", file_hash=file_hash, filename=filename,
+            content_type=content_type, expected_size=size_bytes,
+        ))
+    except ReferenceStaticStorageError as exc:
+        raise HTTPException(status_code=500, detail="Reference storage failed") from exc
+    row = TemplateVideoReference(
+        id=reference_id, source_url=url, uploaded_by=user.id, status="ready",
+        original_filename=filename[:255], content_type=content_type, size_bytes=stored_size,
+        duration_ms=probe.duration_ms, probe_status="ready",
+    )
+    session.add(row)
+    await session.commit()
+    logging.getLogger(__name__).info("template_video_uploaded reference_id=%s actor_user_id=%s", row.id, user.id)
+    return {
+        "url": url, "name": filename, "mime_type": content_type, "size": stored_size,
+        "probe_status": "ready", "duration_ms": probe.duration_ms,
+        "reference": {"id": str(row.id), "kind": "video", "url": url},
+    }

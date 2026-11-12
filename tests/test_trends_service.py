@@ -885,3 +885,142 @@ async def test_invalid_trend_date_never_reaches_generation(monkeypatch, value) -
         )
 
     create.assert_not_awaited()
+
+
+@pytest.mark.parametrize("prompt", [
+    "В кадре @image_1 поёт, @image_2 слушает",
+    "Close up @IMAGE_1 with @Image_2",
+])
+def test_kling_trend_infers_two_required_images_from_hidden_prompt(prompt) -> None:
+    recipe = TrendService.normalize_recipe("МОИ СЛЕЗЫ", {
+        "model_id": "kling-4.0",
+        "media_type": "video",
+        "prompt": prompt,
+        "preview_url": "https://cdn.example.invalid/preview.jpg",
+        "input_mode": "image",
+        "min_references": 1,
+        "max_references": 1,
+        "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+    })
+    assert recipe["input_mode"] == "image"
+    assert recipe["min_references"] == 2
+    assert recipe["max_references"] == 2
+    params = TrendService._parameters_with_references(
+        recipe, TrendService._validation_reference_urls(recipe["min_references"]),
+        template=True,
+    )
+    assert len(params["image_urls"]) == 2
+    assert params["image_urls"][0] != params["image_urls"][1]
+
+
+def test_kling_prompt_photos_make_optional_input_mode_required():
+    recipe = TrendService.normalize_recipe("Video", {
+        "model_id": "kling-4.0",
+        "media_type": "video",
+        "prompt": "@image_1 follows @image_2",
+        "preview_url": "https://cdn.example.invalid/preview.jpg",
+        "input_mode": "none",
+        "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+    })
+    assert recipe["input_mode"] == "image"
+    assert recipe["min_references"] == 2
+    assert recipe["max_references"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_kling_prompt_with_undeclared_video_requires_admin_pin():
+    # Legacy recipes may be normalized for read/duplication, but saving must
+    # reject an undeclared video before provider submission or any ROX debit.
+    with pytest.raises(TrendRecipeError, match="видео"):
+        await TrendService.validate_recipe(AsyncMock(), title="No video", payload={
+            "model_id": "kling-4.0",
+            "prompt": "@image_1 and @image_2 follow @video_1",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image",
+            "min_references": 2, "max_references": 2,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
+
+
+def test_kling_trend_reference_index_out_of_capacity_fails_early():
+    with pytest.raises(TrendRecipeError, match="фото"):
+        TrendService.normalize_recipe("Too many", {
+            "model_id": "kling-4.0",
+            "prompt": "@image_100 falls",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image",
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
+
+
+@pytest.mark.asyncio
+async def test_kling_two_images_recipe_preflight_validates_without_provider_post():
+    from app.db.session import SessionFactory
+
+    async with SessionFactory() as session:
+        normalized = await TrendService.validate_recipe(session, title="МОИ СЛЕЗЫ", payload={
+            "model_id": "kling-4.0", "media_type": "video",
+            "prompt": "Singer @image_1 reacts to listener @image_2",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image", "min_references": 1, "max_references": 1,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
+        assert normalized["min_references"] == 2
+        assert normalized["max_references"] == 2
+
+
+def test_invalid_reference_recipe_is_http_422_not_gateway_502():
+    from app.api.v1.trends import _domain_error
+
+    error = _domain_error(TrendRecipeError("В промпте требуется второе фото"))
+    assert error.status_code == 422
+    assert "второе фото" in error.detail
+
+
+@pytest.mark.asyncio
+async def test_inline_kling_trend_create_replays_same_id_after_lost_gateway_response():
+    from sqlalchemy import func, select
+    from starlette.requests import Request
+
+    from app.api.v1.trends import InlineTrendWriteRequest, inline_admin_trend_create
+    from app.db.admin_models import AdminTrend
+    from app.db.models import AdminAccount, User
+    from app.db.session import SessionFactory
+
+    key = "kling-two-photos-502:" + str(uuid.uuid4())
+    body = InlineTrendWriteRequest(
+        title="МОИ СЛЕЗЫ",
+        payload={
+            "model_id": "kling-4.0", "media_type": "video",
+            "prompt": "Singer @image_1 and listener @image_2",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image", "min_references": 1, "max_references": 1,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        },
+    )
+    request = Request({
+        "type": "http", "method": "POST",
+        "path": "/api/v1/trends/manage", "headers": [],
+    })
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14)
+        session.add(user)
+        await session.flush()
+        session.add(AdminAccount(user_id=user.id, role="owner", is_active=True))
+        await session.commit()
+
+        first = await inline_admin_trend_create(
+            body, request, user, session, idempotency_key=key,
+        )
+        second = await inline_admin_trend_create(
+            body, request, user, session, idempotency_key=key,
+        )
+        assert first["id"] == second["id"]
+        assert first["idempotency_replayed"] is False
+        assert second["idempotency_replayed"] is True
+        count = await session.scalar(
+            select(func.count(AdminTrend.id)).where(
+                AdminTrend.id == uuid.UUID(str(first["id"]))
+            )
+        )
+        assert count == 1

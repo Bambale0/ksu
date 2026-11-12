@@ -88,7 +88,12 @@ def test_trend_publish_normalizes_hashtags_without_opening_folder_admin() -> Non
     assert "export function normalizeTrendTags" in api_source
     assert "hashtagsFromText(body.title)" in api_source
     assert "hashtagsFromText(body.payload.description)" in api_source
-    assert api_source.count("normalizeWriteBody(body)") >= 2
+    # Both mutation paths go through one normalizer in retryableWrite,
+    # then send the normalized body with a stable idempotency key.
+    assert "const normalized = normalizeWriteBody(body);" in api_source
+    assert "body: JSON.stringify(save.normalized)" in api_source
+    assert 'const save = retryableWrite(collectionId ? "folder-trend-create" : "trend-create", path, body);' in api_source
+    assert 'const save = retryableWrite("trend-update", path, body);' in api_source
     assert 'split(/[\\s,;]+/u)' in api_source
     assert 'replace(/^#+/, "")' in api_source
     assert "value={draft.tags}" in form_source

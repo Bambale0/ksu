@@ -60,6 +60,7 @@ export type TrendAdminV1Payload = TrendAdminPayloadBase & {
   input_mode?: "none" | "image" | string;
   min_references?: number;
   max_references?: number;
+  template_video_url?: string | null;
 };
 
 export type TrendAdminInput = {
@@ -179,6 +180,13 @@ function idempotencyKey(prefix: string): string {
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 }
 
+class TrendAdminHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "TrendAdminHttpError";
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -193,7 +201,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload?.detail ?? payload?.message ?? `HTTP ${response.status}`;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new TrendAdminHttpError(typeof detail === "string" ? detail : JSON.stringify(detail), response.status);
   }
   return payload as T;
 }
@@ -205,13 +213,54 @@ function writeHeaders(prefix: string): Record<string, string> {
   };
 }
 
+// Only trend admin create/update are retried: those writes use the same
+// idempotency token even when a gateway has lost a successful response.
+// Bounded recovery handles short API rotations without repeating a mutation.
+async function sendAdminWrite<T>(path: string, init: Pick<RequestInit, "method">,
+  save: ReturnType<typeof retryableWrite>): Promise<T> {
+  const delaysMs = [0, 800, 2300];
+  for (const [attempt, delay] of delaysMs.entries()) {
+    if (delay) await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    try {
+      return await request<T>(path, {
+        ...init, headers: save.headers, body: JSON.stringify(save.normalized),
+      });
+    } catch (error) {
+      if (!(error instanceof TrendAdminHttpError)
+        || ![502, 503, 504].includes(error.status)
+        || attempt === delaysMs.length - 1) throw error;
+    }
+  }
+  throw new Error("Не удалось сохранить тренд");
+}
+
+// A gateway timeout can happen *after* a write commits. Reuse the same
+// idempotency key when exactly the same admin save is retried, so a 502
+// never creates duplicate trends. Only a confirmed success releases the key.
+const pendingTrendWrites = new Map<string, string>();
+
+function retryableWrite(prefix: string, path: string, body: TrendWriteBody) {
+  const normalized = normalizeWriteBody(body);
+  const fingerprint = JSON.stringify([prefix, path, normalized]);
+  let key = pendingTrendWrites.get(fingerprint);
+  if (!key) {
+    key = idempotencyKey(prefix);
+    pendingTrendWrites.set(fingerprint, key);
+  }
+  return {
+    normalized,
+    fingerprint,
+    headers: { "Idempotency-Key": key, "X-Request-Id": idempotencyKey("trend-ui") },
+  };
+}
+
 export const trendAdminApi = {
   list: async (): Promise<TrendAdminList> => {
     const [managed, publicCatalog] = await Promise.all([
       request<TrendAdminList>("/api/v1/trends/manage"),
-      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models"),
+      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models").catch(() => null),
     ]);
-    const publicModels = new Map((publicCatalog.models || []).map((model) => [model.id, model]));
+    const publicModels = new Map((publicCatalog?.models || []).map((model) => [model.id, model]));
     return {
       ...managed,
       models: (managed.models || []).map((model) => ({
@@ -226,19 +275,19 @@ export const trendAdminApi = {
     const path = collectionId
       ? `/api/v1/trend-collections/manage/${encodeURIComponent(collectionId)}/items`
       : "/api/v1/trends/manage";
-    const item = await request<TrendAdminItem>(path, {
-      method: "POST",
-      headers: writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
-      body: JSON.stringify(normalizeWriteBody(body)),
-    });
+    const save = retryableWrite(collectionId ? "folder-trend-create" : "trend-create", path, body);
+    const item = await sendAdminWrite<TrendAdminItem>(path, { method: "POST" }, save);
+    pendingTrendWrites.delete(save.fingerprint);
     clearTrendCollectionTarget();
     return item;
   },
-  update: (id: string, body: TrendWriteBody) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: writeHeaders("trend-update"),
-    body: JSON.stringify(normalizeWriteBody(body)),
-  }),
+  update: async (id: string, body: TrendWriteBody) => {
+    const path = `/api/v1/trends/manage/${encodeURIComponent(id)}`;
+    const save = retryableWrite("trend-update", path, body);
+    const result = await sendAdminWrite<TrendAdminItem>(path, { method: "PATCH" }, save);
+    pendingTrendWrites.delete(save.fingerprint);
+    return result;
+  },
   hide: (id: string) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: writeHeaders("trend-hide"),

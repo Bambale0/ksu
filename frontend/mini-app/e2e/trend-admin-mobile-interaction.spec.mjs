@@ -197,7 +197,7 @@ async function reportCreateState(page, phase) {
   console.error(`[trend-admin-cold-load:${phase}] ${JSON.stringify(state)}`);
 }
 
-async function editCloseAndReopenAfterFailure(page, manager, form, title) {
+async function editCloseAndReopenAfterFailure(page, manager, form, title, expectedListError = 'Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».') {
   const input = form.getByLabel('Название', { exact: true });
   await expect(input).toBeVisible();
   await expect(input).toBeEditable();
@@ -209,7 +209,8 @@ async function editCloseAndReopenAfterFailure(page, manager, form, title) {
   await expect(manager).toHaveCount(0);
 
   const reopenedManager = await openManager(page);
-  await expect(reopenedManager.getByRole('alert')).toHaveText('HTTP 502');
+  if (expectedListError) await expect(reopenedManager.getByRole('alert')).toHaveText(expectedListError);
+  else await expect(reopenedManager.getByRole('alert')).toHaveCount(0);
   const reopenedForm = await openCreate(page, reopenedManager);
   const freshInput = reopenedForm.getByLabel('Название', { exact: true });
   await expect(freshInput).toBeVisible();
@@ -408,7 +409,7 @@ test('pending and failed list requests leave touch close and reopen available', 
 
   state.listMode = 'failure';
   manager = await openManager(page);
-  await expect(manager.getByRole('alert')).toHaveText('Не удалось получить список трендов');
+  await expect(manager.getByRole('alert')).toHaveText('Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».');
   await manager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
   await expect(manager).toHaveCount(0);
   state.listMode = 'success';
@@ -452,7 +453,7 @@ test('cold HTML 502 from managed trends still permits New Trend touch and reopen
   const state = await setup(page, browserName, { count: 0, listMode: 'bad-gateway' });
   try {
     const manager = await openManager(page);
-    await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(manager.getByRole('alert')).toHaveText('Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».');
     const form = await openCreate(page, manager);
     await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без списка');
     expect(state.listRequests).toBe(2);
@@ -481,9 +482,10 @@ test('cold HTML 502 from public catalog still permits New Trend touch and reopen
     expect(managedResponse.status()).toBe(200);
     await managedResponse.finished();
     await (await failedCatalog).finished();
-    await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(manager.getByRole('alert')).toHaveCount(0);
+    await expect(manager.locator('.inline-trend-admin-card')).toHaveCount(3);
     const form = await openCreate(page, manager);
-    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без публичного каталога');
+    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без публичного каталога', null);
     expect(state.listRequests).toBe(2);
     expect(state.uploads).toBe(0);
     expectClean(state);
@@ -509,7 +511,7 @@ test('cold pending managed request may settle as HTML 502 while New Trend stays 
     await fulfillBadGateway(state.pendingLists.shift());
     await (await settled).finished();
     await expect(form).toBeVisible();
-    await expect(form.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(form.getByRole('alert')).toHaveCount(0);
     await expect(input).toHaveValue('Черновик во время загрузки');
     await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик после ответа 502');
     expect(state.pendingLists).toHaveLength(0);

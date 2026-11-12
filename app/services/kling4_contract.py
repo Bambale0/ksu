@@ -192,10 +192,18 @@ async def validate_kling4_media(session: Any, data: dict[str, Any], *, user_id: 
         return
     info = getattr(session, "info", {})
     owner = user_id or (info.get("current_user_id") if isinstance(info, dict) else None)
-    if owner is None:
-        raise InvalidModelParametersError("Kling 4 video duration requires an authenticated upload owner")
     total_ms = 0
+    from app.services.template_video import TemplateVideoService
+
     for url, minimum, maximum in videos:
+        pinned = await TemplateVideoService.authorized_reference(session, url)
+        if pinned is not None:
+            if not minimum * 1000 <= pinned.duration_ms <= maximum * 1000:
+                raise InvalidModelParametersError(f"Kling 4 reference video must be {minimum}–{maximum} seconds")
+            total_ms += pinned.duration_ms
+            continue
+        if owner is None:
+            raise InvalidModelParametersError("Kling 4 video duration requires an authenticated upload owner")
         row = await session.scalar(select(UserReference).where(
             UserReference.user_id == owner, UserReference.source_url == url,
             UserReference.status == "ready", UserReference.kind == "video",

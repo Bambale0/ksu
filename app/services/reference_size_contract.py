@@ -94,6 +94,13 @@ async def validate_reference_sizes(
         return
 
     rows = list(durable_rows)
+    if spec.id == "kling-4.0":
+        from app.services.template_video import TemplateVideoService
+
+        for url in parameters.get("video_urls", []):
+            pinned = await TemplateVideoService.authorized_reference(session, url)
+            if pinned is not None:
+                rows.append(pinned)
     if owner_id is not None:
         rows.extend((await session.scalars(select(UserReference).where(
             UserReference.user_id == owner_id,
