@@ -61,7 +61,10 @@ def test_unsupported_video_slot_has_actionable_validation_not_raw_undeclared_ref
 
 def test_non_kling_trend_is_unchanged_by_image_reference_inference():
     raw = recipe("@image_1 and @image_2")
-    raw["model_id"] = "seedance-2.0"
+    # Seedance has its own independent tag inference; use a non-Seedance
+    # reference model to ensure this Kling-specific rule does not spread.
+    raw["model_id"] = "nano-banana-pro"
+    raw["media_type"] = "image"
     normalized = TrendService.normalize_recipe("Another model", raw)
     assert normalized["min_references"] == 1
     assert normalized["max_references"] == 1
