@@ -247,7 +247,11 @@ async def inline_admin_trend_create(
         account = await _inline_admin(session, user_id=user.id)
         title = payload.title.strip()
         recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
-        trend_id = uuid.uuid4()
+        command_key = _command_key(idempotency_key)
+        # A gateway 502 may happen *after* committing the insert. Retrying the
+        # same draft with the same key must resolve to the exact same row and
+        # AdminCommandLedger target, instead of creating a duplicate.
+        trend_id = uuid.uuid5(uuid.NAMESPACE_URL, f"ksu:trend-create:{account.id}:{command_key}")
 
         async def operation() -> dict[str, Any]:
             item = AdminTrend(
@@ -269,7 +273,7 @@ async def inline_admin_trend_create(
 
         result, replayed = await AdminCommandLedger.execute(
             session,
-            idempotency_key=_command_key(idempotency_key),
+            idempotency_key=command_key,
             admin_user_id=account.id,
             request_id=_request_id(request),
             action="social.moderate",
