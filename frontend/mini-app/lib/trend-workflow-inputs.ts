@@ -87,5 +87,11 @@ export function trendSaveError(cause: unknown): string {
   if (message.includes("@ImageN") || message.includes("ordered image input slots")) {
     return "Проверьте поля фото и номера @Image в промптах обоих шагов. В шаге видео используется только @Image1.";
   }
+  if (/undeclared reference @image_?[0-9]+/i.test(message)) {
+    return "Промпт ссылается на фото, которого нет среди загрузок. Проверьте номера фото.";
+  }
+  if (/^(HTTP 5[0-9]{2}|bad gateway|fetch failed)/i.test(message)) {
+    return "Не удалось связаться с сервисом. Проверьте соединение и повторите сохранение.";
+  }
   return message || "Не удалось сохранить тренд";
 }

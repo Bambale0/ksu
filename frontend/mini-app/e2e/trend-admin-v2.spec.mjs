@@ -107,7 +107,7 @@ function v2Payload(videoModelId = videoModel.id) {
   };
 }
 
-async function setup(page, { items = [], models = [photoModel, videoModel], touch = false } = {}) {
+async function setup(page, { items = [], models = [photoModel, videoModel], touch = false, publicModelsStatus = 200, managedStatus = 200 } = {}) {
   const state = { items, models, writes: [], errors: [], unexpectedWrites: [] };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.addInitScript(() => {
@@ -125,7 +125,10 @@ async function setup(page, { items = [], models = [photoModel, videoModel], touc
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/v1/me') return json({ id: 'admin', telegram_id: 777, first_name: 'Admin', is_admin: true, balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') {
+      if (managedStatus === 502) return route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
+      return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    }
     if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
       const body = request.postDataJSON();
       state.writes.push(body);
@@ -141,7 +144,10 @@ async function setup(page, { items = [], models = [photoModel, videoModel], touc
       state.items = state.items.map((item) => item.id === id ? updated : item);
       return json(updated);
     }
-    if (path === '/api/v1/generations/models') return json({ models: [], families: [] });
+    if (path === '/api/v1/generations/models') {
+      if (publicModelsStatus === 502) return route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad Gateway' });
+      return json({ models: [], families: [] });
+    }
     if (request.method() !== 'GET') state.unexpectedWrites.push(request.method() + ' ' + path);
     return json({ items: [] });
   });
@@ -547,4 +553,53 @@ test('required photo without a prompt role blocks publication', async ({ page })
   await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
   await expect(form.getByRole('alert')).toContainText('обязательного фото');
   expect(state.writes).toEqual([]);
+});
+
+
+const klingReferenceModel = {
+  ...videoModel,
+  id: 'kling-4.0',
+  title: 'Kling 4.0 · Референсы',
+  operation: 'reference_to_video',
+  known_fields: ['prompt', 'image_urls', 'video_urls', 'duration', 'resolution', 'aspect_ratio'],
+  reference_capacity: 8,
+};
+
+test('ordinary Kling trend reads @image_1 and @image_2, synchronizes two uploads and saves without exposing technical errors', async ({ page }) => {
+  const state = await setup(page, { models: [klingReferenceModel], publicModelsStatus: 502 });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/tears.mp4');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('@image_1 sings with tears; @image_2 listens.');
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload).toMatchObject({
+    model_id: 'kling-4.0',
+    input_mode: 'image', min_references: 2, max_references: 2,
+  });
+  expect(state.errors).toEqual([]);
+});
+
+test('ordinary Kling trend blocks sparse image slots before sending an invalid backend recipe', async ({ page }) => {
+  const state = await setup(page, { models: [klingReferenceModel] });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/tears.mp4');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('@image_2 listens');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('по порядку');
+  expect(state.writes).toHaveLength(0);
+});
+
+test('managed catalog 502 does not claim empty catalog and new-trend dialog still opens on iPhone', async ({ page }) => {
+  const state = await setup(page, { models: [klingReferenceModel], managedStatus: 502, touch: true });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  await expect(manager.getByRole('alert')).toContainText('Не удалось загрузить тренды');
+  await expect(manager.getByText('Трендов пока нет. Создайте первый.')).toHaveCount(0);
+  const form = await openCreate(page);
+  await expect(form).toBeVisible();
+  await expect(form.getByText('HTTP 502')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
 });

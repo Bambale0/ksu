@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
+import { klingTrendPromptError, syncKlingTrendImages, klingTrendImageSlots } from "@/lib/kling-trend-image-slots";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -441,6 +442,7 @@ export function InlineTrendAdmin() {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -477,13 +479,13 @@ export function InlineTrendAdmin() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const result = await trendAdminApi.list();
       setItems(result.items || []);
       setModels((result.models || []) as TrendAdminModel[]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить тренды");
+      setLoadError("Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».");
     } finally {
       setLoading(false);
     }
@@ -562,18 +564,26 @@ export function InlineTrendAdmin() {
   const chooseModel = (modelId: string) => {
     if (draft.mode !== "legacy") return;
     const next = models.find((model) => model.id === modelId);
-    setDraft((current) => current.mode === "legacy" ? ({
-      ...current,
-      modelId,
-      inputMode: modelAcceptsReferences(next) ? current.inputMode : "none",
-      minReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.max(1, current.minReferences || 1) : 0,
-      maxReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.min(referenceCapacity(next), Math.max(1, current.maxReferences || 1)) : 0,
-    }) : current);
+    setDraft((current) => {
+      if (current.mode !== "legacy") return current;
+      const updated: LegacyDraft = {
+        ...current,
+        modelId,
+        inputMode: modelAcceptsReferences(next) ? current.inputMode : "none",
+        minReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.max(1, current.minReferences || 1) : 0,
+        maxReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.min(referenceCapacity(next), Math.max(1, current.maxReferences || 1)) : 0,
+      };
+      return syncKlingTrendImages(updated, updated.prompt, modelId, referenceCapacity(next));
+    });
   };
 
   const chooseInputMode = (inputMode: "none" | "image") => {
     if (draft.mode !== "legacy") return;
     if (inputMode === "image" && !referenceAllowed) return;
+    if (inputMode === "none" && draft.modelId === "kling-4.0" && klingTrendImageSlots(draft.prompt).length) {
+      setError("Промпт использует фотографии. Чтобы их не загружать, сначала уберите ссылки @image из промпта.");
+      return;
+    }
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       inputMode,
@@ -819,6 +829,12 @@ export function InlineTrendAdmin() {
         setError("Названия полей шаблона не должны повторяться");
         return;
       }
+      const promptError = draft.modelId === "kling-4.0" ? klingTrendPromptError(draft.prompt, capacity) : "";
+      if (promptError) {
+        setError(promptError);
+        return;
+      }
+      const synchronized = syncKlingTrendImages(draft, draft.prompt, draft.modelId, capacity);
       const legacyPayload: TrendAdminV1Payload = {
         description: draft.description.trim(),
         preview_url: draft.previewUrl.trim(),
@@ -827,9 +843,9 @@ export function InlineTrendAdmin() {
         prompt: draft.prompt.trim(),
         user_fields: userFields.length ? userFields : undefined,
         parameters,
-        input_mode: draft.inputMode,
-        min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
-        max_references: draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
+        input_mode: synchronized.inputMode,
+        min_references: synchronized.inputMode === "image" ? Math.max(1, synchronized.minReferences) : 0,
+        max_references: synchronized.inputMode === "image" ? Math.min(capacity, Math.max(synchronized.minReferences, synchronized.maxReferences)) : 0,
         tags: draft.tags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
         sort_order: Number(draft.sortOrder || 0),
         usage_count: Number(items.find((item) => item.id === editingId)?.payload.usage_count || 0),
@@ -899,9 +915,9 @@ export function InlineTrendAdmin() {
           <button className="inline-trend-secondary" type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 
-        {error && !formOpen ? <div className="inline-trend-error" role="alert">{error}</div> : null}
+        {!formOpen && (error || loadError) ? <div className="inline-trend-error" role="alert">{error || loadError}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
-        {!loading && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !loadError && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
 
         <div className="inline-trend-admin-list">
           {items.map((item) => {
@@ -985,7 +1001,8 @@ export function InlineTrendAdmin() {
             <label><span>Поле изображения видео</span><select value={draft.video.bindingTarget || ""} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, bindingTarget: event.target.value } } : current)}><option value="">Выберите поле привязки</option>{(models.find((model) => model.id === draft.video.modelId)?.known_fields || []).filter((field) => BINDABLE_IMAGE_FIELDS.has(field)).map((field) => <option value={field} key={field}>{field}</option>)}</select><small>{draft.video.bindingTarget ? `Результат шага фото будет передан в ${draft.video.bindingTarget}.` : "Модель не объявила совместимое поле."}</small></label>
           </section>
         </> : <>
-          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => current.mode === "legacy" ? syncKlingTrendImages(current, event.target.value, current.modelId, referenceCapacity(models.find((model) => model.id === current.modelId))) : current)} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+        {draft.modelId === "kling-4.0" ? <small>Если используете @image_1 и @image_2, пользователь загрузит два фото. Количество загрузок устанавливается автоматически.</small> : null}
         {draft.modelId === "seedance-2.5" ? <small>
           Для видео, которое загрузит пользователь, укажите @Video1 в промпте
           (далее @Video2 и т. д.). Превью служит только образцом результата.
