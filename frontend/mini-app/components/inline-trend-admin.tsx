@@ -921,7 +921,8 @@ export function InlineTrendAdmin() {
 
         {error && !formOpen ? <div className="inline-trend-error" role="alert">{error}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
-        {!loading && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !items.length && !error ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !items.length && error ? <div className="inline-trend-empty">Список не загружен. Нажмите «Обновить», чтобы повторить запрос.</div> : null}
 
         <div className="inline-trend-admin-list">
           {items.map((item) => {
