@@ -218,6 +218,11 @@ class TrendService:
             )
             await TemplateAudioService.pin_recipe(session, recipe["parameters"])
         except ValueError as exc:
+            if recipe["model_id"] == "kling-4.0" and "Undeclared reference @" in str(exc):
+                raise TrendRecipeError(
+                    "В промпте указан референс без соответствующего входного файла. "
+                    "Проверьте количество фото и ссылки на видео."
+                ) from exc
             raise TrendRecipeError(f"Trend generation recipe is invalid: {exc}") from exc
         return recipe
 
