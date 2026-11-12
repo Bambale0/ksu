@@ -991,7 +991,7 @@ export default function TrendPage() {
     if (videoCount) return minimum
       ? `Добавьте ${minimum} фото и ${videoCount} видео. Запуск — после нажатия кнопки.`
       : `Добавьте ${videoCount} видео. Запуск — после нажатия кнопки.`;
-    if (!minimum) return "Референсы не нужны — сценарий можно запустить сразу.";
+    if (!minimum) return maximum ? `Можно добавить до ${maximum} изображений или запустить без них.` : "Референсы не нужны — сценарий можно запустить сразу.";
     if (minimum === maximum) return `Добавьте ${minimum} ${minimum === 1 ? "изображение" : "изображения"}. Генерация начнётся только после нажатия кнопки.`;
     return `Добавьте от ${minimum} до ${maximum} изображений. Генерация начнётся только после нажатия кнопки.`;
   }, [maximum, minimum, videoCount, trend]);
@@ -1191,7 +1191,7 @@ export default function TrendPage() {
             ) : null}
             <p className="muted">{referenceCopy}</p>
 
-            {minimum > 0 ? (
+            {maximum > 0 ? (
               <>
                 <label className="upload-control">
                   <span>{uploading ? "Загружаю…" : references.length ? `Добавлено ${references.length}/${maximum}` : "Добавить референсы"}</span>
