@@ -207,10 +207,16 @@ function writeHeaders(prefix: string): Record<string, string> {
 
 export const trendAdminApi = {
   list: async (): Promise<TrendAdminList> => {
-    const [managed, publicCatalog] = await Promise.all([
+    // The admin endpoint is authoritative. A temporary failure of the public
+    // model catalog must not block the managed trend list/create editor.
+    // Do not fabricate managed data when the authenticated admin API fails.
+    const [managedResult, publicResult] = await Promise.allSettled([
       request<TrendAdminList>("/api/v1/trends/manage"),
       request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models"),
     ]);
+    if (managedResult.status === "rejected") throw managedResult.reason;
+    const managed = managedResult.value;
+    const publicCatalog = publicResult.status === "fulfilled" ? publicResult.value : { models: [] };
     const publicModels = new Map((publicCatalog.models || []).map((model) => [model.id, model]));
     return {
       ...managed,
