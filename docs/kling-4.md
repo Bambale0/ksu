@@ -137,15 +137,17 @@ retain enough provenance for incident reconciliation. This is presentation
 sanitization, not deletion of technical error evidence.
 
 
-## Curated Kling 4.0 video trend with two photos
+## Curated Kling 4.0 video trend with flexible photo references
 
 Administrator creates an ordinary one-stage Kling 4.0 trend with a permanently
 uploaded **video input** in the dedicated admin-only upload field, which is
-separate from the publicly displayed preview. Visitor uploads exactly two
-photos, no video. The hidden prompt may use `@image_1`, `@image_2` and
-`@video_1`. Server injects two customer image URLs and the protected pinned
-video URL in a scoped Trend generation, with price calculated from the existing
-model configuration (including the video reference multiplier).
+separate from the publicly displayed preview. The admin chooses the permissible
+photo-upload range; the hidden prompt's indexed `@image_N` slots determine
+the required minimum. Customers may provide additional images within that
+range and the model's real capacity (10 images), or none when no image slot is
+required. The admin-owned clip is injected as `@video_1` and never needs to
+be uploaded again by customers. Price comes from the existing configured
+model tariff, including the reference-video multiplier.
 
 If a non-pinned Kling prompt refers to `@image_2`, server normalization
 automatically declares at least two image slots and preflight validates two
