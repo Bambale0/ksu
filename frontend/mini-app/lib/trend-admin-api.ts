@@ -207,11 +207,14 @@ function writeHeaders(prefix: string): Record<string, string> {
 
 export const trendAdminApi = {
   list: async (): Promise<TrendAdminList> => {
+    // The managed catalog is authoritative; enrichment from the public model
+    // endpoint is optional. A transient upstream 502 must not lose the admin's
+    // models or leave an editable draft with an unexplained HTTP error.
     const [managed, publicCatalog] = await Promise.all([
       request<TrendAdminList>("/api/v1/trends/manage"),
-      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models"),
+      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models").catch(() => null),
     ]);
-    const publicModels = new Map((publicCatalog.models || []).map((model) => [model.id, model]));
+    const publicModels = new Map((publicCatalog?.models || []).map((model) => [model.id, model]));
     return {
       ...managed,
       models: (managed.models || []).map((model) => ({
