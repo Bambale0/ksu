@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import re
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -116,6 +117,32 @@ class TrendService:
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
         required_user_images = int(seedance_requirements["image"])
+        if spec.id == "kling-4.0":
+            # The prompt references *ordered user images*. An old single-image
+            # draft with @image_2 must admit two placeholders at validation,
+            # otherwise Kling rejects it as an undeclared reference. Preview
+            # media never counts as a model input.
+            indices = {
+                int(match.group(1))
+                for match in re.finditer(r"@image_?([1-9][0-9]*)(?!\\w)", prompt, re.I)
+            }
+            if indices:
+                expected = set(range(1, max(indices) + 1))
+                if indices != expected:
+                    raise TrendRecipeError(
+                        "Номера фото в промпте должны идти подряд, начиная с @image_1."
+                    )
+                if max(indices) > reference_capacity:
+                    raise TrendRecipeError(
+                        f"Модель поддерживает не более {reference_capacity} фото. "
+                        "Уменьшите количество ссылок в промпте."
+                    )
+                required_user_images = max(required_user_images, max(indices))
+            if re.search(r"@video_?[1-9][0-9]*(?!\\w)", prompt, re.I):
+                raise TrendRecipeError(
+                    "Для видеореференса нужен отдельный поддерживаемый тип шаблона. "
+                    "Превью не передаётся модели как исходное видео."
+                )
         if required_user_images:
             input_mode = "image"
         min_references = max(
@@ -207,6 +234,11 @@ class TrendService:
             )
             await TemplateAudioService.pin_recipe(session, recipe["parameters"])
         except ValueError as exc:
+            if recipe["model_id"] == "kling-4.0" and "Undeclared reference" in str(exc):
+                raise TrendRecipeError(
+                    "В промпте есть ссылка на материал без соответствующей загрузки. "
+                    "Проверьте номера фото и названия персонажей."
+                ) from exc
             raise TrendRecipeError(f"Trend generation recipe is invalid: {exc}") from exc
         return recipe
 
