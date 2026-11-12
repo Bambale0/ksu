@@ -80,3 +80,45 @@ async def test_two_image_template_preflight_declares_both_references(monkeypatch
     )
     assert recipe["min_references"] == recipe["max_references"] == 2
     assert captured["model_id"] == "kling-4.0"
+
+
+@pytest.mark.asyncio
+async def test_admin_create_replays_same_id_after_lost_gateway_response():
+    """Same explicit key returns one persisted trend, not a conflict or duplicate."""
+    import uuid
+
+    from starlette.requests import Request
+    from sqlalchemy import select
+    from app.api.v1 import trends as trends_api
+    from app.db.admin_models import AdminTrend
+    from app.db.models import AdminAccount, User
+    from app.db.session import SessionFactory
+
+    key = "retry-after-502:" + uuid.uuid4().hex
+    request = Request({"type": "http", "headers": []})
+    payload = trends_api.InlineTrendWriteRequest(
+        title="МОИ СЛЕЗЫ",
+        payload=_recipe("@image_1 sings while @image_2 listens"),
+    )
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14)
+        session.add(user)
+        await session.flush()
+        session.add(AdminAccount(user_id=user.id, role="admin", is_active=True))
+        await session.commit()
+
+        first = await trends_api.inline_admin_trend_create(
+            payload, request, user, session, idempotency_key=key,
+        )
+        repeated = await trends_api.inline_admin_trend_create(
+            payload, request, user, session, idempotency_key=key,
+        )
+        assert first["id"] == repeated["id"]
+        assert first["idempotency_replayed"] is False
+        assert repeated["idempotency_replayed"] is True
+        rows = list((await session.scalars(
+            select(AdminTrend).where(AdminTrend.id == uuid.UUID(first["id"]))
+        )).all())
+        assert len(rows) == 1
+        assert rows[0].payload["min_references"] == 2
+        assert rows[0].payload["max_references"] == 2
