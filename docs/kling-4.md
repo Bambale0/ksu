@@ -154,7 +154,7 @@ a pinned clip returns a clear preflight error. The admin editor also synchronize
 the photo fields, displays actionable validation and 502 messages and keeps
 idempotency keys stable for repeated identical create/update submissions.
 
-For pinned clips: product-owned verified MP4/MOV, 2–30 seconds and 10 MB cap,
+For pinned clips: product-owned verified MP4/MOV, 2–30 seconds and 100 MB default cap (configurable via `KLING4_REFERENCE_VIDEO_MAX_MB`),
 separate additive `template_video_references` metadata from migration 0045.
 The public DTO never exposes the private clip or hidden prompt; clients cannot
 substitute a video or modify fixed ratio/quality. Never replay a timed-out
