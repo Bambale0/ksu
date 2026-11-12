@@ -120,6 +120,16 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
   await expect(form.getByLabel('Минимум фото')).toBeDisabled();
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
+
+  // A third image must be rejected before any admin write, even though
+  // the two upload controls remain locked to the correct value.
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1, @image_2 and @image_3');
+  await expect(form.getByText('Для тренда с постоянным видео разрешено только два фото. Уберите @image_3 из скрытого промпта.')).toBeVisible();
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('Для тренда с постоянным видео разрешено только два фото.');
+  expect(writes).toHaveLength(0);
+
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1 and @image_2');
   await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].payload.template_video_url).toBe(VIDEO);
