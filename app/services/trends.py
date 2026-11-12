@@ -152,6 +152,10 @@ class TrendService:
                     f"В промпте указано фото №{required_user_images}, "
                     f"но модель поддерживает не более {reference_capacity} фото."
                 )
+            if template_video_url and required_user_images > 2:
+                raise TrendRecipeError(
+                    "Для тренда с постоянным видео разрешено только два фото: @image_1 и @image_2"
+                )
         if required_user_images:
             input_mode = "image"
         min_references = max(
