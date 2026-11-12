@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import re
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -42,6 +43,11 @@ _REFERENCE_SINGLE_FIELDS = (
     "first_frame_url",
     "first_frame",
 )
+
+# Kling accepts @image_2 and its compact @image2 alias. We infer the actual
+# number of customer uploads before template preflight, so the admin does not
+# accidentally persist a 0/1-slot recipe with a two-image prompt.
+_KLING_IMAGE_SLOT_RE = re.compile(r"(?<!\\w)@image_?([1-9][0-9]*)(?!\\w)", re.I)
 
 
 class TrendRecipeError(ValueError):
@@ -116,6 +122,11 @@ class TrendService:
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
         required_user_images = int(seedance_requirements["image"])
+        if spec.id == "kling-4.0":
+            used_image_slots = [
+                int(match.group(1)) for match in _KLING_IMAGE_SLOT_RE.finditer(prompt)
+            ]
+            required_user_images = max(required_user_images, *used_image_slots, 0)
         if required_user_images:
             input_mode = "image"
         min_references = max(
