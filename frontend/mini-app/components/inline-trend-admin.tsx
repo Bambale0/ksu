@@ -882,7 +882,7 @@ export function InlineTrendAdmin() {
         if (createRetry.current?.body !== fingerprint) {
           createRetry.current = {
             body: fingerprint,
-            key: `trend-create:${crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
+            key: `trend-create:${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
           };
         }
         await trendAdminApi.create(body, createRetry.current.key);
