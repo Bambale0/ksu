@@ -548,3 +548,88 @@ test('required photo without a prompt role blocks publication', async ({ page })
   await expect(form.getByRole('alert')).toContainText('обязательного фото');
   expect(state.writes).toEqual([]);
 });
+
+
+test('Kling 4 ordinary trend auto-declares two photo inputs from hidden prompt', async ({ page }) => {
+  const klingModel = {
+    ...videoModel,
+    id: 'kling-4.0',
+    title: 'Kling 4.0 · Референсы',
+    operation: 'reference_to_video',
+    known_fields: ['prompt', 'duration', 'image_urls', 'video_urls', 'resolution', 'aspect_ratio'],
+    required_fields: ['prompt', 'duration'],
+    reference_capacity: 8,
+    ui_schema: { defaults: { duration: 5, resolution: '720p' }, fields: [] },
+  };
+  const state = await setup(page, { models: [photoModel, videoModel, klingModel] });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/tears.mp4');
+  await form.getByLabel('Модель', { exact: true }).selectOption('kling-4.0');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('@image_1 поёт, @image_2 слушает.');
+  await expect(form.getByText(/нужно минимум 2 фото/)).toBeVisible();
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('image');
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload).toMatchObject({
+    model_id: 'kling-4.0',
+    input_mode: 'image',
+    min_references: 2,
+    max_references: 2,
+    prompt: '@image_1 поёт, @image_2 слушает.',
+  });
+  expect(state.errors).toEqual([]);
+});
+
+test('Kling 4 admin rejects image references beyond model limit before POST', async ({ page }) => {
+  const klingModel = {
+    ...videoModel, id: 'kling-4.0', title: 'Kling 4.0', operation: 'reference_to_video',
+    known_fields: ['prompt', 'duration', 'image_urls'], reference_capacity: 8,
+  };
+  const state = await setup(page, { models: [photoModel, videoModel, klingModel] });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('Невозможный шаблон');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/test.jpg');
+  await form.getByLabel('Модель', { exact: true }).selectOption('kling-4.0');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('Фото @image_9');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('не более 8 фото');
+  expect(state.writes).toEqual([]);
+});
+
+
+test('ambiguous HTML 502 on trend create retries with the same idempotency key', async ({ page }) => {
+  const state = await setup(page);
+  const attempts = [];
+  await page.route('**/api/v1/trends/manage', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    attempts.push({
+      key: route.request().headers()['idempotency-key'],
+      body: route.request().postDataJSON(),
+    });
+    if (attempts.length === 1) return route.fulfill({
+      status: 502, contentType: 'text/html',
+      body: '<!doctype html><h1>Bad Gateway</h1>',
+    });
+    return route.fallback();
+  });
+
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('Безопасное сохранение');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/preview.jpg');
+  await form.getByLabel('Модель', { exact: true }).selectOption(photoModel.id);
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('Сценарий фото');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('Сервер временно недоступен');
+  await expect(form.getByLabel('Название', { exact: true })).toHaveValue('Безопасное сохранение');
+
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toMatch(/^trend-create:/);
+  expect(attempts[1].key).toBe(attempts[0].key);
+  expect(attempts[1].body).toEqual(attempts[0].body);
+  expect(state.errors).toEqual([]);
+});

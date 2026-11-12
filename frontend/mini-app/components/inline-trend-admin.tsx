@@ -5,7 +5,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
+import { klingImageSlotCount, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -439,6 +439,9 @@ export function InlineTrendAdmin() {
   const [uploading, setUploading] = useState(false);
   const draftVersion = useRef(0);
   const formRef = useRef<HTMLFormElement | null>(null);
+  // Reuse the exact same create command if a gateway loses the response.
+  // Changing the draft payload yields a fresh key, preventing false replays.
+  const createRetry = useRef<{ body: string; key: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -483,7 +486,7 @@ export function InlineTrendAdmin() {
       setItems(result.items || []);
       setModels((result.models || []) as TrendAdminModel[]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить тренды");
+      setError(trendSaveError(cause));
     } finally {
       setLoading(false);
     }
@@ -527,11 +530,14 @@ export function InlineTrendAdmin() {
     catch { return []; }
   }, [draft]);
   const capacity = referenceCapacity(selectedModel);
+  const klingRequiredImages = draft.mode === "legacy" && draft.modelId === "kling-4.0"
+    ? klingImageSlotCount(draft.prompt) : 0;
   const workflowPhotoModels = models.filter((model) => model.media_type === "image");
   const workflowVideoModels = models.filter((model) => workflowModelSupportsI2V(model) || (draft.mode === "workflow" && model.id === draft.video.modelId));
 
   const beginCreate = () => {
     draftVersion.current += 1;
+    createRetry.current = null;
     setUploading(false);
     const modelId = models[0]?.id || "";
     setEditingId(null);
@@ -544,12 +550,14 @@ export function InlineTrendAdmin() {
   const chooseDraftMode = (mode: "legacy" | "workflow") => {
     if (mode === draft.mode) return;
     draftVersion.current += 1;
+    createRetry.current = null;
     setError("");
     setDraft(mode === "workflow" ? emptyWorkflowDraft(models) : emptyDraft(models[0]?.id || ""));
   };
 
   const beginEdit = (item: TrendAdminItem, duplicate = false) => {
     draftVersion.current += 1;
+    createRetry.current = null;
     setUploading(false);
     setOpen(true);
     setEditingId(duplicate ? null : item.id);
@@ -565,15 +573,26 @@ export function InlineTrendAdmin() {
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       modelId,
-      inputMode: modelAcceptsReferences(next) ? current.inputMode : "none",
-      minReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.max(1, current.minReferences || 1) : 0,
-      maxReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.min(referenceCapacity(next), Math.max(1, current.maxReferences || 1)) : 0,
+      inputMode: !modelAcceptsReferences(next) ? "none"
+        : modelId === "kling-4.0" && klingImageSlotCount(current.prompt) > 0 ? "image" : current.inputMode,
+      minReferences: !modelAcceptsReferences(next) ? 0
+        : Math.max(current.inputMode === "image" ? Math.max(1, current.minReferences || 1) : 0,
+          modelId === "kling-4.0" ? klingImageSlotCount(current.prompt) : 0),
+      maxReferences: !modelAcceptsReferences(next) ? 0
+        : Math.min(referenceCapacity(next), Math.max(
+          current.inputMode === "image" ? Math.max(1, current.maxReferences || 1) : 0,
+          modelId === "kling-4.0" ? klingImageSlotCount(current.prompt) : 0,
+        )),
     }) : current);
   };
 
   const chooseInputMode = (inputMode: "none" | "image") => {
     if (draft.mode !== "legacy") return;
     if (inputMode === "image" && !referenceAllowed) return;
+    if (inputMode === "none" && klingRequiredImages > 0) {
+      setError("Промпт использует фотографии. Удалите ссылки @image из промпта, чтобы отключить загрузку.");
+      return;
+    }
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       inputMode,
@@ -805,6 +824,11 @@ export function InlineTrendAdmin() {
         setError("Выберите доступную модель");
         return;
       }
+      const requiredImages = draft.modelId === "kling-4.0" ? klingImageSlotCount(draft.prompt) : 0;
+      if (requiredImages > capacity) {
+        setError(`Выбранная модель принимает не более ${capacity} фото, а в промпте требуется ${requiredImages}.`);
+        return;
+      }
       const billingSeconds = draft.billingSeconds.trim() ? Number(draft.billingSeconds) : null;
       if (billingSeconds !== null && (!Number.isFinite(billingSeconds) || billingSeconds <= 0)) {
         setError("Длительность должна быть положительным числом секунд");
@@ -827,9 +851,11 @@ export function InlineTrendAdmin() {
         prompt: draft.prompt.trim(),
         user_fields: userFields.length ? userFields : undefined,
         parameters,
-        input_mode: draft.inputMode,
-        min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
-        max_references: draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
+        input_mode: requiredImages > 0 ? "image" : draft.inputMode,
+        min_references: requiredImages > 0 || draft.inputMode === "image"
+          ? Math.max(1, requiredImages, draft.minReferences) : 0,
+        max_references: requiredImages > 0 || draft.inputMode === "image"
+          ? Math.min(capacity, Math.max(requiredImages, draft.minReferences, draft.maxReferences)) : 0,
         tags: draft.tags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
         sort_order: Number(draft.sortOrder || 0),
         usage_count: Number(items.find((item) => item.id === editingId)?.payload.usage_count || 0),
@@ -850,8 +876,18 @@ export function InlineTrendAdmin() {
     try {
       const body = { title: draft.title.trim(), payload, is_active: draft.isActive };
       if (editingId) await trendAdminApi.update(editingId, body);
-      else await trendAdminApi.create(body);
+      else {
+        const fingerprint = JSON.stringify(body);
+        if (createRetry.current?.body !== fingerprint) {
+          createRetry.current = {
+            body: fingerprint,
+            key: `trend-create:${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
+          };
+        }
+        await trendAdminApi.create(body, createRetry.current.key);
+      }
       if (draftVersion.current !== version) return;
+      createRetry.current = null;
       setFormOpen(false);
       setEditingId(null);
       await refresh();
@@ -901,7 +937,8 @@ export function InlineTrendAdmin() {
 
         {error && !formOpen ? <div className="inline-trend-error" role="alert">{error}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
-        {!loading && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !items.length && !error ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
+        {!loading && !items.length && error ? <div className="inline-trend-empty">Список не загружен. Нажмите «Обновить», чтобы повторить запрос.</div> : null}
 
         <div className="inline-trend-admin-list">
           {items.map((item) => {
@@ -985,7 +1022,20 @@ export function InlineTrendAdmin() {
             <label><span>Поле изображения видео</span><select value={draft.video.bindingTarget || ""} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, bindingTarget: event.target.value } } : current)}><option value="">Выберите поле привязки</option>{(models.find((model) => model.id === draft.video.modelId)?.known_fields || []).filter((field) => BINDABLE_IMAGE_FIELDS.has(field)).map((field) => <option value={field} key={field}>{field}</option>)}</select><small>{draft.video.bindingTarget ? `Результат шага фото будет передан в ${draft.video.bindingTarget}.` : "Модель не объявила совместимое поле."}</small></label>
           </section>
         </> : <>
-          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => {
+            const prompt = event.target.value;
+            setDraft((current) => {
+              if (current.mode !== "legacy") return current;
+              const slots = current.modelId === "kling-4.0" ? klingImageSlotCount(prompt) : 0;
+              if (!slots || slots > referenceCapacity(models.find((model) => model.id === current.modelId))) {
+                return { ...current, prompt };
+              }
+              return { ...current, prompt, inputMode: "image",
+                minReferences: Math.max(current.minReferences, slots),
+                maxReferences: Math.max(current.maxReferences, slots) };
+            });
+          }} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          {klingRequiredImages > 0 ? <small role="status">Для этого промпта нужно минимум {klingRequiredImages} фото. Поля загрузки настраиваются автоматически.</small> : null}
         {draft.modelId === "seedance-2.5" ? <small>
           Для видео, которое загрузит пользователь, укажите @Video1 в промпте
           (далее @Video2 и т. д.). Превью служит только образцом результата.
@@ -1042,11 +1092,11 @@ export function InlineTrendAdmin() {
           </div>
 
           <div className="inline-trend-two-cols">
-          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none">Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
+          <label><span>Что загружает пользователь</span><select value={klingRequiredImages > 0 ? "image" : draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none">Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
           </div>
 
-          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }) : current)} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }) : current)} /></label></div> : null}
+          {(draft.inputMode === "image" || klingRequiredImages > 0) ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={1} max={capacity} value={Math.max(draft.minReferences, klingRequiredImages)} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }) : current)} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={Math.max(draft.maxReferences, klingRequiredImages)} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }) : current)} /></label></div> : null}
 
           <details className="inline-trend-advanced"><summary>Дополнительные параметры модели</summary><label><span>JSON параметров</span><textarea rows={7} spellCheck={false} value={draft.parameters} disabled={uploading} onChange={(event) => setDraft((current) => ({ ...current, parameters: event.target.value }))} /></label></details>
         </>}

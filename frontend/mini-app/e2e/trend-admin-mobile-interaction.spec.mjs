@@ -197,7 +197,7 @@ async function reportCreateState(page, phase) {
   console.error(`[trend-admin-cold-load:${phase}] ${JSON.stringify(state)}`);
 }
 
-async function editCloseAndReopenAfterFailure(page, manager, form, title) {
+async function editCloseAndReopenAfterFailure(page, manager, form, title, expectServerError = true) {
   const input = form.getByLabel('Название', { exact: true });
   await expect(input).toBeVisible();
   await expect(input).toBeEditable();
@@ -209,7 +209,13 @@ async function editCloseAndReopenAfterFailure(page, manager, form, title) {
   await expect(manager).toHaveCount(0);
 
   const reopenedManager = await openManager(page);
-  await expect(reopenedManager.getByRole('alert')).toHaveText('HTTP 502');
+  if (expectServerError) {
+    await expect(reopenedManager.getByRole('alert')).toHaveText(
+      'Сервер временно недоступен. Проверьте подключение и повторите попытку.',
+    );
+  } else {
+    await expect(reopenedManager.getByRole('alert')).toHaveCount(0);
+  }
   const reopenedForm = await openCreate(page, reopenedManager);
   const freshInput = reopenedForm.getByLabel('Название', { exact: true });
   await expect(freshInput).toBeVisible();
@@ -452,7 +458,9 @@ test('cold HTML 502 from managed trends still permits New Trend touch and reopen
   const state = await setup(page, browserName, { count: 0, listMode: 'bad-gateway' });
   try {
     const manager = await openManager(page);
-    await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(manager.getByRole('alert')).toHaveText(
+      'Сервер временно недоступен. Проверьте подключение и повторите попытку.',
+    );
     const form = await openCreate(page, manager);
     await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без списка');
     expect(state.listRequests).toBe(2);
@@ -483,7 +491,7 @@ test('cold HTML 502 from public catalog still permits New Trend touch and reopen
     await (await failedCatalog).finished();
     await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
     const form = await openCreate(page, manager);
-    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без публичного каталога');
+    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без публичного каталога', false);
     expect(state.listRequests).toBe(2);
     expect(state.uploads).toBe(0);
     expectClean(state);
@@ -509,7 +517,7 @@ test('cold pending managed request may settle as HTML 502 while New Trend stays 
     await fulfillBadGateway(state.pendingLists.shift());
     await (await settled).finished();
     await expect(form).toBeVisible();
-    await expect(form.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(form.getByRole('alert')).toHaveText('Сервер временно недоступен. Проверьте подключение и повторите попытку.');
     await expect(input).toHaveValue('Черновик во время загрузки');
     await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик после ответа 502');
     expect(state.pendingLists).toHaveLength(0);
