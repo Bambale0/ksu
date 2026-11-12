@@ -548,3 +548,53 @@ test('required photo without a prompt role blocks publication', async ({ page })
   await expect(form.getByRole('alert')).toContainText('обязательного фото');
   expect(state.writes).toEqual([]);
 });
+
+
+test('Kling 4 ordinary trend auto-declares two photo inputs from hidden prompt', async ({ page }) => {
+  const klingModel = {
+    ...videoModel,
+    id: 'kling-4.0',
+    title: 'Kling 4.0 · Референсы',
+    operation: 'reference_to_video',
+    known_fields: ['prompt', 'duration', 'image_urls', 'video_urls', 'resolution', 'aspect_ratio'],
+    required_fields: ['prompt', 'duration'],
+    reference_capacity: 8,
+    ui_schema: { defaults: { duration: 5, resolution: '720p' }, fields: [] },
+  };
+  const state = await setup(page, { models: [photoModel, videoModel, klingModel] });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/tears.mp4');
+  await form.getByLabel('Модель', { exact: true }).selectOption('kling-4.0');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('@image_1 поёт, @image_2 слушает.');
+  await expect(form.getByText(/нужно минимум 2 фото/)).toBeVisible();
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('image');
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload).toMatchObject({
+    model_id: 'kling-4.0',
+    input_mode: 'image',
+    min_references: 2,
+    max_references: 2,
+    prompt: '@image_1 поёт, @image_2 слушает.',
+  });
+  expect(state.errors).toEqual([]);
+});
+
+test('Kling 4 admin rejects image references beyond model limit before POST', async ({ page }) => {
+  const klingModel = {
+    ...videoModel, id: 'kling-4.0', title: 'Kling 4.0', operation: 'reference_to_video',
+    known_fields: ['prompt', 'duration', 'image_urls'], reference_capacity: 8,
+  };
+  const state = await setup(page, { models: [photoModel, videoModel, klingModel] });
+  const form = await openCreate(page);
+  await form.getByLabel('Название', { exact: true }).fill('Невозможный шаблон');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/test.jpg');
+  await form.getByLabel('Модель', { exact: true }).selectOption('kling-4.0');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('Фото @image_9');
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect(form.getByRole('alert')).toContainText('не более 8 фото');
+  expect(state.writes).toEqual([]);
+});
