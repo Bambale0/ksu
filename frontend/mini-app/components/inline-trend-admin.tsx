@@ -875,9 +875,8 @@ export function InlineTrendAdmin() {
     setError("");
     try {
       const body = { title: draft.title.trim(), payload, is_active: draft.isActive };
-      if (editingId) {
-        await trendAdminApi.update(editingId, body);
-      } else {
+      if (editingId) await trendAdminApi.update(editingId, body);
+      else {
         const fingerprint = JSON.stringify(body);
         if (createRetry.current?.body !== fingerprint) {
           createRetry.current = {
