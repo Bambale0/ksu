@@ -696,14 +696,19 @@ export function InlineTrendAdmin() {
         || !Number.isFinite(uploaded.duration_ms) || Number(uploaded.duration_ms) < 2000) {
         throw new Error("Видео не прошло проверку. Выберите другой MP4/MOV файл.");
       }
-      setDraft((current) => current.mode === "legacy" && current.modelId === "kling-4.0" ? ({
-        ...current,
-        templateVideoUrl: uploaded.url,
-        inputMode: "image",
-        minReferences: Math.max(current.minReferences, klingTrendRequiredImages(current.prompt)),
-        maxReferences: Math.min(capacity, Math.max(current.maxReferences || capacity, klingTrendRequiredImages(current.prompt))),
-        parameters: JSON.stringify(parameters, null, 2),
-      }) : current);
+      setDraft((current) => {
+        if (current.mode !== "legacy" || current.modelId !== "kling-4.0") return current;
+        const required = klingTrendRequiredImages(current.prompt);
+        const mode = required || current.inputMode === "image" ? "image" : "none";
+        return {
+          ...current,
+          templateVideoUrl: uploaded.url,
+          inputMode: mode,
+          minReferences: mode === "image" ? Math.max(current.minReferences, required) : 0,
+          maxReferences: mode === "image" ? Math.min(capacity, Math.max(current.maxReferences || capacity, required)) : 0,
+          parameters: JSON.stringify(parameters, null, 2),
+        };
+      });
     } catch (cause) {
       if (draftVersion.current === version) {
         setError(cause instanceof Error ? cause.message : "Не удалось загрузить видео");
@@ -1092,7 +1097,7 @@ export function InlineTrendAdmin() {
               minReferences: current.minReferences === previous
                 ? Math.max(current.templateVideoUrl ? 0 : 1, count)
                 : Math.max(current.minReferences, count),
-              maxReferences: Math.min(capacity, Math.max(current.maxReferences || capacity, count)),
+              maxReferences: Math.min(capacity, Math.max(current.maxReferences || (count ? capacity : 0), count)),
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
           {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
