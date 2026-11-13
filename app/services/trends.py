@@ -370,7 +370,7 @@ class TrendService:
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
             "billing_seconds": seconds,
             "reference_requirements": {
-                "kind": "image" if recipe["template_video_url"] else "multimodal" if recipe["video_reference_count"] and recipe["max_references"]
+                "kind": "image" if recipe["template_video_url"] and recipe["max_references"] else "multimodal" if recipe["video_reference_count"] and recipe["max_references"]
                 else "video" if recipe["video_reference_count"] else recipe["input_mode"],
                 "min": recipe["min_references"] + recipe["video_reference_count"],
                 "max": recipe["max_references"] + recipe["video_reference_count"],
