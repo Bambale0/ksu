@@ -91,6 +91,59 @@ def test_pinned_template_enforces_real_model_capacity_not_two_photos():
         ))
 
 
+
+def test_pinned_kling_photo_max_respects_total_reference_budget():
+    from app.services.kling4_contract import Kling4ContractError, normalize_kling4_input
+
+    elements = [
+        {"name": f"Person{index}", "image_urls": [
+            f"https://roxy.example/element-{index}-a.png",
+            f"https://roxy.example/element-{index}-b.png",
+        ]}
+        for index in range(5)
+    ]
+    normalized = TrendService.normalize_recipe("Budgeted", recipe(
+        parameters={**recipe()["parameters"], "elements": elements},
+        min_references=2, max_references=10,
+    ))
+    # Five named elements + one admin-owned video leave nine of 15 slots.
+    assert normalized["min_references"] == 2
+    assert normalized["max_references"] == 9
+
+    nine = [f"https://roxy.example/customer-{i}.png" for i in range(1, 10)]
+    payload = TrendService._parameters_with_references(normalized, nine)
+    assert len(normalize_kling4_input("kling-4.0/reference-to-video", {
+        **payload, "prompt": normalized["prompt"]
+    })["image_urls"]) == 9
+    ten = TrendService._parameters_with_references(normalized, [*nine, "https://roxy.example/customer-10.png"])
+    with pytest.raises(Kling4ContractError, match="15 references"):
+        normalize_kling4_input("kling-4.0/reference-to-video", {
+            **ten, "prompt": normalized["prompt"]
+        })
+
+
+def test_pinned_kling_max_considers_voices_and_rejects_impossible_minimum():
+    params = {**recipe()["parameters"], "elements": [{}] * 7, "voices": [{}] * 3}
+    normalized = TrendService.normalize_recipe("Budgeted", recipe(
+        parameters=params, min_references=2, max_references=10,
+    ))
+    assert normalized["max_references"] == 4
+    with pytest.raises(TrendRecipeError, match="at most 4"):
+        TrendService.normalize_recipe("Impossible", recipe(
+            parameters=params, min_references=5, max_references=10,
+        ))
+
+
+def test_pinned_video_only_trend_preserves_explicit_zero_photo_policy():
+    normalized = TrendService.normalize_recipe("Video only", recipe(
+        prompt="Follow @video_1", input_mode="none", min_references=0,
+        max_references=0,
+    ))
+    assert normalized["input_mode"] == "none"
+    assert normalized["min_references"] == normalized["max_references"] == 0
+    assert TrendService._parameters_with_references(normalized, [])["video_urls"] == [VIDEO]
+
+
 def test_pinned_template_cannot_change_private_quality_or_ratio():
     normalized = TrendService.normalize_recipe("Locked", recipe())
     with pytest.raises(TrendRecipeError):
