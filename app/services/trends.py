@@ -17,7 +17,7 @@ from app.db.models import Generation
 from app.providers.nexus import NANO_BANANA_MAX_REFERENCES, NANO_BANANA_MODELS
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
-from app.services.kling4_contract import KLING4_MAX_IMAGE_REFERENCES
+from app.services.kling4_contract import KLING4_MAX_IMAGE_REFERENCES, KLING4_MAX_TOTAL_REFERENCES
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_routing import video_references
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
@@ -131,6 +131,22 @@ class TrendService:
                 raise TrendRecipeError("Pinned Kling 4.0 trend requires a fixed video resolution")
             if not re.search(r"@video_?1\b", prompt, flags=re.IGNORECASE):
                 raise TrendRecipeError("Pinned Kling 4.0 prompt must mention @video_1")
+        if spec.id == "kling-4.0":
+            # The provider combines top-level images, videos, named elements,
+            # and voices in one budget. A pinned clip occupies one video slot.
+            # Bound the advertised optional maximum as well as the minimum:
+            # validating only a two-photo minimum must not advertise ten
+            # photos when static recipe inputs leave room for nine.
+            elements = parameters.get("elements") or []
+            voices = parameters.get("voices") or []
+            if not isinstance(elements, list) or not isinstance(voices, list):
+                raise TrendRecipeError("Kling 4 elements and voices must be arrays")
+            remaining = max(
+                0,
+                KLING4_MAX_TOTAL_REFERENCES - len(elements) - len(voices) - int(bool(template_video_url)),
+            )
+            reference_capacity = min(reference_capacity, remaining)
+            default_max = reference_capacity
         video_reference_count = int(seedance_requirements["video"])
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
