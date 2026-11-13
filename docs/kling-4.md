@@ -144,8 +144,9 @@ uploaded **video input** in the dedicated admin-only upload field, which is
 separate from the publicly displayed preview. The admin chooses the permissible
 photo-upload range; the hidden prompt's indexed `@image_N` slots determine
 the required minimum. Customers may provide additional images within that
-range and the model's real capacity (10 images), or none when no image slot is
-required. The admin-owned clip is injected as `@video_1` and never needs to
+range and the model's real capacity (10 images), subject also to the 15-item
+combined budget shared by images, named elements, voices and the pinned clip.
+A video-only recipe can explicitly allow zero customer uploads. The admin-owned clip is injected as `@video_1` and never needs to
 be uploaded again by customers. Price comes from the existing configured
 model tariff, including the reference-video multiplier.
 
