@@ -117,6 +117,40 @@ def test_seedance20_standard_accepts_1080p_provider_resolution() -> None:
     assert payload["resolution"] == "1080p"
 
 
+@pytest.mark.parametrize("raw_duration", ["6", " 6 ", 6])
+def test_grok_15_duration_is_canonical_integer_before_paid_provider_dispatch(raw_duration) -> None:
+    # Production 2026-11-13: workflow video step stored "6" as a string.
+    # Catalog billing accepted it, but provider preflight rejected the frozen snapshot.
+    from app.services.neironych_video_contracts import normalize_neironych_video_input
+
+    params = {
+        "prompt": "A neutral moving scene",
+        "duration": raw_duration,
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+    }
+    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("grok-video-1.5", params)
+    assert seconds == 6
+    assert type(clean["duration"]) is int
+    assert clean["duration"] == 6
+    assert normalize_neironych_video_input(
+        "grok-imagine-video-1.5", clean
+    )["duration"] == 6
+    assert normalize_kie_video_input(spec.kie_model, clean)["duration"] == 6
+
+
+@pytest.mark.parametrize("bad_duration", [True, False, 6.0, 6.5, "6.0", "6s", "", "  "])
+def test_grok_15_rejects_non_integer_duration_before_billing(bad_duration) -> None:
+    params = {
+        "prompt": "A neutral moving scene",
+        "duration": bad_duration,
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+    }
+    with pytest.raises(InvalidModelParametersError):
+        ModelCatalog.prepare("grok-video-1.5", params)
+
+
 def test_grok_i2v_task_reference_preserves_exact_current_contract() -> None:
     params = {
         "task_id": "task_grok_123",
