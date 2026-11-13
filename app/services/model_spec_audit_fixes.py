@@ -112,6 +112,19 @@ def install_model_spec_audit_fixes() -> None:
                 )
 
         if spec.id == "grok-video-1.5":
+            # Keep quoted seconds and the immutable provider snapshot identical.
+            # Admin workflow forms can serialize the duration as "6"; billing
+            # int() accepted it, but Neironych's strict wire contract did not.
+            raw_duration = clean.get("duration")
+            if type(raw_duration) is int:
+                duration = raw_duration
+            elif isinstance(raw_duration, str) and (
+                raw_duration.strip().isascii() and raw_duration.strip().isdigit()
+            ):
+                duration = int(raw_duration.strip())
+            else:
+                raise catalog.InvalidModelParametersError("Grok duration must be an integer")
+            clean["duration"] = duration
             images = clean.get("image_urls") or []
             if not isinstance(images, list) or len(images) > 7:
                 raise catalog.InvalidModelParametersError(
