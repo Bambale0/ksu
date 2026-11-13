@@ -168,6 +168,62 @@ test('admin attaches permanent video and publishes configurable 3-to-5 photo Kli
 });
 
 
+
+test('admin preserves video-only policy when uploading pinned media and editing prose', async ({ page }) => {
+  const writes = [];
+  const model = {
+    id: 'kling-4.0', title: 'Kling 4.0', family: 'kling',
+    media_type: 'video', operation: 'multimodal_video', reference_capacity: 10,
+    known_fields: ['prompt', 'image_urls', 'video_urls', 'duration', 'resolution', 'aspect_ratio'],
+    required_fields: ['prompt'],
+    ui_schema: { defaults: { duration: 5, resolution: '720p', aspect_ratio: '9:16' }, groups: [], fields: [] },
+  };
+  await init(page, true);
+  await page.route('**/api/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status, contentType: 'application/json', body: JSON.stringify(body),
+    });
+    if (path === '/api/v1/me') return json({ id: 'admin', is_admin: true, balance_rox: '1000' });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: [], models: [model] });
+    if (path === '/api/v1/uploads/template-video') return json({
+      url: VIDEO, duration_ms: 5000, probe_status: 'ready', reference: { kind: 'video' },
+    }, 201);
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://media.example/preview.jpg', reference: { kind: 'image' } }, 201);
+    if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
+      writes.push(request.postDataJSON());
+      return json({ id: ID, is_active: true, ...request.postDataJSON() }, 201);
+    }
+    if (request.method() === 'GET') return json({ items: [], has_more: false });
+    return json({ detail: 'Unexpected mutation' }, 400);
+  });
+  await page.goto('/mini-app/?route=home');
+  await page.getByRole('button', { name: 'Управлять трендами' }).click();
+  await page.getByRole('button', { name: '＋ Новый тренд' }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await form.getByLabel('Название', { exact: true }).fill('Только видео');
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1');
+  await form.getByLabel('Что загружает пользователь').selectOption('none');
+  await form.getByLabel('Загрузить постоянное видео Kling 4.0').setInputFiles({
+    name: 'motion.mp4', mimeType: 'video/mp4', buffer: Buffer.from('synthetic video'),
+  });
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('none');
+  await form.getByLabel('Скрытый промпт').fill('Keep the moving camera from @video_1');
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('none');
+  await expect(form.getByLabel('Минимум фото')).toHaveCount(0);
+  await expect(form.getByLabel('Максимум фото')).toHaveCount(0);
+  await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].payload.input_mode).toBe('none');
+  expect(writes[0].payload.min_references).toBe(0);
+  expect(writes[0].payload.max_references).toBe(0);
+});
+
+
 test('Kling trend requires two photos, preserves optional maximum, and safely retries a 502', async ({ page }) => {
   const writes = [];
   const model = {
