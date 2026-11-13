@@ -16,7 +16,7 @@ function init(page, admin = false) {
   }, { admin });
 }
 
-test('Kling 4 customer trend only asks for two photos, not video, prompt or quality', async ({ page }) => {
+test('Kling 4 customer can choose more photos than the prompt minimum, without uploading the pinned video', async ({ page }) => {
   const runs = [];
   let uploaded = 0;
   const errors = [];
@@ -30,7 +30,7 @@ test('Kling 4 customer trend only asks for two photos, not video, prompt or qual
       id: ID, title: 'Танец вдвоём', media_type: 'video',
       model: { id: 'kling-4.0', title: 'Kling 4.0' }, preview_url: null,
       cost_rox: '300.00', aspect_ratio_options: [],
-      reference_requirements: { kind: 'image', min: 2, max: 2, image: { min: 2, max: 2 }, video: { min: 0, max: 0 } },
+      reference_requirements: { kind: 'image', min: 2, max: 5, image: { min: 2, max: 5 }, video: { min: 0, max: 0 } },
     });
     if (path === `/api/v1/trends/${ID}/run`) {
       runs.push(request.postDataJSON());
@@ -48,24 +48,62 @@ test('Kling 4 customer trend only asks for two photos, not video, prompt or qual
   await page.goto(`/mini-app/trend/?id=${ID}`);
   const run = page.getByRole('button', { name: /Сгенерировать · 300 ROX/ });
   await expect(run).toBeDisabled();
-  await expect(page.getByText('Добавьте 2 изображения.')).toBeVisible();
+  await expect(page.getByText('Добавьте от 2 до 5 изображений. Генерация начнётся только после нажатия кнопки.')).toBeVisible();
   await expect(page.getByLabel('Видеореференсы тренда')).toHaveCount(0);
   await expect(page.getByRole('radiogroup', { name: 'Формат кадра' })).toHaveCount(0);
-  await page.locator('input[accept="image/*"]').setInputFiles([photo('face-1.png'), photo('face-2.png')]);
+  await page.locator('input[accept="image/*"]').setInputFiles([photo('face-1.png'), photo('face-2.png'), photo('face-3.png')]);
   await expect(page.getByText('face-1.png')).toBeVisible();
   await expect(page.getByText('face-2.png')).toBeVisible();
+  await expect(page.getByText('face-3.png')).toBeVisible();
   await expect(run).toBeEnabled();
   await run.click();
   await expect.poll(() => runs.length).toBe(1);
   expect(runs[0].reference_urls).toEqual([
-    'https://media.example/visitor-1.png', 'https://media.example/visitor-2.png',
+    'https://media.example/visitor-1.png', 'https://media.example/visitor-2.png', 'https://media.example/visitor-3.png',
   ]);
   expect(runs[0].video_reference_urls || []).toEqual([]);
   expect(JSON.stringify(runs[0])).not.toContain(VIDEO);
   expect(errors).toEqual([]);
 });
 
-test('admin attaches permanent video and publishes locked 2-photo Kling trend', async ({ page }) => {
+
+test('optional photo references remain available even with zero required uploads', async ({ page }) => {
+  await init(page);
+  const writes = [];
+  await page.route('**/api/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === `/api/v1/trends/${ID}`) return json({
+      id: ID, title: 'Optional photos', media_type: 'video',
+      model: { id: 'kling-4.0', title: 'Kling 4.0' }, cost_rox: '300.00',
+      reference_requirements: { kind: 'image', min: 0, max: 5, image: { min: 0, max: 5 }, video: { min: 0, max: 0 } },
+      aspect_ratio_options: [],
+    });
+    if (path === `/api/v1/trends/${ID}/run`) {
+      writes.push(request.postDataJSON());
+      return json({ id: 'created', status: 'queued' }, 202);
+    }
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://media.example/optional.png' }, 201);
+    if (path === '/api/v1/me') return json({ id: 'viewer', is_admin: false, balance_rox: '1000' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    return json({ items: [], models: [], families: [] });
+  });
+  await page.goto(`/mini-app/trend/?id=${ID}`);
+  await expect(page.getByText('Можно добавить до 5 изображений или запустить без них.')).toBeVisible();
+  const input = page.locator('input[accept="image/*"]');
+  await expect(input).toBeAttached();
+  const launch = page.getByRole('button', { name: /Сгенерировать · 300 ROX/ });
+  await expect(launch).toBeEnabled();
+  await input.setInputFiles(photo('optional.png'));
+  await expect(page.getByText('optional.png')).toBeVisible();
+  await launch.click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].reference_urls).toEqual(['https://media.example/optional.png']);
+});
+
+
+test('admin attaches permanent video and publishes configurable 3-to-5 photo Kling trend', async ({ page }) => {
   const writes = [];
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -111,26 +149,82 @@ test('admin attaches permanent video and publishes locked 2-photo Kling trend', 
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
   await expect(form.getByText('Загрузить видео MP4/MOV · 2–30 с, до 100 МБ')).toBeVisible();
   await form.getByLabel('Название', { exact: true }).fill('Танец вдвоём');
-  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1 and @image_2');
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1 with @image_1, @image_2 and @image_3');
   await form.getByLabel('Загрузить постоянное видео Kling 4.0').setInputFiles({
     name: 'motion.mp4', mimeType: 'video/mp4', buffer: Buffer.from('synthetic video'),
   });
-  await expect(form.getByText('Референсы пользователя: ровно два фото')).toBeVisible();
-  await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Минимум фото')).toBeDisabled();
+  await expect(form.getByText('Количество фото выбирается в настройках ниже.')).toBeVisible();
+  await expect(form.getByLabel('Минимум фото')).toHaveValue('3');
+  await expect(form.getByLabel('Минимум фото')).toBeEnabled();
+  await form.getByLabel('Максимум фото').fill('5');
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].payload.template_video_url).toBe(VIDEO);
-  expect(writes[0].payload.min_references).toBe(2);
-  expect(writes[0].payload.max_references).toBe(2);
+  expect(writes[0].payload.min_references).toBe(3);
+  expect(writes[0].payload.max_references).toBe(5);
   expect(writes[0].payload.parameters).toMatchObject({ aspect_ratio: '9:16', resolution: '720p', duration: 5 });
   expect(errors).toEqual([]);
 });
 
 
-test('Kling trend infers two photo fields and retries an uncertain 502 with the same write key', async ({ page }) => {
+
+test('admin preserves video-only policy when uploading pinned media and editing prose', async ({ page }) => {
+  const writes = [];
+  const model = {
+    id: 'kling-4.0', title: 'Kling 4.0', family: 'kling',
+    media_type: 'video', operation: 'multimodal_video', reference_capacity: 10,
+    known_fields: ['prompt', 'image_urls', 'video_urls', 'duration', 'resolution', 'aspect_ratio'],
+    required_fields: ['prompt'],
+    ui_schema: { defaults: { duration: 5, resolution: '720p', aspect_ratio: '9:16' }, groups: [], fields: [] },
+  };
+  await init(page, true);
+  await page.route('**/api/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status, contentType: 'application/json', body: JSON.stringify(body),
+    });
+    if (path === '/api/v1/me') return json({ id: 'admin', is_admin: true, balance_rox: '1000' });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: [], models: [model] });
+    if (path === '/api/v1/uploads/template-video') return json({
+      url: VIDEO, duration_ms: 5000, probe_status: 'ready', reference: { kind: 'video' },
+    }, 201);
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://media.example/preview.jpg', reference: { kind: 'image' } }, 201);
+    if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
+      writes.push(request.postDataJSON());
+      return json({ id: ID, is_active: true, ...request.postDataJSON() }, 201);
+    }
+    if (request.method() === 'GET') return json({ items: [], has_more: false });
+    return json({ detail: 'Unexpected mutation' }, 400);
+  });
+  await page.goto('/mini-app/?route=home');
+  await page.getByRole('button', { name: 'Управлять трендами' }).click();
+  await page.getByRole('button', { name: '＋ Новый тренд' }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await form.getByLabel('Название', { exact: true }).fill('Только видео');
+  await form.getByLabel('Скрытый промпт').fill('Follow @video_1');
+  await form.getByLabel('Что загружает пользователь').selectOption('none');
+  await form.getByLabel('Загрузить постоянное видео Kling 4.0').setInputFiles({
+    name: 'motion.mp4', mimeType: 'video/mp4', buffer: Buffer.from('synthetic video'),
+  });
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('none');
+  await form.getByLabel('Скрытый промпт').fill('Keep the moving camera from @video_1');
+  await expect(form.getByLabel('Что загружает пользователь')).toHaveValue('none');
+  await expect(form.getByLabel('Минимум фото')).toHaveCount(0);
+  await expect(form.getByLabel('Максимум фото')).toHaveCount(0);
+  await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
+  await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].payload.input_mode).toBe('none');
+  expect(writes[0].payload.min_references).toBe(0);
+  expect(writes[0].payload.max_references).toBe(0);
+});
+
+
+test('Kling trend requires two photos, preserves optional maximum, and safely retries a 502', async ({ page }) => {
   const writes = [];
   const model = {
     id: 'kling-4.0', title: 'Kling 4.0', family: 'kling',
@@ -168,7 +262,8 @@ test('Kling trend infers two photo fields and retries an uncertain 502 with the 
   await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
   await form.getByLabel('Скрытый промпт').fill('Singer @image_1 looks at listener @image_2');
   await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  // The mock model permits eight customer photos; the prompt needs only two.
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('8');
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   const save = form.getByRole('button', { name: 'Опубликовать тренд' });
   await save.click();
@@ -177,7 +272,7 @@ test('Kling trend infers two photo fields and retries an uncertain 502 with the 
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[0].payload.payload.input_mode).toBe('image');
   expect(writes[0].payload.payload.min_references).toBe(2);
-  expect(writes[0].payload.payload.max_references).toBe(2);
+  expect(writes[0].payload.payload.max_references).toBe(8);
   expect(writes[0].key).toBeTruthy();
   expect(writes[1].key).toBe(writes[0].key);
   await expect(form).toHaveCount(0);

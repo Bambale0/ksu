@@ -83,7 +83,7 @@ export function workflowInputError(inputs: TrendAdminInput[], prompt: string, ca
 }
 
 export function klingTrendRequiredImages(prompt: string): number {
-  const matches = Array.from(prompt.matchAll(/@image_([1-9][0-9]*)(?!\w)/gi));
+  const matches = Array.from(prompt.matchAll(/@image_?([1-9][0-9]*)(?!\w)/gi));
   if (!matches.length) return 0;
   const values = matches.map((match) => Number(match[1])).filter((value) => Number.isSafeInteger(value));
   return values.length ? Math.max(...values) : 0;
