@@ -168,7 +168,7 @@ test('admin attaches permanent video and publishes configurable 3-to-5 photo Kli
 });
 
 
-test('Kling trend infers two photo fields and retries an uncertain 502 with the same write key', async ({ page }) => {
+test('Kling trend requires two photos, preserves optional maximum, and safely retries a 502', async ({ page }) => {
   const writes = [];
   const model = {
     id: 'kling-4.0', title: 'Kling 4.0', family: 'kling',
@@ -206,7 +206,8 @@ test('Kling trend infers two photo fields and retries an uncertain 502 with the 
   await form.getByLabel('Название', { exact: true }).fill('МОИ СЛЕЗЫ');
   await form.getByLabel('Скрытый промпт').fill('Singer @image_1 looks at listener @image_2');
   await expect(form.getByLabel('Минимум фото')).toHaveValue('2');
-  await expect(form.getByLabel('Максимум фото')).toHaveValue('2');
+  // The mock model permits eight customer photos; the prompt needs only two.
+  await expect(form.getByLabel('Максимум фото')).toHaveValue('8');
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   const save = form.getByRole('button', { name: 'Опубликовать тренд' });
   await save.click();
@@ -215,7 +216,7 @@ test('Kling trend infers two photo fields and retries an uncertain 502 with the 
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[0].payload.payload.input_mode).toBe('image');
   expect(writes[0].payload.payload.min_references).toBe(2);
-  expect(writes[0].payload.payload.max_references).toBe(2);
+  expect(writes[0].payload.payload.max_references).toBe(8);
   expect(writes[0].key).toBeTruthy();
   expect(writes[1].key).toBe(writes[0].key);
   await expect(form).toHaveCount(0);
