@@ -144,6 +144,41 @@ def test_pinned_video_only_trend_preserves_explicit_zero_photo_policy():
     assert TrendService._parameters_with_references(normalized, [])["video_urls"] == [VIDEO]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("overrides,expected_kind,expected_max", [
+    ({"parameters": {**recipe()["parameters"], "elements": [{}] * 5},
+      "min_references": 2, "max_references": 10}, "image", 9),
+    ({"prompt": "Follow @video_1", "input_mode": "none",
+      "min_references": 0, "max_references": 0}, "none", 0),
+])
+async def test_public_trend_never_advertises_unavailable_photo_uploads(
+    monkeypatch, overrides, expected_kind, expected_max,
+):
+    from datetime import UTC, datetime
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.services.model_catalog import ModelCatalog
+    import uuid
+
+    item = SimpleNamespace(
+        id=uuid.uuid4(), title="Budgeted", payload=recipe(**overrides),
+        created_at=datetime.now(UTC), is_active=True,
+    )
+    session = AsyncMock()
+    session.info = {}
+
+    async def prepare(_session, _recipe, **kwargs):
+        assert kwargs["parameters"]["video_urls"] == [VIDEO]
+        return ModelCatalog.get("kling-4.0"), {}, Decimal("300"), 5, Decimal("60")
+
+    monkeypatch.setattr(TrendService, "_prepare_recipe", prepare)
+    view = await TrendService.public_view(session, item)
+    assert view["reference_requirements"]["kind"] == expected_kind
+    assert view["reference_requirements"]["image"]["max"] == expected_max
+    assert view["reference_requirements"]["max"] == expected_max
+
+
 def test_pinned_template_cannot_change_private_quality_or_ratio():
     normalized = TrendService.normalize_recipe("Locked", recipe())
     with pytest.raises(TrendRecipeError):
