@@ -275,3 +275,34 @@ async def test_reconciliation_backs_off_transient_failures_and_recovers(
     assert await PaymentReconciliationService.run_once() == 1
     assert len(calls) == 2
     assert payment_id not in PaymentReconciliationService._failure_counts
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_cooldown_grows_after_repeated_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment_id = uuid.uuid4()
+    clock = [1000.0]
+    attempts = [0]
+    monkeypatch.setattr(PaymentReconciliationService, "_retry_after", {})
+    monkeypatch.setattr(PaymentReconciliationService, "_failure_counts", {})
+    monkeypatch.setattr(payment_reconciliation.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(payment_reconciliation.random, "uniform", lambda a, b: 1.0)
+    monkeypatch.setattr(
+        payment_reconciliation,
+        "SessionFactory",
+        lambda: _Session([(payment_id, "cryptopay", "invoice-1")]),
+    )
+    monkeypatch.setattr(PaymentService, "provider_configured", lambda provider: True)
+
+    async def always_fail(*args: object, **kwargs: object) -> None:
+        attempts[0] += 1
+        raise RuntimeError("temporary outage")
+
+    monkeypatch.setattr(PaymentService, "reconcile", always_fail)
+    assert await PaymentReconciliationService.run_once() == 0
+    assert PaymentReconciliationService._retry_after[payment_id] == 1060.0
+    clock[0] = 1060.0
+    assert await PaymentReconciliationService.run_once() == 0
+    assert PaymentReconciliationService._retry_after[payment_id] == 1180.0
+    assert attempts[0] == 2
