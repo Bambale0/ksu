@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import random
+import time
 from datetime import timedelta
 
 from sqlalchemy import or_, select
@@ -17,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentReconciliationService:
+    # Advisory, process-local cooldown. Webhooks remain authoritative.
+    _retry_after: dict[object, float] = {}
+    _failure_counts: dict[object, int] = {}
+    RETRY_BASE_SECONDS = 60
+    RETRY_MAX_SECONDS = 1800
+
     RECONCILABLE_STATUSES = frozenset(
         {
             "creating",
@@ -52,7 +60,13 @@ class PaymentReconciliationService:
             )
 
         processed = 0
+        now = time.monotonic()
+        for payment_id in list(cls._retry_after):
+            if cls._retry_after[payment_id] <= now:
+                cls._retry_after.pop(payment_id, None)
         for payment_id, provider, external_id in payments:
+            if cls._retry_after.get(payment_id, 0) > now:
+                continue
             if provider == CardPaymentService.PROVIDER:
                 if not external_id:
                     continue
@@ -85,7 +99,13 @@ class PaymentReconciliationService:
                     # Provider reconciliation is eventually consistent. A temporary
                     # outage must not turn a recoverable payment into failed or create
                     # another invoice.
+                    failures = min(cls._failure_counts.get(payment_id, 0) + 1, 6)
+                    cls._failure_counts[payment_id] = failures
+                    delay = min(cls.RETRY_MAX_SECONDS, cls.RETRY_BASE_SECONDS * (2 ** (failures - 1)))
+                    cls._retry_after[payment_id] = time.monotonic() + delay * random.uniform(0.8, 1.2)
                     logger.exception("Payment reconciliation failed for %s", payment_id)
                 else:
+                    cls._retry_after.pop(payment_id, None)
+                    cls._failure_counts.pop(payment_id, None)
                     processed += 1
         return processed
