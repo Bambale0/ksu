@@ -32,6 +32,7 @@ class ClientErrorReport(BaseModel):
     viewport_height: int | None = Field(default=None, ge=0, le=10000)
     device_pixel_ratio: float | None = Field(default=None, ge=0, le=20)
     digest: str | None = Field(default=None, max_length=256)
+    build_id: str | None = Field(default=None, max_length=128)
 
 
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
@@ -73,7 +74,7 @@ async def record_client_error(
     pathname = _safe_pathname(payload.pathname)
     logger.error(
         "miniapp_client_error kind=%s user_id=%s telegram_id=%s path=%s "
-        "platform=%s viewport=%sx%s dpr=%s digest=%s message=%r stack=%r component_stack=%r ua=%r",
+        "platform=%s viewport=%sx%s dpr=%s digest=%s build_id=%s message=%r stack=%r component_stack=%r ua=%r",
         payload.kind,
         user.id,
         user.telegram_id,
@@ -83,6 +84,7 @@ async def record_client_error(
         payload.viewport_height,
         payload.device_pixel_ratio,
         payload.digest or "",
+        _redact_client_text(payload.build_id or ""),
         _redact_client_text(payload.message),
         _redact_client_text(payload.stack),
         _redact_client_text(payload.component_stack),
