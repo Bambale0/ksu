@@ -241,3 +241,37 @@ async def test_yookassa_reconciliation_marks_unknown_package_failed(
     assert session.commits == 1
     assert create_calls == []
     assert result.payload["reconciliation_terminal_error"]["reason"] == "unknown_package"
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_backs_off_transient_failures_and_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment_id = uuid.uuid4()
+    calls: list[uuid.UUID] = []
+    clock = [1000.0]
+    monkeypatch.setattr(PaymentReconciliationService, "_retry_after", {})
+    monkeypatch.setattr(PaymentReconciliationService, "_failure_counts", {})
+    monkeypatch.setattr(payment_reconciliation.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(payment_reconciliation.random, "uniform", lambda a, b: 1.0)
+    monkeypatch.setattr(
+        payment_reconciliation,
+        "SessionFactory",
+        lambda: _Session([(payment_id, "cryptopay", "invoice-1")]),
+    )
+    monkeypatch.setattr(PaymentService, "provider_configured", lambda provider: True)
+
+    async def transient_failure(*args: object, **kwargs: object) -> None:
+        calls.append(payment_id)
+        if len(calls) == 1:
+            raise RuntimeError("temporary provider outage")
+
+    monkeypatch.setattr(PaymentService, "reconcile", transient_failure)
+    assert await PaymentReconciliationService.run_once() == 0
+    assert len(calls) == 1
+    assert await PaymentReconciliationService.run_once() == 0
+    assert len(calls) == 1
+    clock[0] += 61
+    assert await PaymentReconciliationService.run_once() == 1
+    assert len(calls) == 2
+    assert payment_id not in PaymentReconciliationService._failure_counts
