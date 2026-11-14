@@ -54,7 +54,7 @@ class PaymentReconciliationService:
                             ),
                         )
                         .order_by(Payment.updated_at.asc())
-                        .limit(settings.payment_reconcile_batch_size)
+                        .limit(settings.payment_reconcile_batch_size + len(cls._retry_after))
                     )
                 ).all()
             )
@@ -67,6 +67,8 @@ class PaymentReconciliationService:
         for payment_id, provider, external_id in payments:
             if cls._retry_after.get(payment_id, 0) > now:
                 continue
+            if processed >= settings.payment_reconcile_batch_size:
+                break
             if provider == CardPaymentService.PROVIDER:
                 if not external_id:
                     continue
