@@ -306,3 +306,31 @@ async def test_reconciliation_cooldown_grows_after_repeated_failures(
     assert await PaymentReconciliationService.run_once() == 0
     assert PaymentReconciliationService._retry_after[payment_id] == 1180.0
     assert attempts[0] == 2
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_skips_cooling_payment_without_starving_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cooling_id, ready_id = uuid.uuid4(), uuid.uuid4()
+    calls: list[uuid.UUID] = []
+    monkeypatch.setattr(settings, "payment_reconcile_batch_size", 1)
+    monkeypatch.setattr(PaymentReconciliationService, "_retry_after", {cooling_id: 2000.0})
+    monkeypatch.setattr(PaymentReconciliationService, "_failure_counts", {cooling_id: 1})
+    monkeypatch.setattr(payment_reconciliation.time, "monotonic", lambda: 1000.0)
+    monkeypatch.setattr(
+        payment_reconciliation,
+        "SessionFactory",
+        lambda: _Session([
+            (cooling_id, "cryptopay", "invoice-1"),
+            (ready_id, "cryptopay", "invoice-2"),
+        ]),
+    )
+    monkeypatch.setattr(PaymentService, "provider_configured", lambda provider: True)
+
+    async def fake_reconcile(*args: object, **kwargs: object) -> None:
+        calls.append(kwargs["payment_id"])
+
+    monkeypatch.setattr(PaymentService, "reconcile", fake_reconcile)
+    assert await PaymentReconciliationService.run_once() == 1
+    assert calls == [ready_id]
