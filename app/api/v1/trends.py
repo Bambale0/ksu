@@ -29,6 +29,7 @@ from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trends", tags=["trends"])
 
 
