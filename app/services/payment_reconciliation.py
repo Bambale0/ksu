@@ -65,6 +65,7 @@ class PaymentReconciliationService:
         for payment_id in list(cls._retry_after):
             if cls._retry_after[payment_id] <= now:
                 cls._retry_after.pop(payment_id, None)
+                cls._failure_counts.pop(payment_id, None)
         for payment_id, provider, external_id in payments:
             if cls._retry_after.get(payment_id, 0) > now:
                 continue
@@ -106,7 +107,7 @@ class PaymentReconciliationService:
                     failures = min(cls._failure_counts.get(payment_id, 0) + 1, 6)
                     cls._failure_counts[payment_id] = failures
                     delay = min(cls.RETRY_MAX_SECONDS, cls.RETRY_BASE_SECONDS * (2 ** (failures - 1)))
-                    cls._retry_after[payment_id] = time.monotonic() + delay * random.uniform(0.8, 1.2)
+                    cls._retry_after[payment_id] = time.monotonic() + min(cls.RETRY_MAX_SECONDS, delay * random.uniform(0.8, 1.2))
                     logger.exception("Payment reconciliation failed for %s", payment_id)
                 else:
                     cls._retry_after.pop(payment_id, None)
