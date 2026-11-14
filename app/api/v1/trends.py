@@ -29,6 +29,7 @@ from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trends", tags=["trends"])
 
 
@@ -608,6 +609,8 @@ async def run_trend(
         )
     except Exception as exc:
         await session.rollback()
+        if _domain_error(exc).status_code == 500:
+            logger.exception("Unexpected trend run failure trend_id=%s", trend_id)
         raise _domain_error(exc) from exc
 
     params = generation.parameters or {}
