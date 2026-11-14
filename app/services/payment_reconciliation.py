@@ -60,6 +60,7 @@ class PaymentReconciliationService:
             )
 
         processed = 0
+        attempted = 0
         now = time.monotonic()
         for payment_id in list(cls._retry_after):
             if cls._retry_after[payment_id] <= now:
@@ -67,7 +68,7 @@ class PaymentReconciliationService:
         for payment_id, provider, external_id in payments:
             if cls._retry_after.get(payment_id, 0) > now:
                 continue
-            if processed >= settings.payment_reconcile_batch_size:
+            if attempted >= settings.payment_reconcile_batch_size:
                 break
             if provider == CardPaymentService.PROVIDER:
                 if not external_id:
@@ -89,6 +90,7 @@ class PaymentReconciliationService:
                     provider,
                 )
                 continue
+            attempted += 1
             async with SessionFactory() as session:
                 try:
                     if provider == CardPaymentService.PROVIDER:
