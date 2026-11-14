@@ -35,3 +35,29 @@ def test_client_log_redaction_removes_telegram_auth_material() -> None:
     ):
         assert secret not in redacted
     assert "<redacted>" in redacted
+
+
+def test_client_error_report_accepts_optional_build_id() -> None:
+    report = client_logs.ClientErrorReport(
+        kind="window_error",
+        message="Script error.",
+        build_id="abcdef123456",
+    )
+    assert report.build_id == "abcdef123456"
+    legacy = client_logs.ClientErrorReport(
+        kind="unhandled_rejection",
+        message="Load failed",
+    )
+    assert legacy.build_id is None
+
+
+def test_client_error_report_rejects_oversized_build_id() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        client_logs.ClientErrorReport(
+            kind="window_error",
+            message="Script error.",
+            build_id="x" * 129,
+        )
