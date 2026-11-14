@@ -1,4 +1,6 @@
 FROM node:22-alpine AS miniapp
+ARG MINI_APP_RELEASE_SHA=unknown
+ENV NEXT_PUBLIC_BUILD_ID=${MINI_APP_RELEASE_SHA}
 WORKDIR /src/frontend/mini-app
 COPY frontend/mini-app/package.json frontend/mini-app/package-lock.json ./
 RUN npm ci --no-audit --no-fund
