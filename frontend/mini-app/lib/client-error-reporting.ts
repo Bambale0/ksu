@@ -57,6 +57,7 @@ export function reportClientError(
     viewport_height: Math.max(0, Math.round(window.innerHeight || 0)),
     device_pixel_ratio: Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : null,
     digest: extras.digest ? clip(extras.digest, 256) : null,
+    build_id: clip(process.env.NEXT_PUBLIC_BUILD_ID || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "", 128) || null,
   };
 
   try {
