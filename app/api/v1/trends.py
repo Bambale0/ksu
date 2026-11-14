@@ -608,6 +608,8 @@ async def run_trend(
         )
     except Exception as exc:
         await session.rollback()
+        if _domain_error(exc).status_code == 500:
+            logger.exception("Unexpected trend run failure trend_id=%s", trend_id)
         raise _domain_error(exc) from exc
 
     params = generation.parameters or {}
