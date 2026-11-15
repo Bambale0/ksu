@@ -1093,7 +1093,10 @@ export default function TrendPage() {
       );
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось запустить тренд");
+      const code = (reason as { failureCode?: string } | null)?.failureCode;
+      setError(code === "insufficient_credits"
+        ? "Недостаточно ROX для запуска тренда. Пополните баланс и попробуйте снова."
+        : reason instanceof Error ? reason.message : "Не удалось запустить тренд");
       setRunning(false);
     }
   };
