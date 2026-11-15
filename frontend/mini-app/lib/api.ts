@@ -46,6 +46,11 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: numb
   if (!response.ok) {
     const error = userSafeHttpError(response.status, payload) as Error & { status?: number };
     error.status = response.status;
+    // Stable machine-readable business reason, no provider details exposed.
+    const trendFailureCode = response.headers.get("X-Trend-Failure-Code");
+    if (trendFailureCode && /^\w{1,64}$/.test(trendFailureCode)) {
+      (error as Error & { failureCode?: string }).failureCode = trendFailureCode;
+    }
     throw error;
   }
   return payload as T;
