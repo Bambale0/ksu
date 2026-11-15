@@ -55,3 +55,36 @@ async def test_backlog_rejects_invalid_age():
         await PaymentBacklogReport.snapshot(None, older_than_days=0)
     with pytest.raises(ValueError):
         await PaymentBacklogReport.snapshot(None, older_than_days=3651)
+
+
+class _RetryRows:
+    def all(self):
+        return [
+            ("card", "creation_unknown", "manual_card_without_provider_id", 64),
+            ("card", "pending", "waiting", 3),
+            ("cryptobot", "pending", "due", 2),
+            ("tbank", "refund_review", "not_scheduled", 3),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_retry_snapshot_has_only_grouped_non_sensitive_fields():
+    session = SimpleNamespace(execute=AsyncMock(return_value=_RetryRows()))
+    result = await PaymentBacklogReport.retry_snapshot(session)
+    assert sum(item["count"] for item in result) == 72
+    assert result[0] == {
+        "provider": "card",
+        "status": "creation_unknown",
+        "poll_state": "manual_card_without_provider_id",
+        "count": 64,
+    }
+    assert set(result[-1]) == {"provider", "status", "poll_state", "count"}
+    session.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_snapshot_rejects_invalid_age():
+    with pytest.raises(ValueError, match="older_than_days"):
+        await PaymentBacklogReport.retry_snapshot(None, older_than_days=0)
+    with pytest.raises(ValueError, match="older_than_days"):
+        await PaymentBacklogReport.retry_snapshot(None, older_than_days=3651)
