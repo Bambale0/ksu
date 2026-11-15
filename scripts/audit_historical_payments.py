@@ -18,7 +18,12 @@ async def main() -> None:
         async with SessionFactory() as session:
             await session.execute(text("SET TRANSACTION READ ONLY"))
             rows = await PaymentBacklogReport.snapshot(session)
-            print(json.dumps({"older_than_days": 1, "groups": rows}, ensure_ascii=False))
+            retry_rows = await PaymentBacklogReport.retry_snapshot(session)
+            print(json.dumps({
+                "older_than_days": 1,
+                "groups": rows,
+                "retry_schedule_groups": retry_rows,
+            }, ensure_ascii=False))
             await session.rollback()
     finally:
         await engine.dispose()
