@@ -38,7 +38,7 @@ async def run() -> None:
                 logger.warning("Could not publish payment worker heartbeat")
 
             try:
-                processed = await PaymentReconciliationService.run_once()
+                processed = await PaymentReconciliationService.run_once(redis=redis)
                 if processed:
                     logger.info("Reconciled %s payments", processed)
                     await _event(redis, "payment_reconcile_success")
