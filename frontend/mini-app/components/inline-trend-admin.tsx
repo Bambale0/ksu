@@ -433,7 +433,7 @@ function WorkflowInputEditor({
           onClick={() => applyPreset(preset)}>{label}</button>;
       })}
     </div>
-    <small>В промпте фото используйте @Image1 для фотографии, {{height}} для роста и {{weight}} для веса. Готовые поля не меняют текст промпта.</small>
+    <small>В промпте фото используйте @Image1 для фотографии, {"{{height}}"} для роста и {"{{weight}}"} для веса. Готовые поля не меняют текст промпта.</small>
     {inputs.map((input, index) => <div className="inline-trend-workflow-input" key={index}>
       <div className="inline-trend-two-cols">
         <label><span>Ключ поля в промпте</span><input value={input.id} pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" onChange={(event) => update(index, { id: event.target.value })} /></label>
