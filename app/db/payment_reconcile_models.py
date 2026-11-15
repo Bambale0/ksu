@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,6 +12,7 @@ from app.db.base import Base
 
 class PaymentReconcileState(Base):
     __tablename__ = "payment_reconcile_state"
+    __table_args__ = (Index("ix_payment_reconcile_state_next", "next_attempt_at"),)
 
     payment_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("payments.id", ondelete="CASCADE"), primary_key=True
