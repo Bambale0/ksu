@@ -20,6 +20,7 @@ from app.db import nexus_models  # noqa: F401
 from app.db import onboarding_models  # noqa: F401
 from app.db import partner_wallet_models  # noqa: F401
 from app.db import payment_models  # noqa: F401
+from app.db import payment_reconcile_models  # noqa: F401
 from app.db import profile_models  # noqa: F401
 from app.db import prompt_tool_models  # noqa: F401
 from app.db import reference_models  # noqa: F401
