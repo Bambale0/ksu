@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
+from app.db.payment_reconcile_models import PaymentReconcileState
 from app.services.admin_security import utcnow
 
 
@@ -65,4 +66,59 @@ class PaymentBacklogReport:
                 "count": count,
             }
             for provider, status, id_presence, band, count in rows
+        ]
+
+    @classmethod
+    async def retry_snapshot(
+        cls, session: AsyncSession, *, older_than_days: int = 1
+    ) -> list[dict[str, object]]:
+        """Read-only grouped reconciliation coverage, no invoice/user identifiers.
+
+        The missing-ID Card branch is intentionally excluded from polling;
+        other unscheduled rows may simply have no configured provider.
+        """
+        if not 1 <= older_than_days <= 3650:
+            raise ValueError("older_than_days must be between 1 and 3650")
+        now = utcnow()
+        poll_state = case(
+            (
+                and_(
+                    Payment.provider == "card",
+                    Payment.external_id.is_(None),
+                ),
+                "manual_card_without_provider_id",
+            ),
+            (PaymentReconcileState.payment_id.is_(None), "not_scheduled"),
+            (PaymentReconcileState.next_attempt_at > now, "waiting"),
+            else_="due",
+        ).label("poll_state")
+        # Avoid exposing a payment identifier, provider invoice, payload,
+        # amount or user information. All aggregates are grouped by state.
+        query = (
+            select(
+                Payment.provider,
+                Payment.status,
+                poll_state,
+                func.count(Payment.id).label("count"),
+            )
+            .outerjoin(
+                PaymentReconcileState,
+                PaymentReconcileState.payment_id == Payment.id,
+            )
+            .where(
+                Payment.status.in_(cls.OPEN_STATUSES),
+                Payment.updated_at < now - timedelta(days=older_than_days),
+            )
+            .group_by(Payment.provider, Payment.status, poll_state)
+            .order_by(Payment.provider, Payment.status, poll_state)
+        )
+        rows = (await session.execute(query)).all()
+        return [
+            {
+                "provider": provider,
+                "status": status,
+                "poll_state": state,
+                "count": count,
+            }
+            for provider, status, state, count in rows
         ]
