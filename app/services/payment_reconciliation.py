@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import time
 from datetime import timedelta
 
 from sqlalchemy import or_, select
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.core.config import settings
 from app.db.models import Payment
@@ -35,7 +38,7 @@ class PaymentReconciliationService:
     )
 
     @classmethod
-    async def run_once(cls) -> int:
+    async def run_once(cls, redis: Redis | None = None) -> int:
         cutoff = utcnow() - timedelta(seconds=settings.payment_reconcile_stale_seconds)
         async with SessionFactory() as session:
             payments = list(
@@ -68,6 +71,16 @@ class PaymentReconciliationService:
         for payment_id, provider, external_id in payments:
             if cls._retry_after.get(payment_id, 0) > now:
                 continue
+            if redis is not None:
+                try:
+                    # Redis survives worker restarts and prevents bursts of
+                    # stale provider lookups while a provider is unavailable.
+                    if await redis.exists(f"ksu:payment-reconcile:cooldown:{payment_id}"):
+                        continue
+                except RedisError:
+                    # Never block an authoritative payment recovery merely
+                    # because the optional shared cooldown store is unavailable.
+                    logger.warning("Payment reconciliation shared cooldown unavailable")
             if attempted >= settings.payment_reconcile_batch_size:
                 break
             if provider == CardPaymentService.PROVIDER:
@@ -108,7 +121,17 @@ class PaymentReconciliationService:
                         cls._failure_counts.pop(next(iter(cls._failure_counts)))
                     cls._failure_counts[payment_id] = failures
                     delay = min(cls.RETRY_MAX_SECONDS, cls.RETRY_BASE_SECONDS * (2 ** (failures - 1)))
-                    cls._retry_after[payment_id] = time.monotonic() + min(cls.RETRY_MAX_SECONDS, delay * random.uniform(0.8, 1.2))
+                    cooldown_seconds = min(cls.RETRY_MAX_SECONDS, delay * random.uniform(0.8, 1.2))
+                    cls._retry_after[payment_id] = time.monotonic() + cooldown_seconds
+                    if redis is not None:
+                        try:
+                            await redis.set(
+                                f"ksu:payment-reconcile:cooldown:{payment_id}",
+                                "1",
+                                ex=max(1, math.ceil(cooldown_seconds)),
+                            )
+                        except RedisError:
+                            logger.warning("Payment reconciliation shared cooldown write unavailable")
                     logger.exception("Payment reconciliation failed for %s", payment_id)
                 else:
                     cls._retry_after.pop(payment_id, None)
