@@ -548,3 +548,77 @@ test('required photo without a prompt role blocks publication', async ({ page })
   await expect(form.getByRole('alert')).toContainText('обязательного фото');
   expect(state.writes).toEqual([]);
 });
+
+
+test('admin repairs a mistyped photo slot and configures numeric height and weight without duplicates', async ({ page }) => {
+  const payload = v2Payload();
+  payload.steps[0].inputs = [{
+    id: 'person_photo', label: 'Рост', help: 'Рост', type: 'number', required: true, order: 0,
+  }];
+  const state = await setup(page, { items: [{ id: 'broken-person-photo', title: 'Скорпион', is_active: true, payload }] });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  const presets = form.getByRole('group', { name: 'Готовые поля пользователя' });
+  const fields = form.locator('.inline-trend-workflow-input');
+  const photo = fields.filter({ has: page.locator('input[value="person_photo"]') });
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await presets.getByRole('button', { name: 'Исправить фото' }).click();
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('image');
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toBeDisabled();
+  await expect(photo.getByLabel('Метка', { exact: true })).toHaveValue('Ваше фото');
+
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true })
+    .fill('Сохрани внешность с @Image1. Рост {{height}} см. Вес {{weight}} кг.');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await expect(fields).toHaveCount(3);
+  await presets.getByRole('button', { name: 'Настроить рост' }).click();
+  await presets.getByRole('button', { name: 'Настроить вес' }).click();
+  const height = fields.filter({ has: page.locator('input[value="height"]') });
+  const weight = fields.filter({ has: page.locator('input[value="weight"]') });
+  await expect(height.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await expect(weight.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await expect(height.getByLabel('Метка', { exact: true })).toHaveValue('Рост (см)');
+  await expect(weight.getByLabel('Метка', { exact: true })).toHaveValue('Вес (кг)');
+  await expect(presets.getByRole('button', { name: 'Рост настроен' })).toBeDisabled();
+  await expect(presets.getByRole('button', { name: 'Вес настроен' })).toBeDisabled();
+  await height.getByLabel('Метка', { exact: true }).fill('Ваш рост, см');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs).toMatchObject([
+    { id: 'person_photo', label: 'Ваше фото', type: 'image', required: true, order: 0 },
+    { id: 'height', label: 'Ваш рост, см', type: 'number', required: true, order: 1 },
+    { id: 'weight', label: 'Вес (кг)', type: 'number', required: true, order: 2 },
+  ]);
+  expect(state.writes[0].payload.steps[0].prompt).toContain('{{weight}}');
+  expect(state.writes[0].payload.steps[0].prompt).toContain('@Image1');
+  expect(state.errors).toEqual([]);
+
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const reopened = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await expect(reopened.locator('.inline-trend-workflow-input')).toHaveCount(3);
+  await expect(reopened.locator('.inline-trend-workflow-input').filter({ has: page.locator('input[value="height"]') })
+    .getByLabel('Метка', { exact: true })).toHaveValue('Ваш рост, см');
+});
+
+test('new workflow can add height and weight using presets before the prompt is written', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  const presets = form.getByRole('group', { name: 'Готовые поля пользователя' });
+  await expect(presets.getByRole('button', { name: 'Фото настроено' })).toBeDisabled();
+  await presets.getByRole('button', { name: 'Добавить рост' }).click();
+  await presets.getByRole('button', { name: 'Добавить вес' }).click();
+  await expect(form.locator('.inline-trend-workflow-input')).toHaveCount(3);
+  await form.getByLabel('Название', { exact: true }).fill('Портрет с параметрами');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/preset.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true })
+    .fill('Человек с @Image1, рост {{height}} см, вес {{weight}} кг');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs.map(({ id, type }) => [id, type])).toEqual([
+    ['person_photo', 'image'], ['height', 'number'], ['weight', 'number'],
+  ]);
+  expect(state.errors).toEqual([]);
+});
