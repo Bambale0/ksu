@@ -334,3 +334,66 @@ async def test_reconciliation_skips_cooling_payment_without_starving_next(
     monkeypatch.setattr(PaymentService, "reconcile", fake_reconcile)
     assert await PaymentReconciliationService.run_once() == 1
     assert calls == [ready_id]
+
+
+class _SharedCooldownRedis:
+    def __init__(self) -> None:
+        self.keys: dict[str, int] = {}
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.keys)
+
+    async def set(self, key: str, value: str, *, ex: int) -> bool:
+        self.keys[key] = ex
+        return True
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_cooldown_survives_worker_process_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment_id = uuid.uuid4()
+    shared = _SharedCooldownRedis()
+    attempts = 0
+
+    monkeypatch.setattr(settings, "cryptopay_api_token", "configured")
+    monkeypatch.setattr(
+        payment_reconciliation,
+        "SessionFactory",
+        lambda: _Session([(payment_id, "cryptobot", "invoice-123")]),
+    )
+
+    async def fail_provider(*args: object, **kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("temporary provider failure")
+
+    monkeypatch.setattr(PaymentService, "reconcile", fail_provider)
+    PaymentReconciliationService._retry_after.clear()
+    PaymentReconciliationService._failure_counts.clear()
+    try:
+        assert await PaymentReconciliationService.run_once(redis=shared) == 0
+        assert attempts == 1
+        assert shared.keys[f"ksu:payment-reconcile:cooldown:{payment_id}"] >= 1
+        # Simulate a worker restart: process-local cooldown is lost.
+        PaymentReconciliationService._retry_after.clear()
+        PaymentReconciliationService._failure_counts.clear()
+        assert await PaymentReconciliationService.run_once(redis=shared) == 0
+        assert attempts == 1
+    finally:
+        PaymentReconciliationService._retry_after.clear()
+        PaymentReconciliationService._failure_counts.clear()
+
+
+def test_trend_409_exposes_stable_business_code() -> None:
+    from app.api.v1.trends import _domain_error
+    from app.services.trend_workflows import TrendWorkflowConflict
+    from app.services.wallet import InsufficientBalanceError
+
+    conflict = _domain_error(TrendWorkflowConflict("request already started"))
+    assert conflict.status_code == 409
+    assert conflict.headers == {"X-Trend-Failure-Code": "workflow_conflict"}
+    # Avoid relying on the wallet exception constructor signature.
+    low_balance = _domain_error(InsufficientBalanceError.__new__(InsufficientBalanceError))
+    assert low_balance.status_code == 409
+    assert low_balance.headers == {"X-Trend-Failure-Code": "insufficient_credits"}
