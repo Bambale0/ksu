@@ -1,3 +1,8 @@
+## Active Fix Execution — KSU photo/height/weight field presets (2026-11-15)
+
+- Baseline `main@b81f86193f7dac50b8e06953cf896fec1885318d`. KSU workflow editor allows `person_photo` to be misconfigured as a number; scalar placeholders `{{height}}`/`{{weight}}` create generic text inputs, requiring manual repair. No schema/payment/provider changes.
+- Implement ready photo, height and weight controls, protect canonical photo type, keep saved recipes and admin prompts unchanged unless an admin explicitly clicks a preset. E2E recovery plus create/edit persisted payload, exact-SHA PR/CI/deploy. [Execution ledger](docs/agents/EXECUTION/workflow-field-presets-20261115.md).
+
 ## Active Fix Execution — Kling 4.0 sound contract and customer-facing copy (2026-11-11)
 
 - Baseline: `main@45197e2d0393c59e251482a221490f18dea0eddc` (prior #589 production), branch `fix/kling4-audio-ux-contract-20261111`.
