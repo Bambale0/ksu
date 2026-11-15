@@ -74,9 +74,8 @@ class CryptoPayClient:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPStatusError as exc:
-            text = exc.response.text[:1000].replace("\n", " ")
             raise PaymentProviderError(
-                f"Crypto Pay createInvoice failed: HTTP {exc.response.status_code}: {text}"
+                f"Crypto Pay createInvoice failed: HTTP {exc.response.status_code}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Crypto Pay transport failed") from exc
@@ -105,9 +104,8 @@ class CryptoPayClient:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPStatusError as exc:
-            text = exc.response.text[:1000].replace("\n", " ")
             raise PaymentProviderError(
-                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}: {text}"
+                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Crypto Pay transport failed") from exc
@@ -126,9 +124,8 @@ class CryptoPayClient:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPStatusError as exc:
-            text = exc.response.text[:1000].replace("\n", " ")
             raise PaymentProviderError(
-                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}: {text}"
+                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Crypto Pay transport failed") from exc
