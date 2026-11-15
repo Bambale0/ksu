@@ -52,6 +52,9 @@ async function setup(page, { admin = true, audio = false } = {}) {
     return json({ items: [], has_more: false });
   });
   await page.goto('/mini-app/?route=catalog');
+  // The legacy catalog URL is normalized to canonical Home asynchronously.
+  // Wait for the redirect before opening the portal or navigation unmounts it.
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
   return state;
 }
 
