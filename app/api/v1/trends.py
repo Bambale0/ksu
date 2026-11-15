@@ -80,9 +80,9 @@ def _domain_error(exc: Exception) -> HTTPException:
     if isinstance(exc, AdminPolicyError):
         return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, InsufficientBalanceError):
-        return HTTPException(status_code=409, detail="Insufficient credits")
+        return HTTPException(status_code=409, detail="Insufficient credits", headers={"X-Trend-Failure-Code": "insufficient_credits"})
     if isinstance(exc, TrendWorkflowConflict):
-        return HTTPException(status_code=409, detail=str(exc))
+        return HTTPException(status_code=409, detail=str(exc), headers={"X-Trend-Failure-Code": "workflow_conflict"})
     if isinstance(exc, (TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=500, detail="Trend operation failed")
@@ -609,9 +609,16 @@ async def run_trend(
         )
     except Exception as exc:
         await session.rollback()
-        if _domain_error(exc).status_code == 500:
+        error = _domain_error(exc)
+        if error.status_code == 500:
             logger.exception("Unexpected trend run failure trend_id=%s", trend_id)
-        raise _domain_error(exc) from exc
+        else:
+            logger.info(
+                "trend_run_rejected trend_id=%s status=%s failure_code=%s",
+                trend_id, error.status_code,
+                (error.headers or {}).get("X-Trend-Failure-Code", "validation_or_not_found"),
+            )
+        raise error from exc
 
     params = generation.parameters or {}
     return {
