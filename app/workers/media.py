@@ -18,6 +18,7 @@ from app.db.session import SessionFactory, engine
 from app.services.media_assets import MediaIngestService
 from app.services.media_legacy_backfill import LegacyMediaBackfillService
 from app.services.music_media import MusicMediaIngestService
+from app.services.trend_workflow_recovery import TrendWorkflowRecoveryService
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "media-worker"
@@ -33,6 +34,7 @@ async def _event(redis: Redis, name: str) -> None:
 async def run() -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     next_legacy_reconcile_at = 0.0
+    next_trend_reconcile_at = 0.0
     try:
         while True:
             try:
@@ -50,6 +52,18 @@ async def run() -> None:
                     logger.exception("Legacy media reconciliation failed")
                     await _event(redis, "media_reconcile_failure")
                 next_legacy_reconcile_at = now + settings.media_legacy_reconcile_seconds
+
+            # Recovery is bounded and based only on existing completed work:
+            # never generate, debit ROX, or auto-start the video step.
+            if now >= next_trend_reconcile_at:
+                try:
+                    async with SessionFactory() as session:
+                        await TrendWorkflowRecoveryService.reconcile_once(session)
+                except Exception:
+                    WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
+                    logger.exception("Trend workflow state recovery failed")
+                    await _event(redis, "trend_workflow_recovery_failure")
+                next_trend_reconcile_at = now + 60.0
 
             processed = False
             try:
