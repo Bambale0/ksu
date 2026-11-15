@@ -65,6 +65,10 @@ export function reportClientError(
       method: "POST",
       headers: telegramHeaders(true),
       credentials: "same-origin",
+      // A chunk error may force a full-page reload immediately afterwards.
+      // Keep the bounded report alive across navigation so production can
+      // correlate the missing chunk with the exact previous build.
+      keepalive: true,
       body: JSON.stringify(body),
     }).catch(() => undefined);
   } catch {
