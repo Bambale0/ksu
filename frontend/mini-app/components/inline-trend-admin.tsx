@@ -419,7 +419,7 @@ function WorkflowInputEditor({
       {input.type === "select" ? <label><span>Варианты через запятую</span><input value={(input.options || []).join(", ")} onChange={(event) => update(index, { options: event.target.value.split(",").map((option) => option.trim()).filter(Boolean) })} /></label> : null}
       <button className="inline-trend-secondary" type="button" disabled={workflowInputReferenced(prompt, inputs, index)} title={workflowInputReferenced(prompt, inputs, index) ? "Сначала уберите ссылку на это поле из промпта." : undefined} onClick={() => onChange(inputs.filter((_, current) => current !== index))}>Удалить поле</button>
     </div>)}
-    <button className="inline-trend-secondary" type="button" disabled={inputs.length >= 16} onClick={() => {
+    <button className="inline-trend-secondary" type="button" onClick={() => {
       let id = `input_${inputs.length + 1}`;
       while (inputs.some((input) => input.id === id)) id += "_";
       onChange([...inputs, { id, label: "Новое поле", help: "Укажите значение.", type: "text", required: false, order: inputs.length }]);
@@ -811,7 +811,7 @@ export function InlineTrendAdmin() {
         return;
       }
       const photoCapacity = referenceCapacity(photoModel);
-      const inputs = draft.photo.inputs.map((input, order) => ({ ...input, order }));
+      const inputs = syncWorkflowPromptInputs(draft.photo.prompt, draft.photo.inputs, photoCapacity);
       const promptError = workflowPromptError(draft.photo.prompt, photoCapacity, "image")
         || workflowPromptError(draft.video.prompt, 1, "video")
         || workflowInputError(inputs, draft.photo.prompt, photoCapacity);
