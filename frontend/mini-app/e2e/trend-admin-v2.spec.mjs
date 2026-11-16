@@ -548,3 +548,22 @@ test('required photo without a prompt role blocks publication', async ({ page })
   await expect(form.getByRole('alert')).toContainText('обязательного фото');
   expect(state.writes).toEqual([]);
 });
+
+test('workflow admin saves 17 text placeholders alongside a photo without an arbitrary field cap', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('СКОРПИОН');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/scorpion.jpg');
+  const fields = Array.from({ length: 17 }, (_, index) => `{{field_${index + 1}}}`).join(' ');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill(`Человек @image_1. ${fields}`);
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @image_1');
+  await expect(form.locator('.inline-trend-workflow-input')).toHaveCount(18);
+  await expect(form.getByRole('button', { name: '＋ Добавить поле' })).toBeEnabled();
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs).toHaveLength(18);
+  expect(state.writes[0].payload.steps[0].inputs.at(-1).id).toBe('field_17');
+  expect(state.writes[0].payload.steps[0].inputs[0]).toMatchObject({ type: 'image', required: true });
+  expect(state.errors).toEqual([]);
+});
