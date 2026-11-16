@@ -55,7 +55,7 @@ _BINDABLE_FIELDS = {
     "input_urls",
 }
 _IMAGE_FIELDS = ("image_input", "image_urls", "input_urls", "reference_image_urls", "reference_image", "first_frame_url", "first_frame")
-_IMAGE_TAG = re.compile(r"@Image_?([1-9][0-9]*)(?!\w)", re.IGNORECASE)
+_IMAGE_TAG = re.compile(r"@Image_?(\d+)(?!\w)", re.IGNORECASE)
 _WORKFLOW_MEDIA_PREFIX = "ksu-media://"
 WORKFLOW_PRICING_SOURCE = "generation_service_catalog"
 
