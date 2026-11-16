@@ -15,7 +15,11 @@ def test_inline_trend_admin_is_mounted_in_customer_mini_app() -> None:
     assert 'import { InlineTrendAdmin } from "@/components/inline-trend-admin"' in page
     assert "<InlineTrendAdmin />" in page
     assert "me.is_admin" in component
-    assert 'node.textContent?.trim() === "Готовые сценарии"' in component
+    # The admin action stays in the stable catalog header during feature-hub
+    # hydration; a legacy trend-section portal is vulnerable to a lost tap.
+    assert 'node.querySelector<HTMLElement>(".screen-head .kicker")' in component
+    assert 'catalog?.querySelector<HTMLElement>(".screen-head")' in component
+    assert 'node.textContent?.trim() === "Готовые сценарии"' not in component
     assert "<span>＋</span> Добавить" in component
     assert "＋ Новый тренд" in component
     assert "Редактировать" in component
