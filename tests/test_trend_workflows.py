@@ -1005,6 +1005,7 @@ def test_prompt_must_assign_every_required_photo_a_role() -> None:
     with pytest.raises(TrendWorkflowError, match="обязательного фото"):
         TrendWorkflowService.normalize_recipe("Required photo role", payload)
 
+
 def test_workflow_accepts_more_than_sixteen_named_inputs_with_image_alias() -> None:
     payload = _v2_payload()
     photo = payload["steps"][0]
