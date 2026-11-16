@@ -457,14 +457,17 @@ export function InlineTrendAdmin() {
   useEffect(() => {
     if (!isAdmin) return;
     const sync = () => {
-      const title = Array.from(document.querySelectorAll<HTMLElement>(".section-title h2"))
-        .find((node) => node.textContent?.trim() === "Готовые сценарии");
-      if (!title) {
+      // The feature hub changes/reorders the legacy trend section while the
+      // catalog hydrates. A portal inside that section can disappear mid-tap
+      // on WebKit, dropping the dialog-opening click. Anchor to the stable
+      // catalog screen header instead.
+      const catalog = Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))
+        .find((node) => node.querySelector<HTMLElement>(".screen-head .kicker")?.textContent?.trim() === "Каталог");
+      const parent = catalog?.querySelector<HTMLElement>(".screen-head") || null;
+      if (!parent) {
         setHost(null);
         return;
       }
-      const parent = title.closest<HTMLElement>(".section-title");
-      if (!parent) return;
       let mount = parent.querySelector<HTMLElement>("[data-inline-trend-admin-host]");
       if (!mount) {
         mount = document.createElement("div");

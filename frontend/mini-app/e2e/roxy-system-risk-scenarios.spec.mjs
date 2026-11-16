@@ -405,6 +405,24 @@ async function installUploadDeadlineClock(page) {
   await page.clock.install({ time: new Date('2026-10-29T08:00:00Z') });
 }
 
+test('trend preview upload admin trigger survives catalog hub hydration', async ({ page }) => {
+  await installUploadDeadlineClock(page);
+  await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
+  const catalogHeader = page.locator('.main-shell > .screen .screen-head').filter({
+    has: page.locator('.kicker', { hasText: 'Каталог' }),
+  }).first();
+  const adminButton = catalogHeader.getByRole('button', { name: 'Управлять трендами' });
+  await expect(adminButton).toBeVisible();
+  // The dynamic feature hub must not detach the admin action mid-tap.
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  await expect(adminButton).toBeVisible();
+  await adminButton.click();
+  const dialog = page.getByRole('dialog', { name: 'Управление трендами' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Закрыть' }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 test('trend preview upload survives a transfer longer than the JSON deadline', async ({ page }) => {
   await installUploadDeadlineClock(page);
   await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
