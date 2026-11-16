@@ -88,3 +88,47 @@ async def test_retry_snapshot_rejects_invalid_age():
         await PaymentBacklogReport.retry_snapshot(None, older_than_days=0)
     with pytest.raises(ValueError, match="older_than_days"):
         await PaymentBacklogReport.retry_snapshot(None, older_than_days=3651)
+
+class _RequestRows:
+    def all(self):
+        return [
+            ("card", "creation_unknown", "unknown", 54),
+            ("card", "creation_unknown", "missing", 10),
+            ("cryptobot", "pending", "missing", 2),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_request_snapshot_classifies_unknown_and_absent_local_intents():
+    session = SimpleNamespace(execute=AsyncMock(return_value=_RequestRows()))
+    rows = await PaymentBacklogReport.request_snapshot(session)
+    assert rows == [
+        {
+            "provider": "card", "status": "creation_unknown",
+            "request_state": "unknown", "count": 54,
+        },
+        {
+            "provider": "card", "status": "creation_unknown",
+            "request_state": "missing", "count": 10,
+        },
+        {
+            "provider": "cryptobot", "status": "pending",
+            "request_state": "missing", "count": 2,
+        },
+    ]
+    # Audit is aggregate-only and does not touch the payment ledger.
+    for row in rows:
+        assert set(row) == {"provider", "status", "request_state", "count"}
+    session.execute.assert_awaited_once()
+    statement = str(session.execute.await_args.args[0])
+    assert "LEFT OUTER JOIN" in statement
+    assert "payment_requests" in statement
+    assert "UPDATE " not in statement and "INSERT " not in statement
+
+
+@pytest.mark.asyncio
+async def test_request_snapshot_noop_protects_invalid_age():
+    with pytest.raises(ValueError, match="older_than_days"):
+        await PaymentBacklogReport.request_snapshot(None, older_than_days=0)
+    with pytest.raises(ValueError, match="older_than_days"):
+        await PaymentBacklogReport.request_snapshot(None, older_than_days=3651)
