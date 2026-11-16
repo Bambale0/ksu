@@ -1052,3 +1052,10 @@ def test_workflow_image_aliases_keep_gap_validation() -> None:
     payload["steps"][0]["prompt"] = "Face @image_1 plus car @Image_3"
     with pytest.raises(TrendWorkflowError, match="numbered consecutively"):
         TrendWorkflowService.normalize_recipe("Invalid alias numbering", payload)
+
+@pytest.mark.parametrize("token", ["@Image0", "@image_0"])
+def test_workflow_rejects_zero_indexed_image_aliases(token: str) -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["prompt"] = f"Face {token}"
+    with pytest.raises(TrendWorkflowError, match="numbered consecutively"):
+        TrendWorkflowService.normalize_recipe("Invalid zero index", payload)
