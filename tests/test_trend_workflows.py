@@ -1004,3 +1004,50 @@ def test_prompt_must_assign_every_required_photo_a_role() -> None:
     )
     with pytest.raises(TrendWorkflowError, match="обязательного фото"):
         TrendWorkflowService.normalize_recipe("Required photo role", payload)
+
+def test_workflow_accepts_more_than_sixteen_named_inputs_with_image_alias() -> None:
+    payload = _v2_payload()
+    photo = payload["steps"][0]
+    scalar_fields = [
+        {
+            "id": f"field_{index}",
+            "label": f"Field {index}",
+            "help": f"Value for field {index}.",
+            "type": "text",
+            "required": True,
+            "order": index,
+        }
+        for index in range(1, 18)
+    ]
+    photo["prompt"] = "Person @image_1. " + " ".join(
+        f"{{{{field_{index}}}}}" for index in range(1, 18)
+    )
+    photo["inputs"] = [
+        {**photo["inputs"][0], "order": 0},
+        *scalar_fields,
+    ]
+    recipe = TrendWorkflowService.normalize_recipe("More than 16 fields", payload)
+
+    assert len(recipe["steps"][0]["inputs"]) == 18
+    assert recipe["steps"][0]["prompt"] == photo["prompt"]
+    request = TrendWorkflowStepRequest(values={f"field_{index}": "value" for index in range(1, 18)})
+    assert len(request.values) == 17
+
+    prompt, _ = TrendWorkflowService._step_request(
+        recipe,
+        recipe["steps"][0],
+        {
+            "reference_urls": ["https://owned.invalid/person.jpg"],
+            "values": request.values,
+        },
+    )
+    assert "Person @Image1" in prompt
+    assert "value" in prompt
+    assert "{{field_17}}" not in prompt
+
+
+def test_workflow_image_aliases_keep_gap_validation() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["prompt"] = "Face @image_1 plus car @Image_3"
+    with pytest.raises(TrendWorkflowError, match="numbered consecutively"):
+        TrendWorkflowService.normalize_recipe("Invalid alias numbering", payload)
