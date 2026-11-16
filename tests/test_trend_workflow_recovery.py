@@ -72,8 +72,27 @@ async def test_failed_generation_marks_step_failed_without_changing_billing():
     stats = await TrendWorkflowRecoveryService.reconcile_once(session)
     assert stats["failed"] == 1
     assert step.status == "failed"
-    assert run.status == "running"
+    assert run.status == "failed"
     session.scalar.assert_not_awaited()
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_generation_does_not_override_terminal_run():
+    step, generation, run = _step_and_generation(
+        step_kind="video", generation_status="failed"
+    )
+    run.status = "completed"
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=_Rows([(step, generation)])),
+        get=AsyncMock(return_value=run),
+        scalar=AsyncMock(),
+        commit=AsyncMock(),
+    )
+    stats = await TrendWorkflowRecoveryService.reconcile_once(session)
+    assert stats["failed"] == 1
+    assert step.status == "failed"
+    assert run.status == "completed"
     session.commit.assert_awaited_once()
 
 
