@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
+from app.db.payment_models import PaymentRequest
 from app.db.payment_reconcile_models import PaymentReconcileState
 from app.services.admin_security import utcnow
 
@@ -118,6 +119,45 @@ class PaymentBacklogReport:
                 "provider": provider,
                 "status": status,
                 "poll_state": state,
+                "count": count,
+            }
+            for provider, status, state, count in rows
+        ]
+
+    @classmethod
+    async def request_snapshot(
+        cls, session: AsyncSession, *, older_than_days: int = 1
+    ) -> list[dict[str, object]]:
+        """Aggregate local creation-request linkage without identifying users.
+
+        Each payment has at most one PaymentRequest (unique payment_id).
+        A missing request must NEVER be interpreted as proof no external
+        invoice exists; this report performs no provider calls or updates.
+        """
+        if not 1 <= older_than_days <= 3650:
+            raise ValueError("older_than_days must be between 1 and 3650")
+        request_state = case(
+            (PaymentRequest.id.is_(None), "missing"),
+            else_=PaymentRequest.status,
+        ).label("request_state")
+        rows = (await session.execute(
+            select(
+                Payment.provider, Payment.status, request_state,
+                func.count(Payment.id).label("count"),
+            )
+            .outerjoin(PaymentRequest, PaymentRequest.payment_id == Payment.id)
+            .where(
+                Payment.status.in_(cls.OPEN_STATUSES),
+                Payment.updated_at < utcnow() - timedelta(days=older_than_days),
+            )
+            .group_by(Payment.provider, Payment.status, request_state)
+            .order_by(Payment.provider, Payment.status, request_state)
+        )).all()
+        return [
+            {
+                "provider": provider,
+                "status": status,
+                "request_state": state,
                 "count": count,
             }
             for provider, status, state, count in rows
