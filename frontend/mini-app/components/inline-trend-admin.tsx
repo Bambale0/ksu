@@ -45,6 +45,11 @@ const BINDABLE_IMAGE_FIELDS = new Set([
 const I2V_OPERATIONS = new Set(["image_to_video", "text_or_image_to_video", "multimodal_video", "reference_to_video"]);
 const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
 const WORKFLOW_TYPE = "sequential_photo_video" as const;
+const WORKFLOW_INPUT_PRESETS: Array<Pick<TrendAdminInput, "id" | "label" | "help" | "type" | "required"> & { buttonLabel: string }> = [
+  { id: "person_photo", label: "Ваше фото", help: "Загрузите чёткое фото.", type: "image", required: true, buttonLabel: "фото" },
+  { id: "height", label: "Рост (см)", help: "Укажите рост в сантиметрах.", type: "number", required: true, buttonLabel: "рост" },
+  { id: "weight", label: "Вес (кг)", help: "Укажите вес в килограммах.", type: "number", required: true, buttonLabel: "вес" },
+];
 
 function normalizedAdminField(label: string): TrendUserField {
   const clean = label.replace(/[{}]/g, "").trim().slice(0, 48);
@@ -400,8 +405,35 @@ function WorkflowInputEditor({
   const update = (index: number, patch: Partial<TrendAdminInput>) => {
     onChange(inputs.map((input, current) => current === index ? { ...input, ...patch } : input));
   };
+  const applyPreset = (preset: (typeof WORKFLOW_INPUT_PRESETS)[number]) => {
+    const index = inputs.findIndex((input) => input.id === preset.id);
+    if (index >= 0) {
+      if (inputs[index].type === preset.type) return;
+      update(index, { label: preset.label, help: preset.help, type: preset.type, required: preset.required, options: undefined });
+      return;
+    }
+    if (inputs.length >= 16) return;
+    onChange([...inputs, {
+      id: preset.id, label: preset.label, help: preset.help,
+      type: preset.type, required: preset.required, order: inputs.length,
+    }]);
+  };
   return <div className="inline-trend-workflow-inputs" role="group" aria-label="Входные слоты фото">
-    <div className="inline-trend-section-heading"><strong>Фото и параметры пользователя</strong><small>Эти поля пользователь заполнит перед созданием фото. Для роста и веса выберите «Число», для знака зодиака и времени года — «Выбор из списка».</small></div>
+    <div className="inline-trend-section-heading"><strong>Фото и параметры пользователя</strong><small>Пользователь заполнит эти поля перед созданием фото. Для роста и веса используйте «Число», для фотографии — «Фотография».</small></div>
+    <div className="inline-trend-field-presets" role="group" aria-label="Готовые поля пользователя">
+      {WORKFLOW_INPUT_PRESETS.map((preset) => {
+        const configured = inputs.find((input) => input.id === preset.id);
+        const completed = configured?.type === preset.type;
+        const label = completed
+          ? `${preset.buttonLabel === "фото" ? "Фото" : preset.buttonLabel === "рост" ? "Рост" : "Вес"} настроено`
+          : configured ? (preset.id === "person_photo" ? "Исправить фото" : `Настроить ${preset.buttonLabel}`)
+            : `Добавить ${preset.buttonLabel}`;
+        return <button key={preset.id} type="button" className="inline-trend-secondary"
+          disabled={completed || (!configured && inputs.length >= 16)}
+          onClick={() => applyPreset(preset)}>{label}</button>;
+      })}
+    </div>
+    <small>В промпте фото используйте @Image1 для фотографии, {"{{height}}"} для роста и {"{{weight}}"} для веса. Готовые поля не меняют текст промпта.</small>
     {inputs.map((input, index) => <div className="inline-trend-workflow-input" key={index}>
       <div className="inline-trend-two-cols">
         <label><span>Ключ поля в промпте</span><input value={input.id} pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" onChange={(event) => update(index, { id: event.target.value })} /></label>
@@ -411,7 +443,7 @@ function WorkflowInputEditor({
       <label><span>Метка</span><input value={input.label} maxLength={120} onChange={(event) => update(index, { label: event.target.value })} /></label>
       <label><span>Подсказка</span><textarea rows={2} maxLength={500} value={input.help} onChange={(event) => update(index, { help: event.target.value })} /></label>
       <div className="inline-trend-two-cols">
-        <label><span>Содержимое поля</span><select value={input.type} onChange={(event) => update(index, { type: event.target.value as TrendAdminInput["type"], options: event.target.value === "select" ? (input.options || [""]) : undefined })}>
+        <label><span>Содержимое поля</span><select value={input.type} disabled={input.id === "person_photo" && input.type === "image"} onChange={(event) => update(index, { type: event.target.value as TrendAdminInput["type"], options: event.target.value === "select" ? (input.options || [""]) : undefined })}>
           {(["image", "text", "number", "date", "select"] as const).map((type) => <option value={type} key={type}>{{ image: "Фотография", text: "Текст", number: "Число", date: "Дата", select: "Выбор из списка" }[type]}</option>)}
         </select></label>
         <label className="inline-trend-checkbox"><input type="checkbox" checked={input.required} onChange={(event) => update(index, { required: event.target.checked })} /><span>Обязательное</span></label>
