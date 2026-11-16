@@ -132,3 +132,50 @@ async def test_request_snapshot_noop_protects_invalid_age():
         await PaymentBacklogReport.request_snapshot(None, older_than_days=0)
     with pytest.raises(ValueError, match="older_than_days"):
         await PaymentBacklogReport.request_snapshot(None, older_than_days=3651)
+
+
+class _IdentityRows:
+    def all(self):
+        # Same amount/currency/buyer email remains ambiguous even when
+        # different local creation requests exist.
+        return [(45, 0), (10, 0), (3, 0), (2, 0), (2, 0), (1, 0), (1, 0)]
+
+
+@pytest.mark.asyncio
+async def test_card_identity_snapshot_only_returns_counts():
+    session = SimpleNamespace(execute=AsyncMock(return_value=_IdentityRows()))
+    result = await PaymentBacklogReport.card_identity_snapshot(session)
+    assert result == {
+        "payment_count": 64,
+        "signature_groups": 7,
+        "repeated_signature_groups": 5,
+        "repeated_signature_payments": 62,
+        "missing_email_payments": 0,
+        "single_signature_payments": 2,
+    }
+    assert all(isinstance(value, int) for value in result.values())
+    assert "email" not in result and "amount" not in result
+    session.execute.assert_awaited_once()
+    stmt = str(session.execute.await_args.args[0])
+    assert "GROUP BY" in stmt
+    assert "SELECT" in stmt and "UPDATE " not in stmt
+
+
+@pytest.mark.asyncio
+async def test_card_identity_snapshot_no_email_is_not_unique_identity():
+    class Rows:
+        def all(self):
+            return [(1, 1), (3, 1), (1, 0)]
+    session = SimpleNamespace(execute=AsyncMock(return_value=Rows()))
+    result = await PaymentBacklogReport.card_identity_snapshot(session)
+    assert result["payment_count"] == 5
+    assert result["missing_email_payments"] == 4
+    assert result["single_signature_payments"] == 1
+    assert result["repeated_signature_payments"] == 3
+
+
+@pytest.mark.asyncio
+async def test_card_identity_snapshot_validates_age_without_db_access():
+    for age in (0, -1, 3651):
+        with pytest.raises(ValueError, match="older_than_days"):
+            await PaymentBacklogReport.card_identity_snapshot(None, older_than_days=age)

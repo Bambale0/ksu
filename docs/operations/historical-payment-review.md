@@ -43,3 +43,24 @@ This is a historical snapshot, not a current guaranteed count. The `card` provid
 - Acceptance: each historic record is either backed by verified provider evidence or explicitly categorized as unresolved; no double credits or additional invoices.
 
 See `app/services/payment_backlog.py` for the aggregate-only classifier and `app/services/card_payments.py` for the conservative provider reconciliation behavior.
+
+## 5. Review identity collisions without exposing customers
+
+The operator audit prints `card_identity_ambiguity` with aggregate counts:
+`payment_count`, `signature_groups`, `repeated_signature_groups`,
+`repeated_signature_payments`, `missing_email_payments`, and
+`single_signature_payments`. It groups **inside PostgreSQL** by normalized
+billing email, amount and currency, but never returns those values to the
+script or operator logs.
+
+In the 2026-11-16 read-only snapshot, **62 of 64** historical Card unknowns
+share these identity fields with another unknown; the largest local group
+contains **45**. Only two are singletons within this *local unresolved cohort*.
+Even a singleton **does not prove a match to any provider invoice** or authorize
+payment settlement. A match requires independent authoritative evidence,
+including invoice identity and creation context, under controlled access.
+
+Do not export buyer emails, user IDs, invoices, amounts or local request keys
+as part of the routine aggregate audit. Do not re-send a create-invoice call
+to resolve ambiguity. Check payment and refund evidence in the provider
+dashboard, and get independent approval before any ledger modification.
