@@ -1041,7 +1041,7 @@ def test_workflow_accepts_more_than_sixteen_named_inputs_with_image_alias() -> N
             "values": request.values,
         },
     )
-    assert "Person @Image1" in prompt
+    assert "Person @image_1" in prompt
     assert "value" in prompt
     assert "{{field_17}}" not in prompt
 
