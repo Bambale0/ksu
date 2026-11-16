@@ -42,9 +42,11 @@ class RunTrendRequest(BaseModel):
 
 
 class TrendWorkflowRequest(BaseModel):
-    reference_urls: list[str] = Field(default_factory=list, max_length=16)
-    image_inputs: list[dict[str, str]] | None = Field(default=None, max_length=16)
-    values: dict[str, Any] = Field(default_factory=dict, max_length=16)
+    # The selected model and workflow recipe enforce image limits.
+    # Scalar placeholders are bounded by the recipe, not an arbitrary field count.
+    reference_urls: list[str] = Field(default_factory=list)
+    image_inputs: list[dict[str, str]] | None = Field(default=None)
+    values: dict[str, Any] = Field(default_factory=dict)
     resolution: str | None = Field(default=None, max_length=32)
     aspect_ratio: str | None = Field(default=None, max_length=16)
 
