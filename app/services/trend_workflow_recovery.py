@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.media_models import MediaAsset
@@ -95,3 +95,47 @@ class TrendWorkflowRecoveryService:
                 result["ready"], result["failed"], result["deferred"],
             )
         return result
+
+    @staticmethod
+    async def reconcile_historical_failed_runs(
+        session: AsyncSession, *, limit: int = 50,
+    ) -> int:
+        """Repair pre-existing failed steps without generation or billing effects.
+
+        Lock the parent run first, matching the user retry lock order.
+        The correlated active-step exclusion makes this safe even when a
+        previous failure was followed by a new queued/running attempt.
+        """
+        if not 1 <= limit <= 100:
+            raise ValueError("Historical workflow recovery limit must be between 1 and 100")
+
+        failed_step = exists(
+            select(TrendWorkflowStep.id).where(
+                TrendWorkflowStep.workflow_id == TrendWorkflowRun.id,
+                TrendWorkflowStep.status == "failed",
+            )
+        )
+        active_step = exists(
+            select(TrendWorkflowStep.id).where(
+                TrendWorkflowStep.workflow_id == TrendWorkflowRun.id,
+                TrendWorkflowStep.status.in_(("queued", "running")),
+            )
+        )
+        runs = list((await session.scalars(
+            select(TrendWorkflowRun)
+            .where(
+                TrendWorkflowRun.status == "running",
+                failed_step,
+                ~active_step,
+            )
+            .order_by(TrendWorkflowRun.updated_at.asc(), TrendWorkflowRun.id.asc())
+            .limit(limit)
+            .with_for_update(of=TrendWorkflowRun, skip_locked=True)
+        )).all())
+        if not runs:
+            return 0
+        for run in runs:
+            run.status = "failed"
+        await session.commit()
+        logger.info("Reconciled %s historical failed trend workflows", len(runs))
+        return len(runs)
