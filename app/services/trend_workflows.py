@@ -55,7 +55,7 @@ _BINDABLE_FIELDS = {
     "input_urls",
 }
 _IMAGE_FIELDS = ("image_input", "image_urls", "input_urls", "reference_image_urls", "reference_image", "first_frame_url", "first_frame")
-_IMAGE_TAG = re.compile(r"@Image(\d+)", re.IGNORECASE)
+_IMAGE_TAG = re.compile(r"@Image_?([1-9][0-9]*)(?!\\w)", re.IGNORECASE)
 _WORKFLOW_MEDIA_PREFIX = "ksu-media://"
 WORKFLOW_PRICING_SOURCE = "generation_service_catalog"
 
@@ -216,8 +216,8 @@ class TrendWorkflowService:
             if not isinstance(parameters, dict):
                 raise TrendWorkflowError("Workflow step parameters must be an object")
             inputs = raw_step.get("inputs") or []
-            if not isinstance(inputs, list) or len(inputs) > 16:
-                raise TrendWorkflowError("Workflow step inputs must be an array of at most 16 slots")
+            if not isinstance(inputs, list):
+                raise TrendWorkflowError("Workflow step inputs must be an array")
             slots = [_normalize_slot(value, expected_order=slot_order) for slot_order, value in enumerate(inputs)]
             if len({slot["id"] for slot in slots}) != len(slots):
                 raise TrendWorkflowError("Workflow input slot ids must be unique")
