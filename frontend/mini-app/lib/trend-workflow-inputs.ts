@@ -1,10 +1,7 @@
 import type { TrendAdminInput } from "./trend-admin-api";
 
-// The recipe schema accepts at most sixteen inputs across all types.
-const MAX_INPUTS = 16;
-
 function photoNumbers(prompt: string): number[] {
-  return [...new Set(Array.from(prompt.matchAll(/@Image(\d+)/gi), (match) => Number(match[1])))].sort((a, b) => a - b);
+  return [...new Set(Array.from(prompt.matchAll(/@image_?([1-9][0-9]*)(?!\w)/gi), (match) => Number(match[1])))].sort((a, b) => a - b);
 }
 
 function scalarKeys(prompt: string): string[] {
@@ -27,8 +24,8 @@ export function workflowPromptError(prompt: string, capacity: number, kind: "ima
   if (numbers.some((number, index) => number !== index + 1)) {
     return "Укажите фотографии по порядку: @Image1, @Image2, @Image3 — без пропусков.";
   }
-  if (numbers.length > Math.min(capacity, MAX_INPUTS)) {
-    return `Выбранная модель поддерживает не более ${Math.min(capacity, MAX_INPUTS)} фото. Уберите лишние ссылки из промпта или выберите другую модель.`;
+  if (numbers.length > capacity) {
+    return `Выбранная модель поддерживает не более ${capacity} фото. Уберите лишние ссылки из промпта или выберите другую модель.`;
   }
   return "";
 }
@@ -39,7 +36,7 @@ export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInpu
   if (!workflowPromptError(prompt, capacity, "image")) {
     const count = photoNumbers(prompt).length;
     let photos = inputs.filter((input) => input.type === "image").length;
-    while (photos < count && inputs.length < MAX_INPUTS) {
+    while (photos < count) {
       photos += 1;
       let id = `photo_${photos}`;
       while (inputs.some((input) => input.id === id)) id += "_";
@@ -52,7 +49,7 @@ export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInpu
   }
   for (const id of scalarKeys(prompt)) {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(id)) continue;
-    if (inputs.length >= MAX_INPUTS || inputs.some((input) => input.id === id)) continue;
+    if (inputs.some((input) => input.id === id)) continue;
     inputs.push({ id, label: id, help: `Укажите значение поля «${id}».`, type: "text", required: true, order: inputs.length });
   }
   return inputs.map((input, order) => ({ ...input, order }));
@@ -64,10 +61,10 @@ export function workflowInputError(inputs: TrendAdminInput[], prompt: string, ca
     return "Для ключа поля используйте латинские буквы, цифры и подчёркивание; начните с буквы.";
   }
   if (images.length > capacity) return `Выбранная модель поддерживает не более ${capacity} фото. Удалите лишние поля фото или выберите другую модель.`;
-  if (photoNumbers(prompt).some((number) => number > images.length)
-    || scalarKeys(prompt).some((id) => !inputs.some((input) => input.type !== "image" && input.id === id))) {
-    return "Для всех ссылок в промпте нужны поля пользователя. В одном шаге можно добавить не более 16 полей.";
-  }
+  const missingPhoto = photoNumbers(prompt).find((number) => number > images.length);
+  if (missingPhoto) return `Добавьте поле фотографии для @Image${missingPhoto}.`;
+  const missingScalar = scalarKeys(prompt).find((id) => !inputs.some((input) => input.type !== "image" && input.id === id));
+  if (missingScalar) return `Добавьте поле пользователя для {{${missingScalar}}}.`;
   if (photoNumbers(prompt).length) {
     const numbers = photoNumbers(prompt);
     if (images.some((image, index) => image.required && !numbers.includes(index + 1))) {
