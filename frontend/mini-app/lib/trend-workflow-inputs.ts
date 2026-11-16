@@ -1,7 +1,7 @@
 import type { TrendAdminInput } from "./trend-admin-api";
 
 function photoNumbers(prompt: string): number[] {
-  return [...new Set(Array.from(prompt.matchAll(/@image_?([1-9][0-9]*)(?!\w)/gi), (match) => Number(match[1])))].sort((a, b) => a - b);
+  return [...new Set(Array.from(prompt.matchAll(/@image_?(\d+)(?!\w)/gi), (match) => Number(match[1])))].sort((a, b) => a - b);
 }
 
 function scalarKeys(prompt: string): string[] {
