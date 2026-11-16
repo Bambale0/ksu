@@ -125,6 +125,55 @@ class PaymentBacklogReport:
         ]
 
     @classmethod
+    async def card_identity_snapshot(
+        cls, session: AsyncSession, *, older_than_days: int = 1
+    ) -> dict[str, int]:
+        """Count collisions among unresolved Card intents without exposing identities.
+
+        Equal buyer email, price and currency are NOT proof that the local
+        payment is the same invoice. All grouping stays inside PostgreSQL;
+        neither email nor amount is selected into Python or audit output.
+        """
+        if not 1 <= older_than_days <= 3650:
+            raise ValueError("older_than_days must be between 1 and 3650")
+
+        email = func.nullif(
+            func.lower(func.trim(Payment.payload["billing_email"].as_string())),
+            "",
+        )
+        rows = (await session.execute(
+            select(
+                func.count(Payment.id).label("group_size"),
+                func.max(case((email.is_(None), 1), else_=0)).label("missing_email"),
+            )
+            .where(
+                Payment.provider == "card",
+                Payment.status == "creation_unknown",
+                Payment.external_id.is_(None),
+                Payment.updated_at < utcnow() - timedelta(days=older_than_days),
+            )
+            .group_by(email, Payment.amount, Payment.currency)
+        )).all()
+
+        group_sizes = [(int(size), bool(missing)) for size, missing in rows]
+        return {
+            "payment_count": sum(size for size, _ in group_sizes),
+            "signature_groups": len(group_sizes),
+            "repeated_signature_groups": sum(
+                1 for size, _ in group_sizes if size > 1
+            ),
+            "repeated_signature_payments": sum(
+                size for size, _ in group_sizes if size > 1
+            ),
+            "missing_email_payments": sum(
+                size for size, missing in group_sizes if missing
+            ),
+            "single_signature_payments": sum(
+                1 for size, missing in group_sizes if size == 1 and not missing
+            ),
+        }
+
+    @classmethod
     async def request_snapshot(
         cls, session: AsyncSession, *, older_than_days: int = 1
     ) -> list[dict[str, object]]:
