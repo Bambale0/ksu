@@ -59,6 +59,11 @@ async def run() -> None:
                 try:
                     async with SessionFactory() as session:
                         await TrendWorkflowRecoveryService.reconcile_once(session)
+                    # Historical run rows may already have a failed step.
+                    # Handle those in a separate bounded transaction and
+                    # never initiate another generation or payment.
+                    async with SessionFactory() as session:
+                        await TrendWorkflowRecoveryService.reconcile_historical_failed_runs(session)
                 except Exception:
                     WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
                     logger.exception("Trend workflow state recovery failed")
