@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -12,8 +13,10 @@ from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError
 from app.services.card_payment_recovery import CardPaymentRecoveryService
 from app.services.card_payments import CardPaymentService
+from app.services.card_webhook_review import CardWebhookReviewService
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/payments/card", include_in_schema=False)
@@ -32,6 +35,25 @@ async def card_payment_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid webhook payload")
     event_type = str(payload.get("eventType") or payload.get("event_type") or "").strip().lower()
+    # Lava Top's refund/chargeback notifications have a snake_case envelope
+    # without a guaranteed invoice ID. Persist only a non-PII receipt for
+    # controlled manual review; never infer a payment or mutate the ROX ledger.
+    if event_type in CardWebhookReviewService.REVIEW_EVENTS:
+        event_id = payload.get("event_id")
+        if not isinstance(event_id, str) or not isinstance(payload.get("data"), dict):
+            raise HTTPException(status_code=400, detail="Invalid card review event envelope")
+        try:
+            async with SessionFactory() as session:
+                recorded = await CardWebhookReviewService.record(
+                    session, event_type=event_type, event_id=event_id,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid card review event ID") from exc
+        logger.info(
+            "card_review_webhook_receipt event_type=%s recorded=%s",
+            event_type, recorded,
+        )
+        return {"ok": True}
     if event_type not in {"payment.success", "payment.failed"}:
         return {"ok": True}
     contract_id = str(payload.get("contractId") or payload.get("contract_id") or "").strip()
