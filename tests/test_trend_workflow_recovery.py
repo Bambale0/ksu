@@ -134,3 +134,41 @@ async def test_recovery_limit_rejects_unbounded_scans():
         await TrendWorkflowRecoveryService.reconcile_once(session, limit=0)
     with pytest.raises(ValueError, match="limit"):
         await TrendWorkflowRecoveryService.reconcile_once(session, limit=101)
+
+@pytest.mark.asyncio
+async def test_historical_failed_run_reconciles_without_touching_billing():
+    # The SQL query excludes active queued/running steps and locks the run
+    # in the same order as a concurrent user-initiated retry.
+    run = SimpleNamespace(id=uuid.uuid4(), status="running")
+    session = SimpleNamespace(
+        scalars=AsyncMock(return_value=_Rows([run])),
+        commit=AsyncMock(),
+    )
+    result = await TrendWorkflowRecoveryService.reconcile_historical_failed_runs(session)
+    assert result == 1
+    assert run.status == "failed"
+    session.commit.assert_awaited_once()
+    session.scalars.assert_awaited_once()
+    query = session.scalars.await_args.args[0]
+    sql = str(query.compile())
+    assert "EXISTS" in sql and "NOT (EXISTS" in sql
+    assert "FOR UPDATE" in sql
+
+
+@pytest.mark.asyncio
+async def test_historical_failed_run_noop_does_not_commit():
+    session = SimpleNamespace(
+        scalars=AsyncMock(return_value=_Rows([])),
+        commit=AsyncMock(),
+    )
+    assert await TrendWorkflowRecoveryService.reconcile_historical_failed_runs(session) == 0
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_historical_failed_run_rejects_unbounded_scan():
+    session = SimpleNamespace()
+    with pytest.raises(ValueError, match="limit"):
+        await TrendWorkflowRecoveryService.reconcile_historical_failed_runs(session, limit=0)
+    with pytest.raises(ValueError, match="limit"):
+        await TrendWorkflowRecoveryService.reconcile_historical_failed_runs(session, limit=101)
