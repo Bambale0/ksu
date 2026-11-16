@@ -43,6 +43,12 @@ class TrendWorkflowRecoveryService:
                 continue
             if generation.status == "failed":
                 step.status = "failed"
+                # The persisted run must not look active after a terminal
+                # generation failure. Explicit user retries may transition
+                # it back to running through TrendWorkflowService.run_step.
+                # Never retry or charge automatically in this reconciler.
+                if run.status == "running":
+                    run.status = "failed"
                 # Keep detailed provider errors only in their existing
                 # generation record; do not duplicate secrets in logs.
                 result["failed"] += 1
