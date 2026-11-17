@@ -146,3 +146,18 @@ async def test_telegram_health_does_not_require_direct_mini_app_short_name(
     assert payload["bot_start_link_template"] == (
         "https://t.me/roxy_aicreativebot?start=<payload>"
     )
+
+
+def test_app_compose_readiness_healthcheck_is_advisory_and_bounded() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    app_service = compose.split("\n  app:\n", 1)[1].split("\n  generation-worker:\n", 1)[0]
+    assert "healthcheck:" in app_service
+    assert "http://127.0.0.1:8000/health/ready" in app_service
+    assert "urllib.request.urlopen" in app_service
+    assert "interval: 30s" in app_service
+    assert "timeout: 5s" in app_service
+    assert "retries: 3" in app_service
+    assert "start_period: 120s" in app_service
+    assert "restart: unless-stopped" in app_service
+    # No automation of payment/generation replays is attached to health state.
+    assert "condition: service_healthy" not in app_service
