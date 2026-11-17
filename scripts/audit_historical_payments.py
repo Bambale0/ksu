@@ -21,12 +21,14 @@ async def main() -> None:
             retry_rows = await PaymentBacklogReport.retry_snapshot(session)
             request_rows = await PaymentBacklogReport.request_snapshot(session)
             card_identity = await PaymentBacklogReport.card_identity_snapshot(session)
+            review_priorities = await PaymentBacklogReport.review_priority_snapshot(session)
             print(json.dumps({
                 "older_than_days": 1,
                 "groups": rows,
                 "retry_schedule_groups": retry_rows,
                 "creation_request_groups": request_rows,
                 "card_identity_ambiguity": card_identity,
+                "evidence_gated_review_priorities": review_priorities,
             }, ensure_ascii=False))
             await session.rollback()
     finally:

@@ -179,3 +179,51 @@ async def test_card_identity_snapshot_validates_age_without_db_access():
     for age in (0, -1, 3651):
         with pytest.raises(ValueError, match="older_than_days"):
             await PaymentBacklogReport.card_identity_snapshot(None, older_than_days=age)
+
+
+
+class _PriorityRows:
+    def all(self):
+        return [
+            ("card", "creation_unknown", "missing", "90d_plus", 52),
+            ("card", "creation_unknown", "missing", "30_to_90d", 12),
+            ("cryptobot", "pending", "present", "7_to_30d", 2),
+            ("tbank", "refund_review", "present", "90d_plus", 3),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_review_priority_snapshot_is_evidence_gated_and_aggregate_only():
+    session = SimpleNamespace(execute=AsyncMock(return_value=_PriorityRows()))
+    result = await PaymentBacklogReport.review_priority_snapshot(session)
+    assert sum(group["count"] for group in result) == 69
+    assert result[0] == {
+        "provider": "card",
+        "status": "creation_unknown",
+        "provider_id": "missing",
+        "age_band": "90d_plus",
+        "review_route": "manual_webhook_evidence_review",
+        "evidence_required": True,
+        "auto_settlement_allowed": False,
+        "count": 52,
+    }
+    assert result[-1]["review_route"] == "refund_evidence_review"
+    assert all(row["evidence_required"] is True for row in result)
+    assert not any(row["auto_settlement_allowed"] for row in result)
+    assert all(set(row) == {
+        "provider", "status", "provider_id", "age_band", "review_route",
+        "evidence_required", "auto_settlement_allowed", "count",
+    } for row in result)
+    assert not any("user_id" in row or "external_id" in row for row in result)
+    stmt = str(session.execute.await_args.args[0])
+    assert "GROUP BY" in stmt and "SELECT " in stmt
+    assert "UPDATE " not in stmt and "INSERT " not in stmt and "DELETE " not in stmt
+    assert "payments.updated_at" in stmt
+    session.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_review_priority_snapshot_rejects_unbounded_or_zero_age():
+    for age in (0, -1, 3651):
+        with pytest.raises(ValueError, match="older_than_days"):
+            await PaymentBacklogReport.review_priority_snapshot(None, older_than_days=age)
