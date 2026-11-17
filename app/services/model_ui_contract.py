@@ -147,6 +147,7 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     "kling-motion-2.6": {"mode": "720p", "character_orientation": "image"},
     "kling-motion-3.0": {"mode": "720p", "character_orientation": "image", "background_source": "input_video"},
     "veo-3.1": {"veo_model": "veo3_fast", "aspect_ratio": "16:9", "enable_fallback": False, "enable_translation": True, "generation_type": "TEXT_2_VIDEO"},
+    "grok-image-t2i": {"aspect_ratio": "1:1"},
     "grok-video-t2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
     "grok-video-i2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
     "grok-video-1.5": {"aspect_ratio": "16:9", "duration": 8, "resolution": "480p"},
