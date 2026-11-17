@@ -43,7 +43,7 @@ def matched_state(payment):
             "amount": "120.50", "currency": "RUB",
             "status": "paid",
         }
-    raise AssertionError(provider)
+    raise AssertionError(payment.provider)
 
 
 @pytest.mark.parametrize("provider", ["cryptobot", "tbank", "2328", "card"])
