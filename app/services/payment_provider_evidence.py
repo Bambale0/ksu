@@ -6,9 +6,11 @@ operator authorization to change an existing payment or wallet record.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +30,19 @@ from app.services.card_payments import CardPaymentService
 from app.services.payment_backlog import PaymentBacklogReport
 
 
+@dataclass(frozen=True, slots=True)
+class PaymentEvidenceCandidate:
+    """Detached evidence-only snapshot; no ORM object crosses the read-only tx."""
+
+    id: UUID
+    provider: str
+    external_id: str
+    amount: Decimal
+    currency: str
+    status: str
+    payload: dict[str, Any]
+
+
 class ProviderEvidenceProbe:
     """Classify bounded identity-verified provider observations, never settle."""
 
@@ -42,7 +57,7 @@ class ProviderEvidenceProbe:
         provider: str,
         limit: int = 3,
         older_than_days: int = 7,
-    ) -> list[Payment]:
+    ) -> list[PaymentEvidenceCandidate]:
         if provider not in cls.SUPPORTED_PROVIDERS:
             raise ValueError("unsupported provider")
         if not 1 <= limit <= cls.MAX_LOOKUPS:
@@ -60,10 +75,18 @@ class ProviderEvidenceProbe:
             .order_by(Payment.updated_at.asc(), Payment.id.asc())
             .limit(limit)
         )
-        return list((await session.scalars(query)).all())
+        return [
+            PaymentEvidenceCandidate(
+                id=row.id, provider=row.provider,
+                external_id=str(row.external_id), amount=Decimal(row.amount),
+                currency=row.currency, status=row.status,
+                payload=dict(row.payload or {}),
+            )
+            for row in (await session.scalars(query)).all()
+        ]
 
     @staticmethod
-    def _amount_matches(payment: Payment, value: object, currency: object) -> bool:
+    def _amount_matches(payment: PaymentEvidenceCandidate, value: object, currency: object) -> bool:
         if isinstance(value, bool) or isinstance(currency, (dict, list)):
             return False
         if value is None or not isinstance(currency, str):
@@ -80,7 +103,7 @@ class ProviderEvidenceProbe:
 
     @classmethod
     def classify_verified_response(
-        cls, payment: Payment, response: dict[str, Any] | None
+        cls, payment: PaymentEvidenceCandidate, response: dict[str, Any] | None
     ) -> str:
         """Fail closed if ownership or monetary evidence is incomplete.
 
@@ -182,7 +205,7 @@ class ProviderEvidenceProbe:
         return "provider_status_unrecognized"
 
     @staticmethod
-    async def lookup_status(payment: Payment) -> dict[str, Any] | None:
+    async def lookup_status(payment: PaymentEvidenceCandidate) -> dict[str, Any] | None:
         """Call only the provider's read-only invoice/status inquiry endpoint."""
         external_id = str(payment.external_id or "")
         if not external_id:
@@ -192,19 +215,19 @@ class ProviderEvidenceProbe:
                 settings.card_api_key, settings.card_api_base_url,
                 settings.card_webhook_key,
             )
-            get = lambda: client.get_invoice(external_id)
+            request = client.get_invoice(external_id)
         elif payment.provider == "cryptobot":
             client = CryptoPayClient(
                 settings.cryptopay_api_token, settings.cryptopay_base_url
             )
-            get = lambda: client.get_invoice(external_id)
+            request = client.get_invoice(external_id)
         elif payment.provider == "tbank":
             client = TBankClient(
                 settings.tbank_terminal_key, settings.tbank_password,
                 settings.tbank_base_url,
             )
             # T-Bank exposes its non-mutating GetState query over HTTP POST.
-            get = lambda: client.get_state(external_id)
+            request = client.get_state(external_id)
         elif payment.provider == "2328":
             client = Payment2328Client(
                 settings.payment_2328_project_uuid,
@@ -212,16 +235,16 @@ class ProviderEvidenceProbe:
                 settings.payment_2328_base_url,
             )
             # /v1/payment/info is a status query despite using HTTP POST.
-            get = lambda: client.get_payment_info(external_id=external_id)
+            request = client.get_payment_info(external_id=external_id)
         else:
             raise ValueError("unsupported provider")
         try:
-            return await get()
+            return await request
         finally:
             await client.aclose()
 
     @classmethod
-    async def probe(cls, payment: Payment) -> str:
+    async def probe(cls, payment: PaymentEvidenceCandidate) -> str:
         try:
             response = await cls.lookup_status(payment)
         except Exception:
