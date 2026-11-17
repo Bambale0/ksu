@@ -227,3 +227,72 @@ async def test_audit_cli_uses_readonly_transaction_and_aggregate_only(
     assert str(session.execute.await_args.args[0]) == "SET TRANSACTION READ ONLY"
     session.rollback.assert_awaited_once()
     dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("offset", [-1, 501])
+async def test_evidence_offset_rejects_unbounded_windows_before_db(offset):
+    with pytest.raises(ValueError, match="offset"):
+        await ProviderEvidenceProbe.candidates(
+            None, provider="card", limit=5, offset=offset,
+        )
+
+
+@pytest.mark.asyncio
+async def test_evidence_candidates_use_stable_bounded_page_offset():
+    row = candidate("card")
+
+    class _Rows:
+        def all(self):
+            return [row]
+
+    session = SimpleNamespace(scalars=AsyncMock(return_value=_Rows()))
+    selected = await ProviderEvidenceProbe.candidates(
+        session, provider="card", limit=2, offset=5,
+    )
+    assert len(selected) == 1
+    stmt = str(session.scalars.await_args.args[0])
+    assert "ORDER BY" in stmt and "LIMIT" in stmt and "OFFSET" in stmt
+    compiled = session.scalars.await_args.args[0].compile()
+    assert 5 in compiled.params.values()
+    assert 2 in compiled.params.values()
+    assert "UPDATE " not in stmt and "DELETE " not in stmt
+
+
+@pytest.mark.asyncio
+async def test_evidence_cli_offset_survives_readonly_and_output(monkeypatch, capsys):
+    script = Path(__file__).resolve().parents[1] / "scripts/audit_provider_payment_evidence.py"
+    spec = importlib.util.spec_from_file_location("audit_evidence_offset", script)
+    assert spec is not None and spec.loader is not None
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+
+    class Session:
+        execute = AsyncMock()
+        rollback = AsyncMock()
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+
+    session = Session()
+    monkeypatch.setattr(cli, "SessionFactory", lambda: session)
+    monkeypatch.setattr(cli, "engine", SimpleNamespace(dispose=AsyncMock()))
+    selected = AsyncMock(return_value=[candidate("card")])
+    query_provider = AsyncMock()
+    monkeypatch.setattr(cli.ProviderEvidenceProbe, "candidates", selected)
+    monkeypatch.setattr(cli.ProviderEvidenceProbe, "probe", query_provider)
+    monkeypatch.setattr(sys, "argv", [
+        "audit_provider_payment_evidence", "--provider", "card",
+        "--limit", "1", "--offset", "5",
+    ])
+    await cli.main()
+    data = json.loads(capsys.readouterr().out)
+    assert data["offset"] == 5
+    assert data["selected"] == 1
+    assert data["mode"] == "local_read_only"
+    assert data["automatic_settlement_allowed"] is False
+    assert data["changes_to_payments_or_wallets"] is False
+    assert selected.await_args.kwargs["offset"] == 5
+    query_provider.assert_not_awaited()
+    assert str(session.execute.await_args.args[0]) == "SET TRANSACTION READ ONLY"

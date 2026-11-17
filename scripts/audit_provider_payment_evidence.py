@@ -30,6 +30,8 @@ def args_parser() -> argparse.ArgumentParser:
         choices=sorted(ProviderEvidenceProbe.SUPPORTED_PROVIDERS),
     )
     parser.add_argument("--limit", type=int, default=3)
+    parser.add_argument("--offset", type=int, default=0,
+                        help="Skip up to 500 older candidates, without widening the query")
     parser.add_argument("--older-than-days", type=int, default=7)
     parser.add_argument(
         "--probe", action="store_true",
@@ -42,6 +44,8 @@ async def main() -> None:
     args = args_parser().parse_args()
     if not 1 <= args.limit <= ProviderEvidenceProbe.MAX_LOOKUPS:
         raise SystemExit("limit must be between 1 and 5")
+    if not 0 <= args.offset <= ProviderEvidenceProbe.MAX_OFFSET:
+        raise SystemExit("offset must be between 0 and 500")
     if not 1 <= args.older_than_days <= 3650:
         raise SystemExit("older-than-days must be between 1 and 3650")
 
@@ -54,6 +58,7 @@ async def main() -> None:
                 session,
                 provider=args.provider,
                 limit=args.limit,
+                offset=args.offset,
                 older_than_days=args.older_than_days,
             )
             await session.rollback()
@@ -68,6 +73,7 @@ async def main() -> None:
             "mode": "provider_status_inquiry" if args.probe else "local_read_only",
             "older_than_days": args.older_than_days,
             "max_items": args.limit,
+            "offset": args.offset,
             "selected": len(candidates),
             "outcome_counts": dict(sorted(outcomes.items())),
             "evidence_required": True,

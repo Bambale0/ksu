@@ -48,6 +48,7 @@ class ProviderEvidenceProbe:
 
     SUPPORTED_PROVIDERS = frozenset({"card", "cryptobot", "tbank", "2328"})
     MAX_LOOKUPS = 5
+    MAX_OFFSET = 500
 
     @classmethod
     async def candidates(
@@ -56,12 +57,15 @@ class ProviderEvidenceProbe:
         *,
         provider: str,
         limit: int = 3,
+        offset: int = 0,
         older_than_days: int = 7,
     ) -> list[PaymentEvidenceCandidate]:
         if provider not in cls.SUPPORTED_PROVIDERS:
             raise ValueError("unsupported provider")
         if not 1 <= limit <= cls.MAX_LOOKUPS:
             raise ValueError("limit must be between 1 and 5")
+        if not 0 <= offset <= cls.MAX_OFFSET:
+            raise ValueError("offset must be between 0 and 500")
         if not 1 <= older_than_days <= 3650:
             raise ValueError("older_than_days must be between 1 and 3650")
         query = (
@@ -74,6 +78,7 @@ class ProviderEvidenceProbe:
             )
             .order_by(Payment.updated_at.asc(), Payment.id.asc())
             .limit(limit)
+            .offset(offset)
         )
         return [
             PaymentEvidenceCandidate(
