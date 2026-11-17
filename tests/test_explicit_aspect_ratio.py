@@ -432,3 +432,73 @@ async def test_template_future_video_slots_do_not_bypass_fixed_audio_validation(
                 "reference_audio_urls": [audio.source_url],
             },
         )
+
+
+@pytest.mark.parametrize("requested_model", ["grok-image-t2i", "grok-image-i2i"])
+async def test_grok_text_route_without_reference_has_provider_required_square_ratio(
+    requested_model: str,
+) -> None:
+    spec, clean, cost, *_ = await GenerationService.prepare_request(
+        object(),
+        model_id=requested_model,
+        prompt="Square mountain painting",
+        parameters={},
+    )
+    assert spec.id == "grok-image-t2i"
+    assert spec.kie_model == "grok-imagine/text-to-image"
+    assert clean["aspect_ratio"] == "1:1"
+    assert cost == Decimal("12.00")
+
+
+async def test_grok_text_route_preserves_explicit_supported_ratio() -> None:
+    spec, clean, *_ = await GenerationService.prepare_request(
+        object(),
+        model_id="grok-image-i2i",
+        prompt="Vertical portrait",
+        parameters={"aspect_ratio": "9:16"},
+    )
+    assert spec.id == "grok-image-t2i"
+    assert clean["aspect_ratio"] == "9:16"
+
+
+@pytest.mark.parametrize("ratio", ["", "auto", "19:16", "0:0"])
+async def test_grok_text_route_rejects_unsupported_ratio_before_billing_or_outbox(
+    monkeypatch: pytest.MonkeyPatch, ratio: str,
+) -> None:
+    # An omitted value uses the documented square default. Explicitly invalid
+    # values must fail before any accounting or enqueueing takes place.
+    if not ratio:
+        return
+    billing = AsyncMock(side_effect=AssertionError("billing must not run"))
+    debit = AsyncMock(side_effect=AssertionError("wallet debit must not run"))
+    outbox = Mock(side_effect=AssertionError("outbox must not run"))
+    monkeypatch.setattr(BillingAccessService, "decision", billing)
+    monkeypatch.setattr(WalletService, "debit", debit)
+    monkeypatch.setattr(GenerationOutboxService, "add", outbox)
+    with pytest.raises(InvalidModelParametersError):
+        await GenerationService.create(
+            object(), object(), user_id=uuid4(), model_id="grok-image-i2i",
+            prompt="Grok prompt", parameters={"aspect_ratio": ratio},
+        )
+    billing.assert_not_awaited()
+    debit.assert_not_awaited()
+    outbox.assert_not_called()
+
+
+async def test_grok_i2i_with_reference_keeps_image_contract_unchanged() -> None:
+    spec, clean, cost, *_ = await GenerationService.prepare_request(
+        object(),
+        model_id="grok-image-i2i",
+        prompt="Change the background",
+        parameters={"image_urls": ["https://example.test/reference.png"]},
+    )
+    assert spec.id == "grok-image-i2i"
+    assert clean["image_urls"] == ["https://example.test/reference.png"]
+    assert "aspect_ratio" not in clean
+    assert cost == Decimal("14.00")
+
+
+def test_grok_public_t2i_default_matches_backend() -> None:
+    schema = build_public_model_ui_schema(ModelCatalog.get("grok-image-t2i").public_dict())
+    assert schema["defaults"]["aspect_ratio"] == "1:1"
+    assert "1:1" in _ratio_field(schema)["suggestions"]
