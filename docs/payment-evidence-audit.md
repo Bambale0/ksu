@@ -1,20 +1,20 @@
 # KSU historical payment provider-evidence audit (#609)
 
 This runbook concerns **observations, not settlement**. It must not update
-\`payments\`, \`wallet_transactions\`, promotions, invoice requests or refunds.
+`payments`, `wallet_transactions`, promotions, invoice requests or refunds.
 A payment older than 90 days is **not** automatically failed.
 
 ## Safety controls
 
 - Run only a known released Docker SHA with an authorized operator.
 - The first invocation **does not call any provider**. It reads KSU PostgreSQL
-  in a \`SET TRANSACTION READ ONLY\` transaction and prints aggregate metadata.
-- \`--probe\` explicitly requests **1–5 status inquiries** for one provider,
+  in a `SET TRANSACTION READ ONLY` transaction and prints aggregate metadata.
+- `--probe` explicitly requests **1–5 status inquiries** for one provider,
   one at a time, oldest-first. Only unresolved payments with an existing
-  \`external_id\` are eligible; the 64 Card \`creation_unknown\` with missing IDs
+  `external_id` are eligible; the 64 Card `creation_unknown` with missing IDs
   are never probed or associated by buyer email, amount, or currency.
-- Card/Crypto Pay use provider GET invoice queries. T-Bank \`/v2/GetState\`
-  and 2328 \`/v1/payment/info\` are *non-mutating status inquiries* despite
+- Card/Crypto Pay use provider GET invoice queries. T-Bank `/v2/GetState`
+  and 2328 `/v1/payment/info` are *non-mutating status inquiries* despite
   being transported over HTTP POST. No create, refund, cancel, payout, wallet
   credit, or reconciliation mutation is invoked.
 - Every response is matched against its provider invoice ID **and** local
@@ -30,35 +30,35 @@ A payment older than 90 days is **not** automatically failed.
 
 No network queries (safest first):
 
-\`\`\`bash
+```bash
 docker exec ksu-app-1 python -m scripts.audit_provider_payment_evidence --provider tbank --limit 3
-\`\`\`
+```
 
 Bounded read-only status inquiry, only if approved:
 
-\`\`\`bash
+```bash
 docker exec ksu-app-1 python -m scripts.audit_provider_payment_evidence --provider tbank --limit 3 --probe
-\`\`\`
+```
 
-Use \`--provider card|cryptobot|tbank|2328\` and optionally \`--older-than-days 7\`.
-The 90+ day oldest category can be inspected with \`--older-than-days 90\`
+Use `--provider card|cryptobot|tbank|2328` and optionally `--older-than-days 7`.
+The 90+ day oldest category can be inspected with `--older-than-days 90`
 **only when records exist**. The CLI intentionally makes no JSON output
 that identifies a specific invoice or authorizes an action.
 
 ## Interpretation
 
-- \`verified_provider_paid\`: provider reports a paid state and invoice,
+- `verified_provider_paid`: provider reports a paid state and invoice,
   ownership, exact currency and amount match. This is **only evidence** for
   a separate, auditable provider/ledger reconciliation — never permission
   to credit ROX from this script.
-- \`verified_provider_terminal\`: provider reports a terminal state. No
-  \`failed\` or refund transition follows automatically.
-- \`provider_refund_evidence\`: a refund/reversal signal may need partial
+- `verified_provider_terminal`: provider reports a terminal state. No
+  `failed` or refund transition follows automatically.
+- `provider_refund_evidence`: a refund/reversal signal may need partial
   refund and existing ledger comparison; no reversal occurs here.
-- \`verified_provider_pending\`: still requires follow-up; absence of paid
+- `verified_provider_pending`: still requires follow-up; absence of paid
   status is not proof of failure.
-- \`provider_not_found_unproven\`, \`identity_unverified\`,
-  \`provider_status_unrecognized\`, \`provider_lookup_unavailable\`: do not
+- `provider_not_found_unproven`, `identity_unverified`,
+  `provider_status_unrecognized`, `provider_lookup_unavailable`: do not
   infer any settlement decision. Retry sparingly or escalate for manual
   evidence review.
 
