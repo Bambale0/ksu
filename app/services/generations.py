@@ -168,6 +168,12 @@ class GenerationService:
 
         routed = resolve_model_request(model_id, merged, input_url=input_url)
         merged = routed.parameters
+        if routed.model_id == "grok-image-t2i" and merged.get("aspect_ratio") in (None, ""):
+            # The public Grok image card can route I2I -> T2I when no image is
+            # supplied. The provider requires a concrete ratio even when the
+            # original I2I form has no ratio field. Use its supported square
+            # default before pricing, wallet debit, or the provider outbox.
+            merged["aspect_ratio"] = "1:1"
 
         if routed.spec.family == "seedance":
             image_refs = merged.get("reference_image_urls")
