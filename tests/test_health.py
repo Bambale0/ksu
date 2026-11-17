@@ -159,5 +159,5 @@ def test_app_compose_readiness_healthcheck_is_advisory_and_bounded() -> None:
     assert "retries: 3" in app_service
     assert "start_period: 120s" in app_service
     assert "restart: unless-stopped" in app_service
-    # No automation of payment/generation replays is attached to health state.
-    assert "condition: service_healthy" not in app_service
+    # The probe is observation-only; no paid-work replay/restart command.
+    assert "docker compose restart" not in app_service
