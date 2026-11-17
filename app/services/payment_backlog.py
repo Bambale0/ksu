@@ -211,3 +211,51 @@ class PaymentBacklogReport:
             }
             for provider, status, state, count in rows
         ]
+
+
+    @classmethod
+    async def review_priority_snapshot(
+        cls, session: AsyncSession, *, older_than_days: int = 1
+    ) -> list[dict[str, object]]:
+        """Bounded aggregate backlog by evidence route and age; never settle.
+
+        The 90-day bucket distinguishes legacy cases from recent provider
+        outages. Missing external identifiers always need provider evidence:
+        *none* of these groups authorizes wallet credit or terminal failure.
+        """
+        if not 1 <= older_than_days <= 3650:
+            raise ValueError("older_than_days must be between 1 and 3650")
+        now = utcnow()
+        age = case(
+            (Payment.updated_at < now - timedelta(days=90), "90d_plus"),
+            (Payment.updated_at < now - timedelta(days=30), "30_to_90d"),
+            (Payment.updated_at < now - timedelta(days=7), "7_to_30d"),
+            else_="1_to_7d",
+        ).label("age_band")
+        id_state = case(
+            (Payment.external_id.is_(None), "missing"),
+            else_="present",
+        ).label("provider_id")
+        rows = (await session.execute(
+            select(Payment.provider, Payment.status, id_state, age,
+                   func.count(Payment.id).label("count"))
+            .where(
+                Payment.status.in_(cls.OPEN_STATUSES),
+                Payment.updated_at < now - timedelta(days=older_than_days),
+            )
+            .group_by(Payment.provider, Payment.status, id_state, age)
+            .order_by(Payment.provider, Payment.status, id_state, age)
+        )).all()
+        return [
+            {
+                "provider": provider,
+                "status": status,
+                "provider_id": id_presence,
+                "age_band": band,
+                "review_route": cls._review_route(provider, status, id_presence),
+                "evidence_required": True,
+                "auto_settlement_allowed": False,
+                "count": count,
+            }
+            for provider, status, id_presence, band, count in rows
+        ]
