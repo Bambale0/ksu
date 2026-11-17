@@ -30,6 +30,14 @@ services:
     image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     restart: unless-stopped
+    # Health is advisory in Compose: unhealthy marks the container for
+    # monitoring, it does not restart or re-enqueue paid jobs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     env_file: .env
     volumes:
       - ./logs:/app/logs
