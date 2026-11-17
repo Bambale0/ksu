@@ -461,14 +461,11 @@ async def test_grok_text_route_preserves_explicit_supported_ratio() -> None:
     assert clean["aspect_ratio"] == "9:16"
 
 
-@pytest.mark.parametrize("ratio", ["", "auto", "19:16", "0:0"])
+@pytest.mark.parametrize("ratio", ["auto", "19:16", "0:0"])
 async def test_grok_text_route_rejects_unsupported_ratio_before_billing_or_outbox(
     monkeypatch: pytest.MonkeyPatch, ratio: str,
 ) -> None:
-    # An omitted value uses the documented square default. Explicitly invalid
-    # values must fail before any accounting or enqueueing takes place.
-    if not ratio:
-        return
+    # Explicitly invalid values fail before any accounting or enqueueing.
     billing = AsyncMock(side_effect=AssertionError("billing must not run"))
     debit = AsyncMock(side_effect=AssertionError("wallet debit must not run"))
     outbox = Mock(side_effect=AssertionError("outbox must not run"))
