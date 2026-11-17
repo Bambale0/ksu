@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -175,7 +177,11 @@ async def test_provider_lookup_failure_does_not_expose_invoice_or_credentials(
 async def test_audit_cli_uses_readonly_transaction_and_aggregate_only(
     monkeypatch, capsys, probe_enabled
 ):
-    from scripts import audit_provider_payment_evidence as cli
+    script = Path(__file__).resolve().parents[1] / "scripts/audit_provider_payment_evidence.py"
+    spec = importlib.util.spec_from_file_location("audit_provider_payment_evidence", script)
+    assert spec is not None and spec.loader is not None
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
 
     class _Session:
         def __init__(self):
