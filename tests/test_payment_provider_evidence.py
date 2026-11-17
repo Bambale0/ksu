@@ -296,3 +296,51 @@ async def test_evidence_cli_offset_survives_readonly_and_output(monkeypatch, cap
     assert selected.await_args.kwargs["offset"] == 5
     query_provider.assert_not_awaited()
     assert str(session.execute.await_args.args[0]) == "SET TRANSACTION READ ONLY"
+
+
+
+@pytest.mark.parametrize(
+    "provider_status", ["in-progress", "IN_PROGRESS", "in_progress", "In-Progress"]
+)
+def test_lava_documented_in_progress_is_pending_observation_only(provider_status):
+    """Lava's contract and invoice-list enum spell progress differently.
+
+    Neither form authorizes a wallet credit or closes the local payment.
+    The read-only evidence probe still requires exact invoice/money/owner.
+    """
+    row = candidate("card")
+    invoice = matched_state(row)
+    invoice["status"] = provider_status
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, invoice)
+        == "verified_provider_pending"
+    )
+    wrong_buyer = {**invoice, "buyerEmail": "someone-else@example.test"}
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, wrong_buyer)
+        == "identity_unverified"
+    )
+    wrong_amount = {**invoice, "amount": "120.51"}
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, wrong_amount)
+        == "identity_unverified"
+    )
+    wrong_currency = {**invoice, "currency": "USD"}
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, wrong_currency)
+        == "identity_unverified"
+    )
+    wrong_invoice_id = {**invoice, "id": "other-invoice"}
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, wrong_invoice_id)
+        == "identity_unverified"
+    )
+
+
+def test_lava_unknown_status_remains_unrecognized_after_identity_verification():
+    row = candidate("card")
+    invoice = {**matched_state(row), "status": "reversal_pending"}
+    assert (
+        ProviderEvidenceProbe.classify_verified_response(row, invoice)
+        == "provider_status_unrecognized"
+    )

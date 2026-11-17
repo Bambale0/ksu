@@ -143,7 +143,12 @@ class ProviderEvidenceProbe:
                 return "provider_refund_evidence"
             if status in CardPaymentService.FAILED_STATUSES:
                 return "verified_provider_terminal"
-            if status in {"pending", "new", "processing"}:
+            # Lava Top has two published invoice status enums: the contract
+            # lookup uses `in-progress`, while invoice list/filter status uses
+            # `IN_PROGRESS`. Neither is proof of capture/settlement. Treat both
+            # as pending *observations* after strict id/owner/money validation.
+            # Source: https://gate.lava.top/docs/documentation.yaml
+            if status in {"pending", "new", "processing", "in-progress", "in_progress"}:
                 return "verified_provider_pending"
         elif provider == "cryptobot":
             if (
