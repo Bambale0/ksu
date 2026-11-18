@@ -1,21 +1,32 @@
 """Payment operator report must expose only provider readiness booleans."""
 
-from scripts import audit_historical_payments as audit
+import runpy
+from pathlib import Path
 
 
 def test_provider_readiness_is_boolean_only(monkeypatch):
-    monkeypatch.setattr(
-        audit.Payment2328Service, "provider_configured", lambda: False
+    # CI tests run with app/ imports available, not scripts/ as a package.
+    # Load the operator entry point by path, without invoking __main__.
+    audit = runpy.run_path(
+        str(
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "audit_historical_payments.py"
+        ),
+        run_name="ksu_operator_audit_readiness_test",
     )
     monkeypatch.setattr(
-        audit.CardPaymentService, "provider_configured", lambda: True
+        audit["Payment2328Service"], "provider_configured", lambda: False
     )
     monkeypatch.setattr(
-        audit.PaymentService,
+        audit["CardPaymentService"], "provider_configured", lambda: True
+    )
+    monkeypatch.setattr(
+        audit["PaymentService"],
         "provider_configured",
         lambda provider: provider == "cryptobot",
     )
-    report = audit.provider_readiness_snapshot()
+    report = audit["provider_readiness_snapshot"]()
     assert report == {
         "2328": {"configured": False},
         "card": {"configured": True},
