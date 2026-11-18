@@ -10,7 +10,22 @@ import json
 from sqlalchemy import text
 
 from app.db.session import SessionFactory, engine
+from app.services.card_payments import CardPaymentService
+from app.services.payment_2328 import Payment2328Service
 from app.services.payment_backlog import PaymentBacklogReport
+from app.services.payments import PaymentService
+
+
+
+def provider_readiness_snapshot() -> dict[str, dict[str, bool]]:
+    """Only configuration presence; never read or return credential values."""
+    return {
+        "2328": {"configured": bool(Payment2328Service.provider_configured())},
+        "card": {"configured": bool(CardPaymentService.provider_configured())},
+        "cryptobot": {"configured": bool(PaymentService.provider_configured("cryptobot"))},
+        "tbank": {"configured": bool(PaymentService.provider_configured("tbank"))},
+        "yookassa": {"configured": bool(PaymentService.provider_configured("yookassa"))},
+    }
 
 
 async def main() -> None:
@@ -24,6 +39,7 @@ async def main() -> None:
             review_priorities = await PaymentBacklogReport.review_priority_snapshot(session)
             print(json.dumps({
                 "older_than_days": 1,
+                "provider_polling_availability": provider_readiness_snapshot(),
                 "groups": rows,
                 "retry_schedule_groups": retry_rows,
                 "creation_request_groups": request_rows,
