@@ -5,6 +5,9 @@ export type ClientErrorKind = "window_error" | "unhandled_rejection" | "react_er
 type ClientErrorExtras = {
   componentStack?: string | null;
   digest?: string | null;
+  scriptFilename?: string | null;
+  scriptLine?: number | null;
+  scriptColumn?: number | null;
 };
 
 const MAX_REPORTS_PER_PAGE = 8;
@@ -30,6 +33,26 @@ function errorStack(value: unknown): string {
   return value instanceof Error ? clip(value.stack || "", 6000) : "";
 }
 
+// ErrorEvent.filename may contain a full cross-origin URL and Telegram query
+// parameters. Never transmit the origin, query, fragment, or directory path.
+function safeScriptFilename(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value, window.location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    const basename = url.pathname.split("/").pop() || "";
+    return /^[A-Za-z0-9._-]{1,120}\.m?js$/.test(basename) ? basename : null;
+  } catch {
+    return null;
+  }
+}
+
+function safePosition(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1_000_000
+    ? value
+    : null;
+}
+
 export function reportClientError(
   kind: ClientErrorKind,
   error: unknown,
@@ -39,7 +62,10 @@ export function reportClientError(
 
   const message = clip(errorMessage(error), 1000) || "Unknown client error";
   const stack = errorStack(error);
-  const signature = `${kind}|${message}|${stack.slice(0, 300)}`;
+  const scriptFile = safeScriptFilename(extras.scriptFilename);
+  const scriptLine = safePosition(extras.scriptLine);
+  const scriptColumn = safePosition(extras.scriptColumn);
+  const signature = `${kind}|${message}|${stack.slice(0, 300)}|${scriptFile || ""}|${scriptLine ?? ""}|${scriptColumn ?? ""}`;
   if (seen.has(signature) || sentCount >= MAX_REPORTS_PER_PAGE) return;
 
   seen.add(signature);
@@ -58,6 +84,9 @@ export function reportClientError(
     device_pixel_ratio: Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : null,
     digest: extras.digest ? clip(extras.digest, 256) : null,
     build_id: clip(process.env.NEXT_PUBLIC_BUILD_ID || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "", 128) || null,
+    script_file: scriptFile,
+    script_line: scriptLine,
+    script_column: scriptColumn,
   };
 
   try {
