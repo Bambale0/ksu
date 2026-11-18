@@ -7,7 +7,11 @@ import { reportClientError } from "@/lib/client-error-reporting";
 export function ClientErrorReporter() {
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
-      reportClientError("window_error", event.error || event.message || "Window error");
+      reportClientError("window_error", event.error || event.message || "Window error", {
+        scriptFilename: event.filename,
+        scriptLine: event.lineno,
+        scriptColumn: event.colno,
+      });
     };
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       reportClientError("unhandled_rejection", event.reason || "Unhandled promise rejection");
