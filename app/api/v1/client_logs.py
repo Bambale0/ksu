@@ -33,6 +33,9 @@ class ClientErrorReport(BaseModel):
     device_pixel_ratio: float | None = Field(default=None, ge=0, le=20)
     digest: str | None = Field(default=None, max_length=256)
     build_id: str | None = Field(default=None, max_length=128)
+    script_file: str | None = Field(default=None, max_length=128)
+    script_line: int | None = Field(default=None, ge=0, le=1_000_000)
+    script_column: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
@@ -64,6 +67,16 @@ def _redact_client_text(value: str | None) -> str:
     return text
 
 
+_SAFE_SCRIPT_FILE_RE = re.compile(r"[A-Za-z0-9._-]{1,120}\.m?js")
+
+
+def _safe_script_file(value: str | None) -> str:
+    """Accept a script basename only; URLs and Telegram data must not be logged."""
+
+    filename = str(value or "")
+    return filename if _SAFE_SCRIPT_FILE_RE.fullmatch(filename) else ""
+
+
 @router.post("")
 async def record_client_error(
     payload: ClientErrorReport,
@@ -74,7 +87,9 @@ async def record_client_error(
     pathname = _safe_pathname(payload.pathname)
     logger.error(
         "miniapp_client_error kind=%s user_id=%s telegram_id=%s path=%s "
-        "platform=%s viewport=%sx%s dpr=%s digest=%s build_id=%s message=%r stack=%r component_stack=%r ua=%r",
+        "platform=%s viewport=%sx%s dpr=%s digest=%s build_id=%s "
+        "script_file=%s script_line=%s script_column=%s "
+        "message=%r stack=%r component_stack=%r ua=%r",
         payload.kind,
         user.id,
         user.telegram_id,
@@ -85,6 +100,9 @@ async def record_client_error(
         payload.device_pixel_ratio,
         payload.digest or "",
         _redact_client_text(payload.build_id or ""),
+        _safe_script_file(payload.script_file),
+        payload.script_line,
+        payload.script_column,
         _redact_client_text(payload.message),
         _redact_client_text(payload.stack),
         _redact_client_text(payload.component_stack),
