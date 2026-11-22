@@ -1021,7 +1021,7 @@
     dom.adminView.replaceChildren(panel("Мои сессии", table(cols, data.sessions || [])));
   }
 
-  async function login(event = null) {
+  async function login(event = null, auto = false) {
     event?.preventDefault?.();
     if (!tg?.initData) {
       setMessage(dom.loginMessage, "Откройте админ-панель из Telegram. Signed initData отсутствует.", "error");
@@ -1029,9 +1029,9 @@
     }
     dom.loginButton.disabled = true;
     setMessage(dom.loginMessage, "Проверяем доступ…");
-    const body = {};
-    const otp = dom.loginOtp.value.trim();
-    const recovery = dom.loginRecovery.value.trim();
+    const body = auto ? { auto: true } : {};
+    const otp = auto ? "" : dom.loginOtp.value.trim();
+    const recovery = auto ? "" : dom.loginRecovery.value.trim();
     if (otp) body.otp = otp;
     if (recovery) body.recovery_code = recovery;
     try {
@@ -1046,6 +1046,10 @@
       if (!result.mfa_verified) throw new Error("Подтверждение не пройдено");
       await enterConsole();
     } catch (error) {
+      if (auto && error.status === 428) {
+        setMessage(dom.loginMessage, "Для обычного входа введите код подтверждения.");
+        return;
+      }
       setMessage(dom.loginMessage, error.status === 401 ? "Неверный код подтверждения или резервный код" : (error.message || "Вход не выполнен"), "error");
       state.token = null;
       notify("error");
@@ -1143,5 +1147,7 @@
   tg?.expand?.();
   if (!tg?.initData) {
     setMessage(dom.loginMessage, "Откройте админку внутри Telegram.", "error");
+  } else {
+    void login(null, true);
   }
 })();
