@@ -453,13 +453,13 @@
     }
   }
 
-  async function login(event) {
-    event.preventDefault();
+  async function login(event = null, auto = false) {
+    event?.preventDefault?.();
     setMessage(dom.trendLoginMessage, "Проверяю доступ…");
     try {
-      const otp = dom.trendOtp.value.trim();
-      const recovery = dom.trendRecovery.value.trim();
-      const body = {};
+      const otp = auto ? "" : dom.trendOtp.value.trim();
+      const recovery = auto ? "" : dom.trendRecovery.value.trim();
+      const body = auto ? { auto: true } : {};
       if (otp) body.otp = otp;
       if (recovery) body.recovery_code = recovery;
       const result = await api("/api/v1/admin/auth/login", {
@@ -489,6 +489,10 @@
       await loadAll();
       resetForm();
     } catch (error) {
+      if (auto && error.status === 428) {
+        setMessage(dom.trendLoginMessage, "Для обычного входа введите код подтверждения.");
+        return;
+      }
       setMessage(dom.trendLoginMessage, error.message || "Не удалось войти.", "error");
     }
   }
@@ -533,4 +537,5 @@
     tg?.expand?.();
   } catch (_error) { /* optional */ }
   resetForm();
+  if (tg?.initData) void login(null, true);
 })();
