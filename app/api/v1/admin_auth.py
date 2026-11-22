@@ -19,6 +19,7 @@ from app.services.admin_security import (
     effective_permissions,
     encrypt_mfa_secret,
     fingerprint,
+    parse_admin_auto_login_ids,
     generate_recovery_codes,
     generate_totp_secret,
     hash_recovery_code,
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 
 
 class LoginRequest(BaseModel):
+    auto: bool = False
     otp: str | None = Field(default=None, min_length=6, max_length=6)
     recovery_code: str | None = Field(default=None, min_length=8, max_length=64)
 
@@ -103,7 +105,7 @@ async def login(
 
     await AdminAuthService.enforce_rate_limit(
         redis,
-        key=f"admin:login:{ip_hash}",
+        key=f"admin:{'auto-login' if payload.auto else 'login'}:{ip_hash}",
         limit=settings.admin_login_rate_limit_per_minute,
     )
     telegram_user = AdminAuthService.parse_telegram_init_data(x_telegram_init_data)
@@ -136,8 +138,21 @@ async def login(
         await session.commit()
         raise HTTPException(status_code=429, detail="Admin login temporarily locked")
 
-    mfa_verified = not settings.admin_require_mfa
-    if admin.mfa_enabled:
+    # Only a fresh, signed Telegram Mini App user explicitly allowlisted for
+    # convenience can skip TOTP at login. Initial MFA enrollment remains mandatory.
+    # Step-up for sensitive operations ALWAYS verifies TOTP/recovery separately.
+    if payload.auto and (payload.otp or payload.recovery_code):
+        raise HTTPException(status_code=422, detail="Auto login cannot include MFA codes")
+    auto_allowed = (
+        payload.auto
+        and admin.mfa_enabled
+        and telegram_user.id in parse_admin_auto_login_ids()
+    )
+    if payload.auto and not auto_allowed:
+        raise HTTPException(status_code=428, detail="Additional admin verification required")
+
+    mfa_verified = bool(auto_allowed) or not settings.admin_require_mfa
+    if admin.mfa_enabled and not auto_allowed:
         mfa_verified = AdminAuthService.verify_second_factor(
             admin,
             otp=payload.otp,
@@ -158,7 +173,7 @@ async def login(
             )
             await session.commit()
             raise HTTPException(status_code=401, detail="Invalid admin credentials")
-    elif settings.admin_require_mfa:
+    elif settings.admin_require_mfa and not auto_allowed:
         mfa_verified = False
 
     admin.failed_login_count = 0
@@ -178,7 +193,7 @@ async def login(
         admin=admin,
         admin_session=record,
         request=request,
-        metadata={"mfa_verified": mfa_verified},
+        metadata={"mfa_verified": mfa_verified, "login_method": "telegram_allowlist" if auto_allowed else "mfa"},
     )
     await session.commit()
     return {
