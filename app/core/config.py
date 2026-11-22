@@ -231,6 +231,7 @@ class Settings(BaseSettings):
 
     admin_security_key: str = ""
     admin_bootstrap_telegram_ids: str = ""
+    admin_auto_login_telegram_ids: str = ""
     admin_require_mfa: bool = True
     admin_session_ttl_minutes: int = 480
     admin_idle_timeout_minutes: int = 30
