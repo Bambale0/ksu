@@ -276,3 +276,77 @@ def test_wildcard_with_deny_preserves_every_registered_route_and_action_permissi
     assert set(advertised) == registered - {"users.read"}
     # The finite UI list must never narrow the server's open-ended wildcard policy.
     assert AdminPolicy.has_permission(account, "future.unknown")
+
+
+@pytest.mark.asyncio
+async def test_allowlisted_admin_can_open_support_without_login_code(monkeypatch):
+    account, init_data = await actor("support", {})
+    async with SessionFactory() as session:
+        telegram_id = (await session.get(User, account.user_id)).telegram_id
+    monkeypatch.setattr(settings, "admin_auto_login_telegram_ids", str(telegram_id))
+
+    async with auth_client() as client:
+        login = await client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Telegram-Init-Data": init_data},
+            json={"auto": True},
+        )
+        assert login.status_code == 200, login.text
+        data = login.json()
+        assert data["mfa_verified"] is True
+        assert "support.read" in data["permissions"]
+        me = await client.get(
+            "/api/v1/admin/auth/me",
+            headers={"Authorization": f"Bearer {data['token']}"},
+        )
+        assert me.status_code == 200, me.text
+        assert "support.manage" in me.json()["permissions"]
+
+
+@pytest.mark.asyncio
+async def test_auto_login_does_not_trust_bootstrap_or_count_as_bad_totp(monkeypatch):
+    account, init_data = await actor("support", {})
+    async with SessionFactory() as session:
+        telegram_id = (await session.get(User, account.user_id)).telegram_id
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(telegram_id))
+    monkeypatch.setattr(settings, "admin_auto_login_telegram_ids", "")
+
+    async with auth_client() as client:
+        response = await client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Telegram-Init-Data": init_data},
+            json={"auto": True},
+        )
+        assert response.status_code == 428, response.text
+        async with SessionFactory() as session:
+            stored = await session.get(AdminAccount, account.id)
+            assert stored.failed_login_count == 0
+        manual = await client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Telegram-Init-Data": init_data},
+            json={"otp": totp_code(MFA_SECRET)},
+        )
+        assert manual.status_code == 200, manual.text
+
+
+@pytest.mark.asyncio
+async def test_auto_login_never_bypasses_first_mfa_enrollment(monkeypatch):
+    account, init_data = await actor("support", {}, mfa_enabled=False)
+    async with SessionFactory() as session:
+        telegram_id = (await session.get(User, account.user_id)).telegram_id
+    monkeypatch.setattr(settings, "admin_auto_login_telegram_ids", str(telegram_id))
+
+    async with auth_client() as client:
+        response = await client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Telegram-Init-Data": init_data},
+            json={"auto": True},
+        )
+        assert response.status_code == 428, response.text
+        normal = await client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Telegram-Init-Data": init_data},
+            json={},
+        )
+        assert normal.status_code == 200, normal.text
+        assert normal.json()["mfa_setup_required"] is True
