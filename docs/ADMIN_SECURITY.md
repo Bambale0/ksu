@@ -44,6 +44,7 @@ Required for production admin access:
 ```dotenv
 ADMIN_SECURITY_KEY=<dedicated random secret, at least 32 chars>
 ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary initial owner Telegram ID>
+ADMIN_AUTO_LOGIN_TELEGRAM_IDS=<optional comma-separated established admin Telegram IDs>
 ADMIN_REQUIRE_MFA=true
 ADMIN_SESSION_TTL_MINUTES=480
 ADMIN_IDLE_TIMEOUT_MINUTES=30
