@@ -514,3 +514,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Browser-only profile sign-out. The native Telegram Mini App remains untouched. */
+.web-profile-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 22px;
+  padding: 18px 22px;
+}
+.web-profile-session-copy {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.web-profile-session-copy strong { font-size: 15px; }
+.web-profile-session-copy p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.web-profile-logout {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 18px;
+}
+@media (max-width: 520px) {
+  .web-profile-session { align-items: stretch; padding: 16px; }
+  .web-profile-logout { width: 100%; }
+}
