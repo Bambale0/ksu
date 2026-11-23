@@ -27,7 +27,12 @@ test('browser visitors see the full ROXY landing with working sections', async (
   await expect(mosaic.locator('.roxy-film-tile')).toHaveCount(9);
   await expect(page.locator('.roxy-film-chrome')).toBeVisible();
   const atlas = await page.locator('.roxy-film-tile-portrait').evaluate((node) => getComputedStyle(node).backgroundImage);
-  expect(atlas).toMatch(/data:image\/webp;base64,/);
+  expect(atlas).toContain('/mini-app/roxy-film/atlas-1920.webp');
+  expect(atlas).toContain('/mini-app/roxy-film/atlas-3840.webp');
+  const image = await page.request.get('/mini-app/roxy-film/atlas-1920.webp');
+  expect(image.status()).toBe(200);
+  expect(image.headers()['content-type']).toContain('image/webp');
+  expect((await image.body()).byteLength).toBeGreaterThan(100_000);
   await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
   await expect(page.getByText('KSU')).toHaveCount(0);
 
