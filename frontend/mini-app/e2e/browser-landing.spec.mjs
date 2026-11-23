@@ -61,7 +61,7 @@ for (const width of [320, 390, 768, 1280]) {
 
 test('browser user can reach Telegram login and return to gallery', async ({ page }) => {
   await openLanding(page);
-  await page.getByRole('link', { name: /Начать создавать/ }).click();
+  await page.locator('.roxy-landing-nav').getByRole('link', { name: 'Вход' }).click();
   await expect(page).toHaveURL(/#telegram-login$/);
   await expect(page.locator('#telegram-login .roxy-login-widget')).toHaveCount(1);
   await page.locator('.roxy-landing-footer').getByRole('link', { name: 'Галерея' }).click();
