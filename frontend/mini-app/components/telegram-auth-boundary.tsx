@@ -50,6 +50,7 @@ function installBrowserInitDataFacade(browserInitData: string): () => void {
 export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [publicLanding, setPublicLanding] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +59,11 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
     tg?.expand?.();
 
     const run = async () => {
+      if (window.location.pathname === "/") {
+        // Marketing is always shown on the origin root; never launch the app here.
+        if (active) { setPublicLanding(true); setReady(true); }
+        return;
+      }
       const nativeInitData = getInitDataFallback();
       if (nativeInitData) {
         // Native Telegram already enters the existing signed WebApp auth contour.
@@ -105,6 +111,7 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   if (!ready) {
     return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ROXY…</small></div>;
   }
-  if (!authenticated) return <TelegramBrowserLogin />;
+  if (publicLanding) return <TelegramBrowserLogin />;
+  if (!authenticated) return <TelegramBrowserLogin compact />;
   return <>{children}</>;
 }
