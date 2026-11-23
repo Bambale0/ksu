@@ -23,9 +23,12 @@ test('browser visitors see the full ROXY landing with working sections', async (
   await expect(page.locator('#how')).toContainText('Три шага от идеи до результата');
   await expect(page.locator('#examples')).toContainText('Найди свой визуальный стиль');
   await expect(page.locator('#telegram-login')).toContainText('Войти с Telegram');
-  const hero = page.locator('.roxy-landing-hero-art img');
-  await expect(hero).toHaveAttribute('src', /^data:image\/webp;base64,/);
-  await expect.poll(() => hero.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+  const mosaic = page.locator('.roxy-film-mosaic');
+  await expect(mosaic.locator('.roxy-film-tile')).toHaveCount(9);
+  await expect(page.locator('.roxy-film-chrome')).toBeVisible();
+  const atlas = await page.locator('.roxy-film-tile-portrait').evaluate((node) => getComputedStyle(node).backgroundImage);
+  expect(atlas).toMatch(/data:image\/webp;base64,/);
+  await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
   await expect(page.getByText('KSU')).toHaveCount(0);
 
   const nav = page.locator('.roxy-landing-nav');
@@ -40,11 +43,37 @@ test('Telegram CTA preserves a referral startapp payload', async ({ page }) => {
   await expect(launch).toHaveAttribute('href', 'https://t.me/RoxyTestBot?startapp=ref_777');
 });
 
-test('landing stays inside the mobile viewport', async ({ page }) => {
+for (const width of [320, 390, 768, 1280]) {
+  test(`film-mosaic landing stays within the viewport at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await openLanding(page);
+    await expect(page.locator('.roxy-landing-actions .roxy-landing-button-primary')).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await expect(page.getByRole('link', { name: /Запустить в Telegram/ }).first()).toBeVisible();
+  });
+}
+
+test('browser user can reach Telegram login and return to gallery', async ({ page }) => {
+  await openLanding(page);
+  await page.getByRole('link', { name: /Начать создавать/ }).click();
+  await expect(page).toHaveURL(/#telegram-login$/);
+  await expect(page.locator('#telegram-login .roxy-login-widget')).toHaveCount(1);
+  await page.locator('.roxy-landing-footer').getByRole('link', { name: 'Галерея' }).click();
+  await expect(page).toHaveURL(/#examples$/);
+  await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
+});
+
+
+test('mobile menu opens, navigates and closes cleanly', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openLanding(page);
-
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
-  await expect(page.getByRole('link', { name: /Запустить/ }).first()).toBeVisible();
+  const details = page.locator('.roxy-landing-mobile-menu');
+  const trigger = details.locator('summary');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(details).toHaveAttribute('open', '');
+  await details.getByRole('link', { name: 'Возможности' }).click();
+  await expect(page).toHaveURL(/#features$/);
+  await expect(details).not.toHaveAttribute('open', '');
 });
