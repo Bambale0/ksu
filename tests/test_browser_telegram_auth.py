@@ -107,5 +107,7 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "tg.initData = recoveredInitData" in telegram
     assert "telegram-web-app.js" in layout
     assert "const tg = initTelegram();" in social
-    assert "tg?.initData ? api.me()" in social
+    assert "(tg?.initData || isWebSessionAuthenticated()) ? api.me()" in social
+    assert "isWebSessionAuthenticated" in telegram
+    assert boundary.index('fetch("/api/v1/web-auth/me"') < boundary.index("const browserInitData = getBrowserInitData();")
     assert "const tg = initTelegram();" in action
