@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
@@ -138,8 +138,14 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
 
 
 @app.get("/", include_in_schema=False)
-async def product_landing() -> RedirectResponse:
-    return RedirectResponse(url="/landing/", status_code=307)
+@app.head("/", include_in_schema=False)
+async def product_landing() -> FileResponse:
+    """Independent public marketing page, not a Next.js/Mini App entry."""
+    return FileResponse(
+        site_dir / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 app.include_router(health_router)
@@ -152,7 +158,7 @@ app.include_router(api_router)
 app.include_router(batch_router, prefix="/api/v1")
 
 web_dir = Path(__file__).resolve().parent / "web"
-landing_dir = web_dir / "landing"
+site_dir = web_dir / "site"
 mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
 mimetypes.add_type("image/webp", ".webp")
@@ -167,6 +173,6 @@ app.mount(
     StaticFiles(directory=ReferenceStaticStorage.ensure_root()),
     name="reference-static",
 )
-app.mount("/landing", StaticFiles(directory=landing_dir, html=True), name="landing")
+app.mount("/site-assets", StaticFiles(directory=site_dir / "assets"), name="site-assets")
 app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
 app.mount("/admin-app", StaticFiles(directory=admin_app_dir, html=True), name="admin-app")

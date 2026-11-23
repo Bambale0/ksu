@@ -67,15 +67,13 @@ Canonical tokens live in `frontend/mini-app/app/globals.css`.
 
 The design is dark-first. Violet is the main action language, pink is a brand accent. The separate unauthenticated film-mosaic landing uses chrome-lilac art while the Telegram Mini App retains its tested native chrome. Gold and Telegram blue are not part of customer chrome.
 
-## Browser landing — Film Mosaic
+## Public website / Mini App separation
 
-The public unauthenticated landing is implemented in `frontend/mini-app/components/telegram-browser-login.tsx` and its existing `app/browser-landing.css`. Keep it part of the canonical Next.js customer tree; do not resurrect a second interactive UI in `app/web/landing/`. That old URL is an explicit forwarder to `/mini-app/`, preserving query/hash during the JavaScript redirect.
+The marketing website at `/` is an independent, FastAPI-served HTML/CSS site owned by `app/web/site/`. Its static assets are served from `/site-assets/`. Public routes and product copy are documented in `docs/ROXY_PUBLIC_SITE.md`.
 
-Visual direction: nearly black canvas, tight asymmetric image/video-style mosaic, chrome-lilac `R` centerpiece, editorial type, prominent accessible CTAs. The current compressed 3×3 `lib/roxy-mosaic-atlas.ts` is design-reference artwork provided for this redesign, **not** real customer generations. Do not imply otherwise or substitute private user media for public assets without publication consent. Replace mock artwork with approved, optimized and published media through a dedicated review.
+The Next.js customer Mini App is owned exclusively by `frontend/mini-app/`, compiled into `app/web/mini_app/` and mounted at `/mini-app/`. The public website must **not** import, mount, embed, depend on or modify the Mini App UI, theme, auth or build artifacts. It may link to the app as a separate destination. The obsolete public `/landing/` route is removed and returns 404.
 
-The visual layer must preserve `browser-auth`, `startapp` referral payloads, Telegram Login, all real application routes, dynamic backend model schemas, pricing and wallet behavior. Hero tiles are decorative: the real CTAs must be live links and keep keyboard and focus semantics. Gallery sections have stable copy; the login section retains all loading, ready, signing-in and failure states. No artificial API requests, autoplay or heavy WebGL on first paint.
-
-For quality, verify at 320, 390, 768 and 1280px with Playwright; test a native Telegram deep link and unauthenticated browser login fallback. Check reduced motion, color contrast, loading, no overflow and screenshot comparisons before promoting to production.
+Any already-existing browser guest components inside the Mini App are outside this website change and remain untouched. App behavior requires a separately authorized change.
 
 ## Primary navigation
 
