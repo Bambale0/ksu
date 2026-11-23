@@ -77,6 +77,7 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "ROXY AI STUDIO" in html
     assert "/site-assets/" in css
     assert ".gallery-item:nth-child(6){grid-column:span 12;" in css
+    assert ".gallery-item:nth-child(6){grid-column:span 2;grid-row:span 2}" in css
     assert ".mobile-nav{display:block" in css
     assert "@media(max-width:1000px)" in css
     assert "@media(max-width:660px)" in css
