@@ -291,6 +291,11 @@ class NeironychGenerationProviderService:
         disposition = error_disposition(exc)
         message = str(exc) if exc.local_validation else safe_user_error_message(exc)
         if disposition == "fallback":
+            # An unknown image submission is already potentially billable.
+            # A later 429/5xx during idempotent lookup does not authorize
+            # spending again on Nexus or Kie.
+            if not video and (locked.parameters or {}).get("_submission_uncertain"):
+                return await cls._mark_image_uncertain(session, locked, error=message)
             return await cls._fallback_or_fail(session, locked, reason=message)
         if disposition == "reject":
             await GenerationProviderService.fail_and_refund(session, locked.id, message)
