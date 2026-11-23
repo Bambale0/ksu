@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.db.models import Generation, User, WalletTransaction
 from app.db.reliability_models import GenerationOutbox
 from app.db.session import SessionFactory
-from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_reliability import ClaimedGeneration, GenerationOutboxService
 from app.services.generation_worker import GenerationWorkerService
 
 
@@ -60,7 +60,7 @@ def test_unverified_or_unrelated_error_never_becomes_image_result_failure(
 
 
 @pytest.mark.asyncio
-async def test_uncertain_seedream_result_timeout_preserves_original_receipt_and_refund_semantics():
+async def test_uncertain_seedream_result_timeout_preserves_original_receipt_and_refund_semantics(monkeypatch):
     async with SessionFactory() as session:
         user = User(
             telegram_id=random.randint(6_000_000_000_000, 7_999_999_999_999),
@@ -85,12 +85,19 @@ async def test_uncertain_seedream_result_timeout_preserves_original_receipt_and_
         session.add(generation)
         await session.flush()
         generation_id = generation.id
-        GenerationOutboxService.add(session, generation_id)
+        outbox = GenerationOutboxService.add(session, generation_id)
+        await session.flush()
+        outbox_id = outbox.id
         generation.updated_at = datetime.now(timezone.utc) - timedelta(
             seconds=settings.generation_submission_unknown_timeout_seconds + 60
         )
         await session.commit()
 
+    async def claim_our_generation(_session):
+        # CI runs a full suite in the same test DB; do not claim another test's outbox.
+        return ClaimedGeneration(outbox_id=outbox_id, generation_id=generation_id, attempts=1)
+
+    monkeypatch.setattr(GenerationOutboxService, "claim", claim_our_generation)
     assert await GenerationWorkerService.process_one(None) is True  # type: ignore[arg-type]
 
     async with SessionFactory() as session:
