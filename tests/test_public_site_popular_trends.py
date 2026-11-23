@@ -4,7 +4,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
