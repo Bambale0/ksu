@@ -56,16 +56,16 @@ Canonical tokens live in `frontend/mini-app/app/globals.css`.
 
 | Role | Value |
 | --- | --- |
-| Background | `#07070B` |
-| Deep background | `#030305` |
-| Violet | `#AA79ED` |
-| Pink | `#D6A5F7` |
+| Background | `#0B0B10` |
+| Deep background | `#07070B` |
+| Violet | `#9B5CFF` |
+| Pink | `#FF5FB7` |
 | Text | `#FFFFFF` |
-| Muted | `#B6ADBF` |
+| Muted | `#A6A6B3` |
 | Success | `#72DBA2` |
 | Danger | `#FF8298` |
 
-The design is dark-first. Lilac and chrome gradients are the action and identity language, while image tiles carry the hero. Gold and Telegram blue are not part of customer chrome.
+The design is dark-first. Violet is the main action language, pink is a brand accent. The separate unauthenticated film-mosaic landing uses chrome-lilac art while the Telegram Mini App retains its tested native chrome. Gold and Telegram blue are not part of customer chrome.
 
 ## Browser landing — Film Mosaic
 
