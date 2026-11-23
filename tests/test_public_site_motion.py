@@ -53,3 +53,16 @@ def test_new_asset_versions_track_git_blob_hashes():
         blob = b"blob " + str(len(data)).encode() + b"\0" + data
         fingerprint = sha1(blob).hexdigest()[:12]
         assert f'/site-assets/{file.name}?v={fingerprint}' in html
+
+def test_rx_branded_social_preview_is_present_and_has_explicit_dimensions():
+    html = HTML.read_text(encoding="utf-8")
+    assert '/site-assets/roxy-mark.svg' in html
+    assert 'property="og:image"' in html
+    assert 'roxy-social-preview.png?v=' in html
+    assert 'property="og:image:width" content="1200"' in html
+    assert 'property="og:image:height" content="630"' in html
+    assert 'name="twitter:card" content="summary_large_image"' in html
+    preview = (ROOT / "assets" / "roxy-social-preview.png").read_bytes()
+    assert preview[:8] == b"\\x89PNG\\r\\n\\x1a\\n"
+    assert int.from_bytes(preview[16:20], "big") == 1200
+    assert int.from_bytes(preview[20:24], "big") == 630
