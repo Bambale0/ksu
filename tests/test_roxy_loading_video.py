@@ -6,7 +6,8 @@ BASE = Path(__file__).resolve().parents[1] / "frontend" / "mini-app"
 def test_loader_is_shared_by_boot_and_auth():
     source = (BASE / "components" / "roxy-loading-video.tsx").read_text()
     assert "autoPlay" in source and "muted" in source and "playsInline" in source and "loop" in source
-    assert 'preload="metadata"' in source
+    assert 'preload="auto"' in source
+    assert "onLoadedData" in source
     for path in ("roxy-app.tsx", "roxy-social-app.tsx", "telegram-auth-boundary.tsx"):
         assert "RoxyLoadingVideo" in (BASE / "components" / path).read_text()
 
