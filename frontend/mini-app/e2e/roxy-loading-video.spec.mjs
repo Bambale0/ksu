@@ -78,6 +78,10 @@ test('native phone splash animates immediately while the media is buffering', as
       body: JSON.stringify({ telegram_id: 777, first_name: 'QA', balance_rox: '100' }),
     });
   });
+  await page.route('**/api/v1/onboarding', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: '{"enabled":true,"completed":false,"version":"qa"}',
+  }));
   await page.route('**/mini-app/loading/*', (route) => route.abort());
   await page.route('**/api/v1/generations/models', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: '{"models":[],"families":[]}',
@@ -86,6 +90,12 @@ test('native phone splash animates immediately while the media is buffering', as
   const splash = page.locator('.splash-video');
   await expect(splash).toBeVisible();
   await expect(splash.locator('.splash-video-fallback-mark')).toBeVisible();
+  const onboardingOverlay = page.locator('.onboarding-overlay.roxy-onboarding-v2');
+  await expect(onboardingOverlay).toBeVisible();
+  const splashLayer = await splash.evaluate((node) => Number(getComputedStyle(node).zIndex));
+  const onboardingLayer = await onboardingOverlay.evaluate((node) => Number(getComputedStyle(node).zIndex));
+  expect(splashLayer).toBeGreaterThan(onboardingLayer);
+
   await expect.poll(async () => splash.locator('.splash-video-fallback-mark').evaluate(
     (element) => getComputedStyle(element).animationName,
   )).toContain('roxy-boot-pulse');
