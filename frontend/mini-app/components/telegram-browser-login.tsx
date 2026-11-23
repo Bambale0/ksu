@@ -60,7 +60,7 @@ function TelegramGlyph() {
   return <span className="roxy-telegram-glyph" aria-hidden="true">➤</span>;
 }
 
-export function TelegramBrowserLogin() {
+export function TelegramBrowserLogin({ compact = false }: { compact?: boolean } = {}) {
   const widgetRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [botUsername, setBotUsername] = useState("");
@@ -105,7 +105,12 @@ export function TelegramBrowserLogin() {
         } | null;
         if (!response.ok || !payload?.ok || !payload.init_data) throw new Error("Telegram login failed");
         saveBrowserInitData(payload.init_data, Number(payload.expires_in || 0));
-        window.location.reload();
+        if (window.location.pathname === "/") {
+          // Login from marketing must enter the real app, not reload the landing.
+          window.location.assign("/mini-app/" + window.location.search);
+        } else {
+          window.location.reload();
+        }
       } catch {
         setStatus("error");
       }
@@ -133,6 +138,30 @@ export function TelegramBrowserLogin() {
   const launchHref = telegramUrl || "#telegram-login";
   const launchTarget = telegramUrl ? "_blank" : undefined;
   const launchRel = telegramUrl ? "noreferrer" : undefined;
+  const appHref = "/mini-app/" + (typeof window === "undefined" ? "" : window.location.search);
+
+  if (compact) {
+    return (
+      <main className="roxy-app-login" aria-labelledby="roxy-app-login-title">
+        <div className="roxy-login-panel">
+          <a className="roxy-landing-logo" href="/" aria-label="ROXY — на главную">
+            <span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong>
+          </a>
+          <h1 id="roxy-app-login-title">Вход в ROXY</h1>
+          <p>Авторизуйся через Telegram, чтобы открыть генерации, историю, баланс и профиль.</p>
+          <div ref={widgetRef} className="browser-login-widget roxy-login-widget" aria-live="polite" />
+          {status === "loading" && <small>Готовлю безопасный вход…</small>}
+          {status === "signing-in" && <small>Вхожу в ROXY…</small>}
+          {status === "ready" && <small>Продолжить через Telegram</small>}
+          {status === "error" && <div role="alert" className="browser-login-fallback">
+            <small>Виджет временно недоступен.</small>
+            {telegramUrl && <a className="roxy-landing-button roxy-landing-button-ghost" href={telegramUrl} target="_blank" rel="noreferrer">Открыть Mini App в Telegram</a>}
+          </div>}
+          <a className="roxy-app-login-home" href="/">← На сайт ROXY</a>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="roxy-browser-landing" aria-labelledby="roxy-landing-title">
@@ -146,7 +175,7 @@ export function TelegramBrowserLogin() {
           <a href="#examples">Галерея</a>
           <a href="#telegram-login">Вход</a>
         </nav>
-        <a className="roxy-landing-button roxy-landing-button-small" href="#telegram-login">Начать <span aria-hidden="true">↗</span></a>
+        <a className="roxy-landing-button roxy-landing-button-small" href={appHref}>Начать <span aria-hidden="true">↗</span></a>
         <details ref={mobileMenuRef} className="roxy-landing-mobile-menu">
           <summary aria-label="Открыть меню"><span aria-hidden="true">☰</span></summary>
           <nav aria-label="Мобильное меню" onClick={() => { if (mobileMenuRef.current) mobileMenuRef.current.open = false; }}>
@@ -172,7 +201,7 @@ export function TelegramBrowserLogin() {
           <h1 id="roxy-landing-title">Создавай фото и видео с AI</h1>
           <p>Твоя идея превращается в визуал. Создавай, оживляй и переосмысливай в ROXY.</p>
           <div className="roxy-landing-actions">
-            <a className="roxy-landing-button roxy-landing-button-primary" href="#telegram-login">Начать создавать <span aria-hidden="true">▶</span></a>
+            <a className="roxy-landing-button roxy-landing-button-primary" href={appHref}>Начать создавать <span aria-hidden="true">▶</span></a>
             <a className="roxy-landing-button roxy-landing-button-ghost" href={launchHref} target={launchTarget} rel={launchRel}><TelegramGlyph /> Запустить в Telegram</a>
           </div>
         </div>
@@ -205,7 +234,7 @@ export function TelegramBrowserLogin() {
             <span className="roxy-film-kicker">ОТ РЕФЕРЕНСА К РЕЗУЛЬТАТУ</span>
             <h3>Одна идея. Бесконечно много версий.</h3>
             <p>Используй свои кадры, готовые тренды и инструменты редактирования. Экспериментируй без сложного монтажа.</p>
-            <a className="roxy-film-text-link" href="#telegram-login">Попробовать ROXY <span aria-hidden="true">↗</span></a>
+            <a className="roxy-film-text-link" href={appHref}>Попробовать ROXY <span aria-hidden="true">↗</span></a>
           </div>
         </div>
       </section>
@@ -245,7 +274,7 @@ export function TelegramBrowserLogin() {
             </figure>
           ))}
         </div>
-        <a className="roxy-landing-button roxy-landing-button-primary roxy-examples-cta" href="#telegram-login">Создать свою историю <span aria-hidden="true">✦</span></a>
+        <a className="roxy-landing-button roxy-landing-button-primary roxy-examples-cta" href={appHref}>Создать свою историю <span aria-hidden="true">✦</span></a>
       </section>
 
       <section className="roxy-telegram-section" id="telegram-login">
