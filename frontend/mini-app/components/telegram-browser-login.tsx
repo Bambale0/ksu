@@ -188,7 +188,7 @@ export function TelegramBrowserLogin({ compact = false }: { compact?: boolean } 
       </header>
 
       <section className="roxy-film-hero" id="top">
-        <div className="roxy-film-mosaic" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as CSSProperties} role="group" aria-label="Демонстрационный коллаж возможностей ROXY">
+        <div className="roxy-film-mosaic" style={{ "--roxy-art": ROXY_MOSAIC_ATLAS } as CSSProperties} role="group" aria-label="Демонстрационный коллаж возможностей ROXY">
           {filmTiles.map((tile) => (
             <div className={"roxy-film-tile roxy-film-tile-" + tile.id} key={tile.id} role="img" aria-label={tile.label}>
               {"video" in tile && tile.video ? <span className="roxy-film-play" aria-hidden="true">▶</span> : null}
@@ -225,7 +225,7 @@ export function TelegramBrowserLogin({ compact = false }: { compact?: boolean } 
           ))}
         </div>
         <div className="roxy-feature-showcase">
-          <div className="roxy-feature-showcase-art" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as CSSProperties}>
+          <div className="roxy-feature-showcase-art" style={{ "--roxy-art": ROXY_MOSAIC_ATLAS } as CSSProperties}>
             <span className="roxy-feature-shot roxy-feature-shot-before" role="img" aria-label="Исходный визуальный референс" />
             <span className="roxy-feature-transition" aria-hidden="true">→</span>
             <span className="roxy-feature-shot roxy-feature-shot-after" role="img" aria-label="Результат творческого преобразования" />
@@ -266,7 +266,7 @@ export function TelegramBrowserLogin({ compact = false }: { compact?: boolean } 
         <div className="roxy-style-chips" aria-label="Примеры стилей">
           {styles.map((style) => <span key={style}>{style}</span>)}
         </div>
-        <div className="roxy-examples-mosaic" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as CSSProperties}>
+        <div className="roxy-examples-mosaic" style={{ "--roxy-art": ROXY_MOSAIC_ATLAS } as CSSProperties}>
           {filmTiles.slice(0, 6).map((tile) => (
             <figure className={"roxy-example-tile roxy-example-" + tile.id} key={tile.id}>
               <span className="roxy-example-picture" role="img" aria-label={tile.label} />
