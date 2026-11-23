@@ -11,10 +11,22 @@
 - The only intentional connection to the app is an ordinary link to `/mini-app/`. Its URL preserves whitelisted referral query parameters `startapp`, `start_payload` and `ref` when users click. The website does not import app JavaScript or use the app authentication.
 - Keep runtime billing, wallet, webhook and admin unchanged.
 
-## Visual system
+## Visual system — editorial revision
 
-- Dark full-bleed asymmetric media mosaic and lilac chrome `R` in the hero.
-- Independent static content: hero, tools, creative process, visual gallery, FAQ, final CTA, footer.
+The public-facing brand is **ROXY AI STUDIO**. The first screen retains the dark media mosaic and chrome-lilac R; the page below it uses visual editorial pacing rather than repeated SaaS cards. Design intent: an art-directed creative studio / visual culture journal, not a generic AI-template landing.
+
+- The capabilities section is an intentionally asymmetric split between a photographic editorial spread and a typographic feature list. Its imagery is **moodboard content**, not a before/after promise.
+- The process is three horizontally ruled editorial lines, rather than feature-card clones.
+- The gallery varies tile proportions, has plain descriptions, and makes **no fake filter controls**; its concepts are explicitly labeled as demonstrative.
+- FAQ uses native details/summary; final CTA is an open editorial treatment without purple gradient callout-card framing.
+- The desktop header switches to a functioning `details` mobile/tablet navigation at `1000px`, including the 661–1000px range that formerly had no navigation.
+- Only standalone `app/web/site/index.html` and `app/web/site/assets/styles.css` are modified. The Mini App remains an independent destination.
+
+### Visual QA checklist
+
+Compare at viewport widths 320, 390, 768, 1024 and 1440px. Confirm no horizontal overflow, header menu remains reachable, visible text does not overlap images, headings keep an intelligible hierarchy, and each CTA carries the `startapp`, `start_payload` and `ref` query parameters where present. Validate both keyboard focus and reduced motion.
+
+
 - Images are design-only AI-generated concepts and **not** actual customer results or public trend footage. The `3840×2160` canvas is upscaled from generated source imagery; it is not a native 4K generation.
 - Assets `site-assets/atlas-1920.webp` and `site-assets/atlas-3840.webp` use CSS `image-set` so retina displays can choose higher density.
 - No external CDN, third-party fonts, autoplay or obligatory WebGL. Mobile menu uses native HTML details/summary.
