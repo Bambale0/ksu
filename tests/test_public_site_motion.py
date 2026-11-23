@@ -63,6 +63,6 @@ def test_rx_branded_social_preview_is_present_and_has_explicit_dimensions():
     assert 'property="og:image:height" content="630"' in html
     assert 'name="twitter:card" content="summary_large_image"' in html
     preview = (ROOT / "assets" / "roxy-social-preview.png").read_bytes()
-    assert preview[:8] == b"\\x89PNG\\r\\n\\x1a\\n"
+    assert preview[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10])
     assert int.from_bytes(preview[16:20], "big") == 1200
     assert int.from_bytes(preview[20:24], "big") == 630
