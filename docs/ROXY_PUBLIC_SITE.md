@@ -69,3 +69,11 @@ The public website remains a dependency-free FastAPI-served HTML/CSS/JS site. We
 - New static regression assertions in `tests/test_public_site.py`; browser screenshots at 320, 390, 768, 1024 and 1440 widths must be reviewed for overflow, sticky navigation, hierarchy, captions and mobile stacking.
 
 References: `shadcn-ui/ui` Button and Accordion primitive source; `anthropics/skills/skills/frontend-design/SKILL.md`; KSU `AGENTS.md`.
+
+## Capabilities composition refinement (2026-11-23)
+
+The public capabilities section uses an intentionally quieter typographic scale and shorter editorial image treatment. The source atlas is a 3×3 grid of landscape cells; placing it into a portrait frame with `background-size: 300% 300%` distorts individual photographs. Within the capabilities stage only, `background-size: auto 300%` keeps the source aspect ratio and crops a single cell horizontally. The hero's separate tiled mosaic contract is unchanged.
+
+The image remains a design concept, not a real user result. Decorative `ROXY STUDIES` and simulated portfolio credits were removed to avoid implying otherwise. Headings and capability rows have a reduced visual weight, and the desktop stage uses a square aspect ratio while responsive breakpoints reflow it to a landscape tablet and portrait mobile frame. The application, payments, API, models and gallery ranking remain untouched.
+
+Manual browser QA should check the image crop and balance at 320/390/768/1024/1440px, as well as #features anchor scroll and normal scrolling. A screenshot captured mid-scroll with the sticky header over an exiting heading is not, by itself, proof of a broken anchor: `scroll-padding-top` remains the only anchor offset mechanism.
