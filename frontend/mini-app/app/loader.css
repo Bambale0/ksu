@@ -244,3 +244,20 @@
 @media (prefers-reduced-motion: reduce) {
   .splash-video-media { display: none; }
 }
+/* Native Telegram paints the splash before a six-second video can decode.
+   Animate the real brand mark immediately, then reveal the first decoded frame.
+   The app removes the splash as soon as its own boot request has settled. */
+.splash-video-fallback-mark {
+  transform-origin: center;
+  transition: opacity .18s ease;
+}
+.splash-video-playing .splash-video-fallback-mark { opacity: 0; }
+@keyframes roxy-boot-pulse {
+  0%, 100% { transform: scale(.975); filter: drop-shadow(0 0 10px rgba(160,84,255,.23)); }
+  50% { transform: scale(1.045); filter: drop-shadow(0 0 26px rgba(255,95,183,.5)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .splash-video:not(.splash-video-playing) .splash-video-fallback-mark {
+    animation: roxy-boot-pulse 1.35s ease-in-out infinite;
+  }
+}
