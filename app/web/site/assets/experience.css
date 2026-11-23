@@ -102,3 +102,12 @@
  .reading-progress span{transition:none!important;will-change:auto}
  .gallery-item:hover figcaption{padding-bottom:15px}
 }
+/* Avoid hero-copy and fixed-bottom format tiles colliding at small heights,
+   large system fonts, or translated locales: on phones they participate in flow. */
+@media (max-width: 660px) {
+  .hero { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; min-height: 100svh; padding: 0 16px 30px; }
+  .hero-formats { position: relative; left: auto; right: auto; bottom: auto; margin-top: 26px; width: 100%; }
+}
+@media (max-width: 390px) {
+  .hero { min-height: 100svh; }
+}
