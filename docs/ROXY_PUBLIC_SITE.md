@@ -17,7 +17,7 @@ The public-facing brand is **ROXY AI STUDIO**. The first screen retains the dark
 
 - The capabilities section is an intentionally asymmetric split between a photographic editorial spread and a typographic feature list. Its imagery is **moodboard content**, not a before/after promise.
 - The process is three horizontally ruled editorial lines, rather than feature-card clones.
-- The gallery varies tile proportions, has plain descriptions, and makes **no fake filter controls**; its concepts are explicitly labeled as demonstrative.
+- The gallery is a **live read-only projection of active curated trends** sorted by the existing `admin_trends.payload.usage_count`. No static illustrative content, fake filters or hardcoded trending IDs are shown.
 - FAQ uses native details/summary; final CTA is an open editorial treatment without purple gradient callout-card framing.
 - The desktop header switches to a functioning `details` mobile/tablet navigation at `1000px`, including the 661–1000px range that formerly had no navigation.
 - Only standalone `app/web/site/index.html` and `app/web/site/assets/styles.css` are modified. The Mini App remains an independent destination.
@@ -38,3 +38,19 @@ Compare at viewport widths 320, 390, 768, 1024 and 1440px. Confirm no horizontal
 - Verify `/` returns HTTP 200 HTML with ROXY marketing, `/site-assets/styles.css` and both WebP assets return 200, and `/landing/` returns 404.
 - Check `/mini-app/` and `/mini-app/release.json` remain available **without redirecting to the public site**.
 - Check desktop and 320/390/768px mobile, CTA/referral link, and browser console before declaring production release.
+
+
+## Live popularity gallery (2026-11-23)
+
+The independent landing uses `app/web/site/assets/popular-trends.js`, not any code from `frontend/mini-app/`.
+
+- `GET /api/v1/public-site/popular-trends?limit=6` is an anonymous **read-only** FastAPI endpoint in `app/api/v1/public_site.py`.
+- Reads only active `admin_trends` with safe, public HTTP(S) preview media; reuses `TrendService.public_view` to reject obsolete/invalid model recipes. It emits **only** `id,title,media_type,preview_kind,preview_url,poster_url,usage_count` rather than private prompts, provider parameters or wallet information.
+- Ranking is by descending `usage_count`, then newest creation time. KSU increments this counter on trend runs (including workflows), but **administrators can also edit it**; it is an existing product counter, not independently verified analytics or a last-24-hours leaderboard.
+- Cache: Redis 90 seconds (best effort), HTTP cache 30 seconds. Admin activation/deactivation and popularity changes therefore become visible after TTL; there are no hardcoded trending IDs.
+- Video clips play muted, inline, looped and **only while visible**. Offscreen and page-hidden clips pause. Respect `prefers-reduced-motion` and Save-Data. Images use native lazy loading. Remote video formats are detected from the public preview filename/URL rather than presuming every video trend has a playable motion clip.
+- Each tile navigates to the existing `/mini-app/trend/?id=<uuid>` (not a new Mini App feature), preserving allowed referral query keys. If the app is unauthenticated, its existing sign-in flow takes over.
+- Empty/error states explain what happened; retry is explicit. No private generations or customer posts are returned by this endpoint.
+- `tests/test_public_site_popular_trends.py` covers ranking, safe URLs, data minimization, anonymous access and cache; `tests/test_public_site.py` enforces JS/gallery contract. Browser QA covers desktop/mobile cards, video pause/autoplay and retry.
+
+The /mini-app source tree, its own trend catalog, billing and user sessions are not modified by this feature.
