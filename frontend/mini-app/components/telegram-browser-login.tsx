@@ -62,6 +62,7 @@ function TelegramGlyph() {
 
 export function TelegramBrowserLogin() {
   const widgetRef = useRef<HTMLDivElement | null>(null);
+  const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [botUsername, setBotUsername] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "signing-in" | "error">("loading");
 
@@ -146,9 +147,9 @@ export function TelegramBrowserLogin() {
           <a href="#telegram-login">Вход</a>
         </nav>
         <a className="roxy-landing-button roxy-landing-button-small" href="#telegram-login">Начать <span aria-hidden="true">↗</span></a>
-        <details className="roxy-landing-mobile-menu">
+        <details ref={mobileMenuRef} className="roxy-landing-mobile-menu">
           <summary aria-label="Открыть меню"><span aria-hidden="true">☰</span></summary>
-          <nav aria-label="Мобильное меню">
+          <nav aria-label="Мобильное меню" onClick={() => { if (mobileMenuRef.current) mobileMenuRef.current.open = false; }}>
             <a href="#features">Возможности</a>
             <a href="#how">Процесс</a>
             <a href="#examples">Галерея</a>
