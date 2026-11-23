@@ -180,6 +180,6 @@ def test_public_site_asset_urls_follow_actual_content_fingerprints() -> None:
         ("popular-trends.js", "src"),
     ):
         payload = (root / "assets" / filename).read_bytes()
-        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\\0" + payload
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + bytes([0]) + payload
         version = sha1(git_blob).hexdigest()[:12]
         assert f'{tag}="/site-assets/{filename}?v={version}"' in html
