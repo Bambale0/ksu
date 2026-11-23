@@ -40,6 +40,21 @@ async function openWebProfile(page, { native = false, account = false } = {}) {
         balance_rox: '100',
       }) });
     }
+    // /account renders a full overview object; an incomplete "items" mock
+    // throws in the real page and tests the error boundary, not sign-out.
+    if (pathname === '/api/v1/me/overview') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        account: { id: '11111111-1111-4111-8111-111111111111', first_name: 'QA', username: 'qa', created_at: '2026-11-23T00:00:00Z' },
+        balance: { bonus_rox: '100', withdrawable_rox: '0', rub_accounting_equivalent: '100' },
+        generations: { total: 0, statuses: {} },
+        payments: { total: 0, currencies: {} },
+        support: { total: 0, statuses: {} },
+        partner: { first_line: 0, second_line: 0, available_rub: '0', pending_rub: '0', withdrawable_rox: '0', withdrawals: {} },
+        social: { following: 0, followers: 0 },
+        notifications: { unread: 0 },
+        preferences: { ui_language: 'ru', notifications_enabled: true, marketing_notifications: false, profile_discoverable: true },
+      }) });
+    }
     if (pathname === '/api/v1/generations/models') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"models":[],"families":[]}' });
     }
