@@ -203,15 +203,40 @@
 .roxy-landing-footer nav { display: flex; flex-wrap: wrap; gap: 16px; }
 .roxy-landing-footer small { color: #8c8496; font-size: 12px; }
 
+
+.roxy-landing-mobile-menu { display: none; position: relative; justify-self: end; }
+.roxy-landing-mobile-menu summary {
+  list-style: none; cursor: pointer;
+  min-width: 44px; min-height: 44px; display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.23); border-radius: 50%;
+  background: #17131e; color: #f3e7ff; font-size: 23px;
+}
+.roxy-landing-mobile-menu summary::-webkit-details-marker { display: none; }
+.roxy-landing-mobile-menu summary:focus-visible { outline: 3px solid #dbaaff; outline-offset: 3px; }
+.roxy-landing-mobile-menu nav {
+  position: absolute; z-index: 100; top: calc(100% + 12px); right: 0;
+  width: min(240px, calc(100vw - 28px));
+  display: grid; padding: 9px;
+  border: 1px solid rgba(218,194,255,.24); border-radius: 19px;
+  background: #15111d; box-shadow: 0 24px 60px rgba(0,0,0,.55);
+}
+.roxy-landing-mobile-menu nav a {
+  padding: 13px 15px; min-height: 44px; border-radius: 10px;
+  color: #f2eafd; font-size: 14px; font-weight: 700;
+}
+.roxy-landing-mobile-menu nav a:hover, .roxy-landing-mobile-menu nav a:focus-visible { background: rgba(207,164,255,.16); }
+
 @media (max-width: 960px) {
-  .roxy-landing-nav { grid-template-columns: 1fr auto; padding-inline: 22px; }
+  .roxy-landing-nav { grid-template-columns: 1fr auto auto; padding-inline: 22px; }
+  .roxy-landing-mobile-menu { display: block; }
   .roxy-landing-links { display: none; }
   .roxy-feature-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .roxy-telegram-section { grid-template-columns: 1fr; }
   .roxy-film-hero { min-height: 860px; }
 }
 @media (max-width: 600px) {
-  .roxy-landing-nav { min-height: 60px; padding: 9px 14px; }
+  .roxy-landing-nav { grid-template-columns: 1fr auto; min-height: 60px; padding: 9px 14px; }
+  .roxy-landing-nav > .roxy-landing-button { display: none; }
   .roxy-landing-logo strong { font-size: 21px; }
   .roxy-landing-button-small { min-height: 42px; padding: 9px 15px; font-size: 12px; }
   .roxy-film-hero { min-height: 855px; }
