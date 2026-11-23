@@ -13,7 +13,6 @@ from app.db.reliability_models import GenerationOutbox
 from app.db.session import SessionFactory
 from app.providers.neironych_submission import SNAPSHOT_KEY
 from app.services.abuse_protection import AbuseProtectionService, ProviderCircuitOpen
-from app.services.generation_provider_routing import switch_to_fallback
 from app.services.generation_reliability import ClaimedGeneration, GenerationOutboxService
 from app.services.generation_worker import GenerationWorkerService
 from app.services.neironych_generation_provider import NeironychGenerationProviderService
