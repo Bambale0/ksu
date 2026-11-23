@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
+import { WebProfileLogout } from "@/components/web-profile-logout";
 import { compactNumber, customerRequest } from "@/lib/customer-api";
 
 type Overview = {
@@ -70,6 +71,7 @@ export default function AccountPage() {
           </button>)}
         </div>
       </div>
+      <WebProfileLogout />
     </StandaloneShell>
   );
 }

@@ -514,3 +514,30 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* First-party browser-only session action. Telegram profile layout is untouched. */
+.web-profile-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 22px;
+  margin-top: 20px;
+}
+.web-profile-session-copy { flex: 1 1 250px; min-width: 0; }
+.web-profile-session-copy p { margin: 7px 0 0; max-width: 540px; font-size: 13px; line-height: 1.6; }
+.web-profile-logout {
+  min-height: 44px;
+  flex: 0 0 auto;
+  font-weight: 720;
+}
+.web-profile-logout-error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+@media (max-width: 540px) {
+  .web-profile-session { flex-direction: column; align-items: stretch; }
+  .web-profile-logout { width: 100%; }
+}
