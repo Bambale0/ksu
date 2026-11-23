@@ -37,14 +37,15 @@ test('loading video selects responsive codecs and disappears as soon as app data
   await expect(video).toHaveJSProperty('playsInline', true);
   await expect(video).toHaveJSProperty('loop', true);
   await expect(video).toHaveJSProperty('controls', false);
+  await expect(video).toHaveJSProperty('preload', 'auto');
   const sources = await video.locator('source').evaluateAll((nodes) => nodes.map((item) => ({
     src: item.getAttribute('src'),
     media: item.getAttribute('media'),
     type: item.getAttribute('type'),
   })));
   expect(sources).toEqual([
-    { src: '/mini-app/loading/roxy-loading-mobile-9x16.webm', media: '(max-width: 767px) and (orientation: portrait)', type: 'video/webm' },
     { src: '/mini-app/loading/roxy-loading-mobile-9x16.mp4', media: '(max-width: 767px) and (orientation: portrait)', type: 'video/mp4' },
+    { src: '/mini-app/loading/roxy-loading-mobile-9x16.webm', media: '(max-width: 767px) and (orientation: portrait)', type: 'video/webm' },
     { src: '/mini-app/loading/roxy-loading-web-16x9.webm', media: null, type: 'video/webm' },
     { src: '/mini-app/loading/roxy-loading-web-16x9.mp4', media: null, type: 'video/mp4' },
   ]);
@@ -63,4 +64,32 @@ test('media autoplay failure leaves a branded non-blocking fallback', async ({ p
   await page.goto('/mini-app/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.splash-video.splash-video-fallback')).toBeVisible();
   await expect(page.locator('.splash-video-fallback-mark')).toBeVisible();
+});
+test('native phone splash animates immediately while the media is buffering', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installTelegram(page);
+  let resolveMe;
+  const waiting = new Promise((resolve) => { resolveMe = resolve; });
+  await page.route('**/api/v1/me', async (route) => {
+    await waiting;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ telegram_id: 777, first_name: 'QA', balance_rox: '100' }),
+    });
+  });
+  await page.route('**/mini-app/loading/*', (route) => route.abort());
+  await page.route('**/api/v1/generations/models', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: '{"models":[],"families":[]}',
+  }));
+  await page.goto('/mini-app/', { waitUntil: 'domcontentloaded' });
+  const splash = page.locator('.splash-video');
+  await expect(splash).toBeVisible();
+  await expect(splash.locator('.splash-video-fallback-mark')).toBeVisible();
+  await expect.poll(async () => splash.locator('.splash-video-fallback-mark').evaluate(
+    (element) => getComputedStyle(element).animationName,
+  )).toContain('roxy-boot-pulse');
+  expect(await splash.locator('video').locator('source').first().getAttribute('type')).toBe('video/mp4');
+  resolveMe();
+  await expect(splash).toHaveCount(0);
 });
