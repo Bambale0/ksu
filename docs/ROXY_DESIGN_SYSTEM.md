@@ -1,7 +1,7 @@
 # ROXY Mini App — Next.js + React
 
 Status: canonical customer application architecture.
-Last synchronized: 2026-08-20.
+Last synchronized: 2026-11-23.
 
 ## Source of truth
 
@@ -56,16 +56,26 @@ Canonical tokens live in `frontend/mini-app/app/globals.css`.
 
 | Role | Value |
 | --- | --- |
-| Background | `#0B0B10` |
-| Deep background | `#07070B` |
-| Violet | `#9B5CFF` |
-| Pink | `#FF5FB7` |
+| Background | `#07070B` |
+| Deep background | `#030305` |
+| Violet | `#AA79ED` |
+| Pink | `#D6A5F7` |
 | Text | `#FFFFFF` |
-| Muted | `#A6A6B3` |
+| Muted | `#B6ADBF` |
 | Success | `#72DBA2` |
 | Danger | `#FF8298` |
 
-The design is dark-first. Violet is the main action language, pink is a brand accent. Gold and Telegram blue are not part of customer chrome.
+The design is dark-first. Lilac and chrome gradients are the action and identity language, while image tiles carry the hero. Gold and Telegram blue are not part of customer chrome.
+
+## Browser landing — Film Mosaic
+
+The public unauthenticated landing is implemented in `frontend/mini-app/components/telegram-browser-login.tsx` and its existing `app/browser-landing.css`. Keep it part of the canonical Next.js customer tree; do not resurrect a second interactive UI in `app/web/landing/`. That old URL is an explicit forwarder to `/mini-app/`, preserving query/hash during the JavaScript redirect.
+
+Visual direction: nearly black canvas, tight asymmetric image/video-style mosaic, chrome-lilac `R` centerpiece, editorial type, prominent accessible CTAs. The current compressed 3×3 `lib/roxy-mosaic-atlas.ts` is design-reference artwork provided for this redesign, **not** real customer generations. Do not imply otherwise or substitute private user media for public assets without publication consent. Replace mock artwork with approved, optimized and published media through a dedicated review.
+
+The visual layer must preserve `browser-auth`, `startapp` referral payloads, Telegram Login, all real application routes, dynamic backend model schemas, pricing and wallet behavior. Hero tiles are decorative: the real CTAs must be live links and keep keyboard and focus semantics. Gallery sections have stable copy; the login section retains all loading, ready, signing-in and failure states. No artificial API requests, autoplay or heavy WebGL on first paint.
+
+For quality, verify at 320, 390, 768 and 1280px with Playwright; test a native Telegram deep link and unauthenticated browser login fallback. Check reduced motion, color contrast, loading, no overflow and screenshot comparisons before promoting to production.
 
 ## Primary navigation
 
