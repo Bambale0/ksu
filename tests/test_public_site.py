@@ -1,5 +1,6 @@
 """Marketing domain root is a standalone static site, independent from Mini App."""
 import importlib
+from hashlib import sha1
 from pathlib import Path
 
 import pytest
@@ -66,7 +67,7 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert html.count('class="process-row"') == 3
     assert 'id="popular-trends"' in html
     assert 'id="popular-trends-status"' in html
-    assert 'src="/site-assets/popular-trends.js"' in html
+    assert 'src="/site-assets/popular-trends.js?v=' in html
     assert 'class="gallery-item ' not in html
     assert 'class="capabilities-stage"' in html
     assert 'class="editorial-intro"' in html
@@ -163,3 +164,22 @@ def test_capabilities_composition_keeps_atlas_aspect_ratio_and_clean_overlay() -
     # Make the photographic work itself the focus, not simulated portfolio chrome.
     assert "ROXY<br>STUDIES" not in html
     assert "Демонстрационные образы" not in html
+
+
+def test_public_site_asset_urls_follow_actual_content_fingerprints() -> None:
+    """HTML must use a fresh asset URL when CSS or JS bytes change.
+
+    HTML itself is no-store, but browser/CDN caches may retain an unchanged
+    /site-assets/styles.css or popular-trends.js URL after production deploy.
+    """
+
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    for filename, tag in (
+        ("styles.css", "href"),
+        ("popular-trends.js", "src"),
+    ):
+        payload = (root / "assets" / filename).read_bytes()
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\\0" + payload
+        version = sha1(git_blob).hexdigest()[:12]
+        assert f'{tag}="/site-assets/{filename}?v={version}"' in html
