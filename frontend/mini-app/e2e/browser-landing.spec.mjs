@@ -11,7 +11,7 @@ async function openLanding(page, query = '') {
     contentType: 'application/javascript',
     body: 'window.__roxyWidgetLoaded = true;',
   }));
-  await page.goto(`/mini-app/${query}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`/${query}`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Создавай фото и видео с AI' })).toBeVisible();
 }
 
@@ -76,4 +76,22 @@ test('mobile menu opens, navigates and closes cleanly', async ({ page }) => {
   await details.getByRole('link', { name: 'Возможности' }).click();
   await expect(page).toHaveURL(/#features$/);
   await expect(details).not.toHaveAttribute('open', '');
+});
+
+test('root is marketing while /mini-app/ is the guest app sign-in', async ({ page }) => {
+  await openLanding(page);
+  await expect(page.locator('.roxy-browser-landing')).toBeVisible();
+  await page.locator('.roxy-film-hero-copy').getByRole('link', { name: /Начать создавать/ }).click();
+  await expect(page).toHaveURL(/\/mini-app\//);
+  await expect(page.locator('.roxy-app-login')).toBeVisible();
+  await expect(page.locator('.roxy-browser-landing')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Вход в ROXY' })).toBeVisible();
+  await page.getByRole('link', { name: /На сайт ROXY/ }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('.roxy-browser-landing')).toBeVisible();
+});
+
+test('deleted /landing/ route never serves marketing', async ({ page }) => {
+  const response = await page.goto('/landing/', { waitUntil: 'domcontentloaded' });
+  expect(response?.status()).toBe(404);
 });
