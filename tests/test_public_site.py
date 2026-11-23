@@ -183,3 +183,23 @@ def test_public_site_asset_urls_follow_actual_content_fingerprints() -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + bytes([0]) + payload
         version = sha1(git_blob).hexdigest()[:12]
         assert f'{tag}="/site-assets/{filename}?v={version}"' in html
+
+
+def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
+    """The hero already showcases imagery; features should explain the product."""
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    css = (root / "assets/styles.css").read_text(encoding="utf-8")
+
+    assert 'id="features"' in html
+    assert html.count('class="capability"') == 4
+    assert '<figure class="capabilities-stage">' not in html
+    assert 'class="stage-frame' not in html
+    assert 'capabilities-list-caption' not in html
+    assert '.stage-frame' not in css
+    assert '.capabilities-layout{display:block;' in css
+    assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
+    assert '.capabilities-list{grid-template-columns:minmax(0,1fr)}' in css
+    assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
+    # The only atlas artwork remaining is in the hero, not the capabilities section.
+    assert html.count('class="hero-mosaic"') == 1
