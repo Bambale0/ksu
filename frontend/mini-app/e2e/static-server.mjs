@@ -23,6 +23,7 @@ const types = new Map([
 
 function safeFile(urlPath) {
   let pathname = decodeURIComponent(urlPath.split('?')[0] || '/');
+  if (pathname === '/landing' || pathname.startsWith('/landing/')) return null;
   if (pathname === '/' || pathname === '/mini-app' || pathname === '/mini-app/') pathname = '/index.html';
   if (pathname.startsWith('/mini-app/')) pathname = pathname.slice('/mini-app'.length);
   if (pathname === '/') pathname = '/index.html';
