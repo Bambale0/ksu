@@ -48,6 +48,6 @@ test('failed Telegram login config yields an accessible error rather than market
     body: JSON.stringify({ detail: 'temporary outage' }),
   }));
   await page.goto('/mini-app/', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('alert')).toContainText('Вход через Telegram временно недоступен.');
+  await expect(page.locator('.roxy-app-login-error[role="alert"]')).toContainText('Вход через Telegram временно недоступен.');
   await expect(page.locator('.roxy-browser-landing')).toHaveCount(0);
 });
