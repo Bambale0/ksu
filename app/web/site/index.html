@@ -113,20 +113,17 @@
     <section class="section gallery-section" id="gallery" aria-labelledby="gallery-title">
       <div class="gallery-heading">
         <div>
-          <span class="eyebrow">03 / ПОДБОРКА НАСТРОЕНИЙ</span>
-          <h2 id="gallery-title">От портрета<br><em>до другой реальности.</em></h2>
+          <span class="eyebrow">03 / В ТРЕНДЕ · ROXY AI STUDIO</span>
+          <h2 id="gallery-title">То, что чаще<br><em>всего создают.</em></h2>
         </div>
-        <p>Не галерея клиентских работ, а визуальный moodboard: характер, свет, фактура и настроение, с которыми можно экспериментировать.</p>
+        <p>Живые превью опубликованных трендов ROXY, отсортированные по числу запусков. Выбирай понравившийся и создавай свою версию.</p>
       </div>
-      <div class="gallery-grid">
-        <figure class="gallery-item gallery-portrait"><div class="gallery-picture" role="img" aria-label="Художественный портрет с веснушками и влажными волосами"></div><figcaption><span>01 / Портрет</span><span>Свет и фактура</span></figcaption></figure>
-        <figure class="gallery-item gallery-lily"><div class="gallery-picture" role="img" aria-label="Стеклянный хромированный цветок в фиолетовом освещении"></div><figcaption><span>02 / Объект</span><span>Металл и стекло</span></figcaption></figure>
-        <figure class="gallery-item gallery-sunset"><div class="gallery-picture" role="img" aria-label="Девушка в струящейся ткани на фоне заката"></div><figcaption><span>03 / Движение</span><span>Воздух и ткань</span></figcaption></figure>
-        <figure class="gallery-item gallery-cat"><div class="gallery-picture" role="img" aria-label="Белый кот с радужным контровым светом"></div><figcaption><span>04 / Атмосфера</span><span>Призма света</span></figcaption></figure>
-        <figure class="gallery-item gallery-rain"><div class="gallery-picture" role="img" aria-label="Кинематографический портрет за дождевым стеклом"></div><figcaption><span>05 / Кино</span><span>Дождь в кадре</span></figcaption></figure>
-        <figure class="gallery-item gallery-cosmic"><div class="gallery-picture" role="img" aria-label="Космонавт на фоне огромной розовой планеты"></div><figcaption><span>06 / Воображение</span><span>Другие миры</span></figcaption></figure>
+      <div id="popular-trends" class="gallery-grid live-trends-grid" aria-label="Популярные тренды ROXY"></div>
+      <div id="popular-trends-status" class="live-trends-status" role="status" aria-live="polite">
+        <p>Загружаем популярные тренды…</p>
       </div>
-      <div class="gallery-outro"><p>Вдохновился? Попробуй собрать собственную визуальную историю.</p><a class="button button-primary" href="/mini-app/" data-app-link>Открыть студию <span aria-hidden="true">↗</span></a></div>
+      <noscript><p class="live-trends-status">Чтобы увидеть живые превью трендов, включи JavaScript в браузере.</p></noscript>
+      <div class="gallery-outro"><p>Понравилась идея? Открой тренд, добавь свои референсы и создай собственный результат.</p><a class="button button-primary" href="/mini-app/" data-app-link>Все тренды <span aria-hidden="true">↗</span></a></div>
     </section>
 
     <section class="section faq-section" id="faq" aria-labelledby="faq-title">
@@ -148,6 +145,7 @@
     </section>
   </main>
   <footer class="site-footer"><div class="footer-brand"><a href="/" class="logo"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a><p>AI Creative Studio. Пространство для твоих идей.</p></div><nav aria-label="Ссылки сайта"><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a><a href="/mini-app/" data-app-link>Приложение</a></nav><small>© ROXY AI STUDIO 2026</small></footer>
+  <script src="/site-assets/popular-trends.js" defer></script>
   <script>
     (() => {
       const current = new URLSearchParams(location.search);
