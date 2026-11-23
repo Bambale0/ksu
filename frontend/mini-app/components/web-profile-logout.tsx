@@ -18,9 +18,14 @@ export function WebProfileLogout() {
 
   useEffect(() => {
     const browserCredential = getBrowserInitData();
-    // The website auth boundary installs this exact credential via its SDK
-    // facade. A native Telegram launch has a different, signed initData.
-    setIsBrowserSession(Boolean(browserCredential) && getInitDataFallback() === browserCredential);
+    const currentInitData = getInitDataFallback();
+    const nativeUser = Boolean(window.Telegram?.WebApp?.initDataUnsafe?.user);
+    // Main App installs the saved browser credential via an SDK facade.
+    // Standalone /account does not have that boundary and may have no SDK
+    // initData at all. In both cases, never expose logout for native Telegram.
+    setIsBrowserSession(Boolean(browserCredential)
+      && !nativeUser
+      && (!currentInitData || currentInitData === browserCredential));
   }, []);
 
   if (!isBrowserSession) return null;
