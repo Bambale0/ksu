@@ -146,6 +146,15 @@ export function TelegramBrowserLogin() {
           <a href="#telegram-login">Вход</a>
         </nav>
         <a className="roxy-landing-button roxy-landing-button-small" href="#telegram-login">Начать <span aria-hidden="true">↗</span></a>
+        <details className="roxy-landing-mobile-menu">
+          <summary aria-label="Открыть меню"><span aria-hidden="true">☰</span></summary>
+          <nav aria-label="Мобильное меню">
+            <a href="#features">Возможности</a>
+            <a href="#how">Процесс</a>
+            <a href="#examples">Галерея</a>
+            <a href="#telegram-login">Войти</a>
+          </nav>
+        </details>
       </header>
 
       <section className="roxy-film-hero" id="top">
