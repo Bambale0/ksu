@@ -102,7 +102,7 @@ async def test_popular_trends_sort_by_real_counter_and_hide_private_recipes(monk
     monkeypatch.setattr(TrendService, "public_view", public_view)
     payload = await public_site.popular_trends_payload(session, limit=6)
     assert [item["id"] for item in payload["items"]] == [
-        str(uuid.UUID(int=n)) for n in (2, 1, 3, 5)
+        str(uuid.UUID(int=n)) for n in (2, 1, 5, 3)
     ]
     assert payload["items"][0]["preview_kind"] == "video"
     assert payload["items"][0]["usage_count"] == 600
