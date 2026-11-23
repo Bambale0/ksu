@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#08080d">
+  <title>Войти — ROXY AI STUDIO</title>
+  <meta name="description" content="Вход в ROXY AI STUDIO через Telegram, Яндекс ID или электронную почту.">
+  <link rel="stylesheet" href="/site-assets/styles.css">
+  <link rel="stylesheet" href="/site-assets/login.css">
+  <script src="/site-assets/login.js" defer></script>
+</head>
+<body class="roxy-auth-page">
+  <a class="skip-link" href="#login-main">К входу</a>
+  <header class="auth-header">
+    <a class="logo" href="/" aria-label="ROXY AI STUDIO — на главную"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a>
+    <a class="auth-return" href="/">← На главную</a>
+  </header>
+
+  <main id="login-main" class="auth-stage">
+    <section class="auth-art" aria-label="Галерея ROXY AI STUDIO">
+      <div class="auth-art-grid" aria-hidden="true">
+        <span class="auth-art-tile auth-art-portrait"></span>
+        <span class="auth-art-tile auth-art-flower"></span>
+        <span class="auth-art-tile auth-art-cat"></span>
+        <span class="auth-art-tile auth-art-scene"></span>
+      </div>
+      <div class="auth-art-caption">
+        <span class="eyebrow">ROXY / CREATIVE STUDIO</span>
+        <h2>Создавай.<br><em>Продолжай.</em></h2>
+        <p>Один аккаунт для твоих проектов, истории работ и баланса.</p>
+      </div>
+    </section>
+
+    <section class="auth-panel" aria-labelledby="auth-title">
+      <div class="auth-panel-inner">
+        <p class="auth-overline">ТВОЯ СТУДИЯ НАЧИНАЕТСЯ ЗДЕСЬ</p>
+        <h1 id="auth-title">Вход в ROXY</h1>
+        <p class="auth-subtitle">Выбери удобный способ. Если у тебя уже есть аккаунт, войди тем способом, который к нему привязан.</p>
+
+        <div id="auth-message" class="auth-message" aria-live="polite" role="status" hidden></div>
+
+        <div id="auth-existing" class="auth-existing" hidden>
+          <p class="auth-existing-label">Ты уже вошёл в аккаунт</p>
+          <strong id="auth-account-name">ROXY</strong>
+          <div class="auth-existing-actions">
+            <a class="auth-provider auth-provider-main" id="auth-continue" href="/mini-app/">Продолжить в студии <span aria-hidden="true">↗</span></a>
+            <button type="button" class="auth-simple-button" id="auth-link">Привязать другой способ входа</button>
+            <button type="button" class="auth-simple-button" id="auth-logout">Выйти из аккаунта</button>
+          </div>
+        </div>
+
+        <div id="auth-providers">
+          <div id="auth-telegram" class="auth-provider-block">
+            <p class="auth-provider-label"><span>01</span> TELEGRAM</p>
+            <div id="auth-telegram-widget" class="auth-telegram-widget" aria-live="polite"></div>
+          </div>
+
+          <div id="auth-yandex" class="auth-provider-block">
+            <p class="auth-provider-label"><span>02</span> ЯНДЕКС ID</p>
+            <a id="auth-yandex-button" class="auth-provider auth-provider-yandex" href="/api/v1/web-auth/yandex/start">
+              <span class="auth-yandex-icon" aria-hidden="true">Я</span><span>Продолжить с Яндекс ID</span><span aria-hidden="true">↗</span>
+            </a>
+          </div>
+
+          <div id="auth-email" class="auth-provider-block auth-email">
+            <p class="auth-provider-label"><span>03</span> ЭЛЕКТРОННАЯ ПОЧТА</p>
+            <form id="auth-email-form" novalidate>
+              <label for="auth-email-input">Электронная почта</label>
+              <div class="auth-email-row">
+                <input type="email" id="auth-email-input" name="email" autocomplete="email" inputmode="email" placeholder="name@example.com" maxlength="254" required>
+                <button type="submit" id="auth-email-send" class="auth-email-submit">Получить код <span aria-hidden="true">↗</span></button>
+              </div>
+            </form>
+            <form id="auth-code-form" class="auth-code-form" novalidate hidden>
+              <label for="auth-code-input">Код из письма</label>
+              <div class="auth-email-row">
+                <input type="text" id="auth-code-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" required>
+                <button type="submit" id="auth-code-submit" class="auth-email-submit">Войти <span aria-hidden="true">↗</span></button>
+              </div>
+              <p>Код действителен 10 минут и используется один раз.</p>
+            </form>
+          </div>
+        </div>
+
+        <p id="auth-link-notice" class="auth-note" hidden>Ты связываешь проверенные способы входа с текущим аккаунтом. Балансы разных аккаунтов автоматически не объединяются.</p>
+        <p class="auth-legal">Продолжая, ты входишь в свой аккаунт ROXY AI STUDIO. Подтверждение выполняется у выбранного провайдера или по одноразовому коду. Не передавай коды другим.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="auth-footer">
+    <span>ROXY AI STUDIO © 2026</span><a href="/">Главная</a><span>Идеи становятся кадрами.</span>
+  </footer>
+</body>
+</html>

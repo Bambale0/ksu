@@ -44,7 +44,7 @@ async def me(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     return {
         "id": str(user.id),
         "telegram_id": user.telegram_id,
-        "profile_link": PartnerService.profile_link(user.telegram_id),
+        "profile_link": PartnerService.profile_link(user.telegram_id) if user.telegram_id is not None else None,
         "bot_chat_link": bot_start_link("connect"),
         "username": user.username,
         "first_name": user.first_name,

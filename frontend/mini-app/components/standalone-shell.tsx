@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
+import { isWebSessionAuthenticated, clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
 const STANDALONE_RETURN_KEY = "__roxy_standalone_return_v1";
 const STANDALONE_RETURNING_TO_KEY = "__roxy_standalone_returning_to_v1";
@@ -137,7 +137,7 @@ export function StandaloneShell({
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
-    if (tg?.initData) {
+    if (tg?.initData || isWebSessionAuthenticated()) {
       void api.me().then((me) => setBalance(me.balance_rox)).catch(() => setBalance(null));
     }
     return () => {

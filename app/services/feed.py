@@ -1034,7 +1034,7 @@ class FeedService:
         return bot_start_link(payload)
 
     @classmethod
-    def share_payload(cls, generation: Generation, author_telegram_id: int) -> dict[str, object]:
+    def share_payload(cls, generation: Generation, author_telegram_id: int | None) -> dict[str, object]:
         """Post-publish share payload for author-side success/share screens.
 
         ``link`` opens the post preview in the bot chat (``start``), ``share_url`` is a ready ``t.me/share/url`` link
@@ -1042,7 +1042,10 @@ class FeedService:
         into any messenger.
         """
 
-        link = cls.post_deep_link(generation.id, str(author_telegram_id))
+        link = (
+            cls.post_deep_link(generation.id, str(author_telegram_id))
+            if author_telegram_id is not None else None
+        )
         share_text = f"Посмотри мою работу в ROXY ✨\n{link}" if link else "Посмотри мою работу в ROXY ✨"
         share_url = None
         if link:

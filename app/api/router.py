@@ -13,6 +13,7 @@ from app.api.v1 import (
     admin_users,
     ai_reference,
     browser_auth,
+    web_auth,
     card_payments,
     client_logs,
     creator_partnership,
@@ -48,6 +49,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(me.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(browser_auth.router)
+api_router.include_router(web_auth.router)
 api_router.include_router(ai_reference.router)
 api_router.include_router(pinterest_repeat.router)
 api_router.include_router(promocodes.router)

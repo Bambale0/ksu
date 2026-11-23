@@ -21,12 +21,13 @@
     <nav class="desktop-nav" aria-label="Разделы сайта">
       <a href="#features">Возможности</a><a href="#process">Процесс</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a>
     </nav>
-    <a class="button button-small top-action" href="/mini-app/" data-app-link>Начать <span aria-hidden="true">↗</span></a>
+    <a class="top-login" href="/login" data-login-link>Войти</a>
+    <a class="button button-small top-action" href="/login" data-login-link>Начать <span aria-hidden="true">↗</span></a>
     <details class="mobile-nav">
       <summary aria-label="Открыть навигацию"><span aria-hidden="true">☰</span></summary>
       <nav aria-label="Мобильная навигация">
         <a href="#features">Возможности</a><a href="#process">Процесс</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a>
-        <a href="/mini-app/" data-app-link>Открыть ROXY ↗</a>
+        <a href="/login" data-login-link>Войти</a>
       </nav>
     </details>
   </header>
@@ -45,7 +46,7 @@
         <h1 id="hero-title">Кадры, которых<br>ещё нет.</h1>
         <p>Создавай фотографии и видео по описанию, своему снимку или референсу. Свет, стиль и движение — под твою идею.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="/mini-app/" data-app-link>Начать создавать <span aria-hidden="true">▶</span></a>
+          <a class="button button-primary" href="/login" data-login-link>Начать создавать <span aria-hidden="true">▶</span></a>
           <a class="button button-outline" href="#gallery">Смотреть галерею <span aria-hidden="true">↘</span></a>
         </div>
       </div>
@@ -90,7 +91,7 @@
             <div><h3>Повторить тренд по-своему</h3><p>Используй готовую идею как отправную точку для своей версии.</p></div>
             <span class="capability-mark" aria-hidden="true">↗</span>
           </article>
-          <a class="text-link capability-link" href="/mini-app/" data-app-link>Перейти к инструментам <span aria-hidden="true">↗</span></a>
+          <a class="text-link capability-link" href="/login" data-login-link>Перейти к инструментам <span aria-hidden="true">↗</span></a>
         </div>
       </div>
     </section>
@@ -126,7 +127,7 @@
         <figure class="gallery-item gallery-rain"><div class="gallery-picture" role="img" aria-label="Кинематографический портрет за дождевым стеклом"></div><figcaption><span>05 / Кино</span><span>Дождь в кадре</span></figcaption></figure>
         <figure class="gallery-item gallery-cosmic"><div class="gallery-picture" role="img" aria-label="Космонавт на фоне огромной розовой планеты"></div><figcaption><span>06 / Воображение</span><span>Другие миры</span></figcaption></figure>
       </div>
-      <div class="gallery-outro"><p>Вдохновился? Попробуй собрать собственную визуальную историю.</p><a class="button button-primary" href="/mini-app/" data-app-link>Открыть студию <span aria-hidden="true">↗</span></a></div>
+      <div class="gallery-outro"><p>Вдохновился? Попробуй собрать собственную визуальную историю.</p><a class="button button-primary" href="/login" data-login-link>Открыть студию <span aria-hidden="true">↗</span></a></div>
     </section>
 
     <section class="section faq-section" id="faq" aria-labelledby="faq-title">
@@ -144,15 +145,15 @@
       <span class="eyebrow">ROXY AI STUDIO / CREATE YOUR VERSION</span>
       <h2 id="final-title">Есть идея?<br><em>Дай ей форму.</em></h2>
       <p>Выбери инструмент, добавь детали и начни с первого кадра.</p>
-      <a class="button button-primary" href="/mini-app/" data-app-link>Открыть ROXY <span aria-hidden="true">↗</span></a>
+      <a class="button button-primary" href="/login" data-login-link>Открыть ROXY <span aria-hidden="true">↗</span></a>
     </section>
   </main>
-  <footer class="site-footer"><div class="footer-brand"><a href="/" class="logo"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a><p>AI Creative Studio. Пространство для твоих идей.</p></div><nav aria-label="Ссылки сайта"><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a><a href="/mini-app/" data-app-link>Приложение</a></nav><small>© ROXY AI STUDIO 2026</small></footer>
+  <footer class="site-footer"><div class="footer-brand"><a href="/" class="logo"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a><p>AI Creative Studio. Пространство для твоих идей.</p></div><nav aria-label="Ссылки сайта"><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a><a href="/login" data-login-link>Приложение</a></nav><small>© ROXY AI STUDIO 2026</small></footer>
   <script>
     (() => {
       const current = new URLSearchParams(location.search);
       const allowed = ["startapp", "start_payload", "ref"];
-      for (const link of document.querySelectorAll("[data-app-link]")) {
+      for (const link of document.querySelectorAll("[data-login-link]")) {
         const target = new URL(link.getAttribute("href"), location.origin);
         for (const name of allowed) {
           const value = current.get(name);

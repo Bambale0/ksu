@@ -44,6 +44,7 @@ declare global {
   interface Window {
     Telegram?: { WebApp?: TelegramWebApp };
     __ROXY_INITIAL_LAUNCH__?: { hash?: string; search?: string };
+    __ROXY_WEB_SESSION_AUTHENTICATED__?: boolean;
   }
 }
 
@@ -251,6 +252,10 @@ function installManagedBackButton(tg: TelegramWebApp): void {
   } catch {
     // Fall back to the SDK object unchanged on clients with immutable properties.
   }
+}
+
+export function isWebSessionAuthenticated(): boolean {
+  return typeof window !== "undefined" && window.__ROXY_WEB_SESSION_AUTHENTICATED__ === true;
 }
 
 export function telegram(): TelegramWebApp | null {

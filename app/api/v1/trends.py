@@ -573,6 +573,8 @@ async def share_trend(
         raise _domain_error(exc) from exc
 
     title = str(item.get("title") if isinstance(item, dict) else getattr(item, "title", "Тренд"))
+    if user.telegram_id is None:
+        raise HTTPException(status_code=409, detail="Connect Telegram to share a Telegram trend link")
     payload = trend_payload(trend_id, user.telegram_id)
     link = bot_start_link(payload)
     if not link:

@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
 import { getInitDataFallback, initTelegram, type TelegramWebApp } from "@/lib/telegram";
-import { TelegramBrowserLogin } from "./telegram-browser-login";
+
 
 async function validateInitData(initData: string): Promise<boolean> {
   try {
@@ -72,7 +72,20 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
 
       const browserInitData = getBrowserInitData();
       if (!browserInitData) {
-        if (active) setReady(true);
+        try {
+          const response = await fetch("/api/v1/web-auth/me", {
+            credentials: "same-origin", cache: "no-store",
+          });
+          const payload = response.ok ? await response.json() : null;
+          const valid = payload?.authenticated === true;
+          if (active) {
+            window.__ROXY_WEB_SESSION_AUTHENTICATED__ = valid;
+            setAuthenticated(valid);
+            setReady(true);
+          }
+        } catch {
+          if (active) setReady(true);
+        }
         return;
       }
 
@@ -93,7 +106,17 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         // where every API call will fail with 401.
         clearBrowserInitData();
         restoreFacade();
-        setAuthenticated(false);
+        try {
+          const response = await fetch("/api/v1/web-auth/me", {
+            credentials: "same-origin", cache: "no-store",
+          });
+          const payload = response.ok ? await response.json() : null;
+          const webValid = payload?.authenticated === true;
+          window.__ROXY_WEB_SESSION_AUTHENTICATED__ = webValid;
+          setAuthenticated(webValid);
+        } catch {
+          setAuthenticated(false);
+        }
       }
       setReady(true);
     };
@@ -105,6 +128,14 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   if (!ready) {
     return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ROXY…</small></div>;
   }
-  if (!authenticated) return <TelegramBrowserLogin />;
+  if (!authenticated) return (
+    <main className="splash" aria-label="Вход в ROXY AI STUDIO">
+      <strong>ROXY AI STUDIO</strong>
+      <p>Войди через почту, Telegram или Яндекс ID, чтобы открыть приложение.</p>
+      <a className="primary" href={"/login" + (typeof window !== "undefined" ? window.location.search : "")}>
+        Войти в аккаунт
+      </a>
+    </main>
+  );
   return <>{children}</>;
 }

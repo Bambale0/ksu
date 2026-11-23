@@ -137,6 +137,19 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
     )
 
 
+@app.get("/login", include_in_schema=False)
+@app.get("/login/", include_in_schema=False)
+@app.head("/login", include_in_schema=False)
+@app.head("/login/", include_in_schema=False)
+async def public_web_login() -> FileResponse:
+    """Standalone first-party login page; no Next.js app import."""
+    return FileResponse(
+        site_dir / "login.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 @app.get("/", include_in_schema=False)
 @app.head("/", include_in_schema=False)
 async def product_landing() -> FileResponse:

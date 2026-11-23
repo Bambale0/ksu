@@ -71,6 +71,19 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     bot_username: str = ""
+
+    # Web identity providers: secrets are deployment configuration only.
+    web_auth_email_secret: str = ""
+    web_auth_smtp_host: str = ""
+    web_auth_smtp_port: int = Field(default=465, ge=1, le=65535)
+    web_auth_smtp_username: str = ""
+    web_auth_smtp_password: str = ""
+    web_auth_smtp_sender: str = ""
+    web_auth_smtp_ssl: bool = True
+    web_auth_yandex_client_id: str = ""
+    web_auth_yandex_client_secret: str = ""
+    web_auth_yandex_redirect_uri: str = ""
+
     nexus_api_key: str = ""
     nexus_api_base_url: str = "https://nexusapi.dev"
     nexus_test_worker_poll_seconds: int = Field(default=3, ge=1, le=30)
