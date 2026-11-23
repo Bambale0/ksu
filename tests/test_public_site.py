@@ -64,7 +64,10 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert 'class="logo-wordmark"' in html
     assert html.count('class="capability"') == 4
     assert html.count('class="process-row"') == 3
-    assert html.count('class="gallery-item ') == 6
+    assert 'id="popular-trends"' in html
+    assert 'id="popular-trends-status"' in html
+    assert 'src="/site-assets/popular-trends.js"' in html
+    assert 'class="gallery-item ' not in html
     assert 'class="capabilities-stage"' in html
     assert 'class="editorial-intro"' in html
     assert 'class="gallery-outro"' in html
@@ -77,8 +80,30 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "ROXY AI STUDIO" in html
     assert "/site-assets/" in css
     assert ".gallery-item:nth-child(6){grid-column:span 12;" in css
+    assert ".live-trend-media" in css
     assert ".gallery-item:nth-child(6){grid-column:span 2;grid-row:span 2}" in css
     assert ".mobile-nav{display:block" in css
     assert "@media(max-width:1000px)" in css
     assert "@media(max-width:660px)" in css
     assert "@media(prefers-reduced-motion:reduce)" in css
+
+
+def test_live_trend_gallery_is_public_and_never_hardcodes_popular_items() -> None:
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    javascript = (root / "assets/popular-trends.js").read_text(encoding="utf-8")
+    assert 'id="popular-trends"' in html
+    assert "gallery-portrait" not in html
+    assert "class=\"gallery-item " not in html
+    assert "/api/v1/public-site/popular-trends?limit=6" in javascript
+    assert 'new IntersectionObserver' in javascript
+    assert 'video.muted = true;' in javascript
+    assert 'video.playsInline = true;' in javascript
+    assert 'video.loop = true;' in javascript
+    assert "reducedMotion.matches" in javascript
+    assert "saveData" in javascript
+    assert 'textContent = title' in javascript
+    assert 'link.href = openTrendUrl(item.id)' in javascript
+    assert 'credentials: "omit"' in javascript
+    assert 'cache: "default"' in javascript
+    assert 'gallery.replaceChildren(...tiles)' in javascript
