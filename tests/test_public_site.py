@@ -144,3 +144,22 @@ def test_public_editorial_polish_preserves_usable_real_content() -> None:
     assert "/mini-app/_next/" not in html
     assert "radix-ui" not in html
     assert "react" not in html.lower()
+
+def test_capabilities_composition_keeps_atlas_aspect_ratio_and_clean_overlay() -> None:
+    """Prevent portrait stretching and over-decorated features composition."""
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    css = (root / "assets/styles.css").read_text(encoding="utf-8")
+
+    # The atlas is a 3x3 sprite: preserve the source aspect ratio and crop
+    # horizontally rather than stretching portrait cells into tall rectangles.
+    assert ".stage-frame{position:absolute;" in css
+    assert "background-size:auto 300%" in css
+    assert ".stage-frame-main{inset:0;background-position:12% 0%}" in css
+    assert ".capabilities-stage{position:relative;isolation:isolate;aspect-ratio:1/1;" in css
+    assert ".capabilities-stage{min-height:0;aspect-ratio:4/5;" in css
+    assert "font-size:clamp(42px,5.25vw,74px)" not in css
+
+    # Make the photographic work itself the focus, not simulated portfolio chrome.
+    assert "ROXY<br>STUDIES" not in html
+    assert "Демонстрационные образы" not in html
