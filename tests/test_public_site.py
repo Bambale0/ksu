@@ -69,7 +69,7 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert 'id="popular-trends-status"' in html
     assert 'src="/site-assets/popular-trends.js?v=' in html
     assert 'class="gallery-item ' not in html
-    assert 'class="capabilities-stage"' in html
+    assert 'class="capabilities-layout"' in html
     assert 'class="editorial-intro"' in html
     assert 'class="gallery-outro"' in html
     assert "feature-card" not in html
@@ -146,24 +146,24 @@ def test_public_editorial_polish_preserves_usable_real_content() -> None:
     assert "radix-ui" not in html
     assert "react" not in html.lower()
 
-def test_capabilities_composition_keeps_atlas_aspect_ratio_and_clean_overlay() -> None:
-    """Prevent portrait stretching and over-decorated features composition."""
+def test_typographic_capabilities_contract_preserves_functionality() -> None:
+    """The feature section should describe capabilities, not repeat hero artwork."""
     root = ROOT / "app/web/site"
     html = (root / "index.html").read_text(encoding="utf-8")
     css = (root / "assets/styles.css").read_text(encoding="utf-8")
 
-    # The atlas is a 3x3 sprite: preserve the source aspect ratio and crop
-    # horizontally rather than stretching portrait cells into tall rectangles.
-    assert ".stage-frame{position:absolute;" in css
-    assert "background-size:auto 300%" in css
-    assert ".stage-frame-main{inset:0;background-position:12% 0%}" in css
-    assert ".capabilities-stage{position:relative;isolation:isolate;aspect-ratio:1/1;" in css
-    assert ".capabilities-stage{min-height:0;aspect-ratio:4/5;" in css
-    assert "font-size:clamp(42px,5.25vw,74px)" not in css
-
-    # Make the photographic work itself the focus, not simulated portfolio chrome.
-    assert "ROXY<br>STUDIES" not in html
-    assert "Демонстрационные образы" not in html
+    assert 'id="features"' in html
+    assert 'aria-labelledby="features-title"' in html
+    assert 'id="features-title"' in html
+    assert html.count('class="capability"') == 4
+    assert '.capabilities-section .editorial-intro h2{' in css
+    assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
+    assert '.capability h3{' in css
+    assert 'max-width:440px' in css
+    assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
+    assert 'class="capabilities-stage"' not in html
+    assert '.stage-frame' not in css
+    assert 'ROXY<br>STUDIES' not in html
 
 
 def test_public_site_asset_urls_follow_actual_content_fingerprints() -> None:
@@ -183,3 +183,23 @@ def test_public_site_asset_urls_follow_actual_content_fingerprints() -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + bytes([0]) + payload
         version = sha1(git_blob).hexdigest()[:12]
         assert f'{tag}="/site-assets/{filename}?v={version}"' in html
+
+
+def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
+    """The hero already showcases imagery; features should explain the product."""
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    css = (root / "assets/styles.css").read_text(encoding="utf-8")
+
+    assert 'id="features"' in html
+    assert html.count('class="capability"') == 4
+    assert '<figure class="capabilities-stage">' not in html
+    assert 'class="stage-frame' not in html
+    assert 'capabilities-list-caption' not in html
+    assert '.stage-frame' not in css
+    assert '.capabilities-layout{display:block;' in css
+    assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
+    assert '.capabilities-list{grid-template-columns:minmax(0,1fr)}' in css
+    assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
+    # The only atlas artwork remaining is in the hero, not the capabilities section.
+    assert html.count('class="hero-mosaic"') == 1

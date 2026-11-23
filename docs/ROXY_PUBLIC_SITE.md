@@ -15,7 +15,7 @@
 
 The public-facing brand is **ROXY AI STUDIO**. The first screen retains the dark media mosaic and chrome-lilac R; the page below it uses visual editorial pacing rather than repeated SaaS cards. Design intent: an art-directed creative studio / visual culture journal, not a generic AI-template landing.
 
-- The capabilities section is an intentionally asymmetric split between a photographic editorial spread and a typographic feature list. Its imagery is **moodboard content**, not a before/after promise.
+- The capabilities section is deliberately **type-led**: a compact 2×2 editorial feature grid with no decorative photo, repeated hero artwork, or card chrome. At narrow widths it becomes one readable column. Hero and living gallery carry the imagery.
 - The process is three horizontally ruled editorial lines, rather than feature-card clones.
 - The gallery is a **live read-only projection of active curated trends** sorted by the existing `admin_trends.payload.usage_count`. No static illustrative content, fake filters or hardcoded trending IDs are shown.
 - FAQ uses native details/summary; final CTA is an open editorial treatment without purple gradient callout-card framing.
@@ -70,14 +70,15 @@ The public website remains a dependency-free FastAPI-served HTML/CSS/JS site. We
 
 References: `shadcn-ui/ui` Button and Accordion primitive source; `anthropics/skills/skills/frontend-design/SKILL.md`; KSU `AGENTS.md`.
 
-## Capabilities composition refinement (2026-11-23)
+## Typographic capabilities redesign (2026-11-23)
 
-The public capabilities section uses an intentionally quieter typographic scale and shorter editorial image treatment. The source atlas is a 3×3 grid of landscape cells; placing it into a portrait frame with `background-size: 300% 300%` distorts individual photographs. Within the capabilities stage only, `background-size: auto 300%` keeps the source aspect ratio and crops a single cell horizontally. The hero's separate tiled mosaic contract is unchanged.
+The 2026-11-23 screenshot demonstrated a product-design issue, not just pixel spacing or a deployment issue: the large face portrait was repeated from the hero's 3×3 atlas, with an unrelated decorative flower overlay. Despite corrected CSS cropping, it dominated the four feature descriptions and conveyed no additional feature information. Do **not** restore the old image stage.
 
-The image remains a design concept, not a real user result. Decorative `ROXY STUDIES` and simulated portfolio credits were removed to avoid implying otherwise. Headings and capability rows have a reduced visual weight, and the desktop stage uses a square aspect ratio while responsive breakpoints reflow it to a landscape tablet and portrait mobile frame. The application, payments, API, models and gallery ranking remain untouched.
+The `#features` section now uses a restrained asymmetric introduction followed by four text-first items in a **two-column, two-row editorial grid** (single column at ≤700px). Each option states an actual supported action. There are no invented screenshots, hover affordances on inert rows or separate JavaScript dependencies. The sole action link still points to the existing `/mini-app/` and preserves approved referral parameters via `data-app-link`.
 
-Manual browser QA should check the image crop and balance at 320/390/768/1024/1440px, as well as #features anchor scroll and normal scrolling. A screenshot captured mid-scroll with the sticky header over an exiting heading is not, by itself, proof of a broken anchor: `scroll-padding-top` remains the only anchor offset mechanism.
+A screenshot captured while manually scrolling beneath the sticky header is not proof that an anchor is broken. The established `html{scroll-padding-top:100px}` / mobile 84px mechanism remains the only anchor offset. Validate direct `/#features` navigation separately from mid-scroll captures.
 
+**QA:** Compare 320, 390, 700, 768, 1024, 1440px. Verify no horizontal overflow or title clipping, 2 columns on desktop/tablet and one on narrow screens, all four text items, CTA/deep-link behavior, native focus, and reduced motion. The independent marketing site remains separate from Mini App, billing, bot and provider code.
 
 ## Public asset cache invalidation (2026-11-23)
 
