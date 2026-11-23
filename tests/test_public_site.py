@@ -79,9 +79,10 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "/mini-app/_next/" not in html
     assert "ROXY AI STUDIO" in html
     assert "/site-assets/" in css
-    assert ".gallery-item:nth-child(6){grid-column:span 12;" in css
+    assert ".gallery-item:nth-child(6){grid-column:span 6;grid-row:span 2}" in css
+    assert "grid-column:span 12" not in css
     assert ".live-trend-media" in css
-    assert ".gallery-item:nth-child(6){grid-column:span 2;grid-row:span 2}" in css
+    assert "  .gallery-item:nth-child(6){grid-column:span 2;grid-row:span 1}" in css
     assert ".mobile-nav{display:block" in css
     assert "@media(max-width:1000px)" in css
     assert "@media(max-width:660px)" in css
@@ -107,3 +108,39 @@ def test_live_trend_gallery_is_public_and_never_hardcodes_popular_items() -> Non
     assert 'credentials: "omit"' in javascript
     assert 'cache: "default"' in javascript
     assert 'gallery.replaceChildren(...tiles)' in javascript
+
+
+def test_public_editorial_polish_preserves_usable_real_content() -> None:
+    """Regression guard for screenshot bugs and non-actionable affordances."""
+    root = ROOT / "app/web/site"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    css = (root / "assets/styles.css").read_text(encoding="utf-8")
+
+    assert '<h2 id="gallery-title">Что повторяют чаще всего.</h2>' in html
+    assert 'id="popular-trends"' in html
+    assert "Не ищи шаблон." not in html
+    assert "Миллион версий" not in html
+    assert "capability-mark" not in html
+    assert "capability-index" not in html
+    assert "process-symbol" not in html
+    assert 'Можно ли работать без опыта?' in html
+    assert 'Да. Достаточно описать идею' in html
+    assert 'Нет. Достаточно идеи' not in html
+
+    # Six images should be balanced, not a full-bleed 1200px-wide sixth tile.
+    assert ".gallery-item:nth-child(6){grid-column:span 6;grid-row:span 2}" in css
+    assert "  .gallery-item:nth-child(6){grid-column:span 2;grid-row:span 1}" in css
+    assert "grid-column:span 12" not in css
+    assert "scroll-padding-top:100px" in css
+    assert "scroll-padding-top:84px" in css
+    assert "scroll-margin-top:" not in css
+    assert "max-width:1000px" in css
+    assert "min-width:661px" in css
+    assert "max-width:660px" in css
+    assert "prefers-reduced-motion:reduce" in css
+
+    # Use the standalone site and real data. No shadcn React dependency/bundle.
+    assert "/site-assets/popular-trends.js" in html
+    assert "/mini-app/_next/" not in html
+    assert "radix-ui" not in html
+    assert "react" not in html.lower()

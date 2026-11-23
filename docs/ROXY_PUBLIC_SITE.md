@@ -54,3 +54,18 @@ The independent landing uses `app/web/site/assets/popular-trends.js`, not any co
 - `tests/test_public_site_popular_trends.py` covers ranking, safe URLs, data minimization, anonymous access and cache; `tests/test_public_site.py` enforces JS/gallery contract. Browser QA covers desktop/mobile cards, video pause/autoplay and retry.
 
 The /mini-app source tree, its own trend catalog, billing and user sessions are not modified by this feature.
+
+
+## Visual polish (2026-11-23)
+
+The public website remains a dependency-free FastAPI-served HTML/CSS/JS site. We deliberately **did not install React, Radix, Tailwind or shadcn/ui** because they belong to the component architecture of a React application, whereas this independent landing already uses native HTML controls and no frontend build.
+
+- Applied the interaction/keyboard/hover principles demonstrated by shadcn/ui (readable button sizes, visible focus, truly interactive controls only) without adding a JavaScript framework.
+- Followed the `anthropics/skills/frontend-design` guidance: less tracked uppercase metadata, fewer ornamental accents, simpler copy, typographic hierarchy and one distinctive hero rather than repeated template chrome.
+- Rebalanced the six living trend tiles: desktop two editorial rows; tablet/mobile a two-column rhythm with featured first and last cards. No sixth card stretched 100% of a desktop row.
+- Trimmed the oversized section headings and decorative footer glow; preserved the existing ROXY hero art direction.
+- Removed decorative arrows from nonclickable feature and process descriptions, retaining the actual navigation links and step semantics. Fixed the FAQ answer to correctly confirm that beginners can use ROXY.
+- Preserved the live `/api/v1/public-site/popular-trends` API, muted viewport-gated video playback, referral parameters, direct trend links, no-user-session public access and `/landing/` = 404.
+- New static regression assertions in `tests/test_public_site.py`; browser screenshots at 320, 390, 768, 1024 and 1440 widths must be reviewed for overflow, sticky navigation, hierarchy, captions and mobile stacking.
+
+References: `shadcn-ui/ui` Button and Accordion primitive source; `anthropics/skills/skills/frontend-design/SKILL.md`; KSU `AGENTS.md`.
