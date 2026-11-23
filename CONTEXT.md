@@ -1443,3 +1443,7 @@ Focused eight-case browser gate on80916f passed6/8 (all upload/keyframe scenario
 - Tests: prior PR #588 included 6 green workflows; add backend regression with title and `@image_2`, 422 semantics, client Playwright with 502 then same-key success; refresh CI and full post-merge release gate before any production claim.
 - Safety: additive migration 0045 creates only `template_video_references`; preserve existing trends and user assets, do not change prices, paid tasks, provider routes, or customer notifications. Do not create a fake trend without its pinned reference video or preview file.
 
+
+## Active Feature Execution — ROXY video loading splash (2026-11-23)
+
+Authoritative scope/audit: [roxy-video-loader-20261123](docs/agents/EXECUTION/roxy-video-loader-20261123.md). Baseline 798c82248db73969c3a7cf10c5e7ad88eaaf52a2; implementation pending. No domain data changes.

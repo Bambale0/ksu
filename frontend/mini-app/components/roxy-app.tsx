@@ -1,5 +1,6 @@
 "use client";
 
+import { RoxyLoadingVideo } from "./roxy-loading-video";
 import { KlingReferenceFields } from "./kling-reference-fields";
 
 import { assertUploadFileType } from "@/lib/upload-file-types";
@@ -401,13 +402,7 @@ export function RoxyApp() {
 }
 
 function Splash() {
-  return (
-    <div className="splash" role="status" aria-label="ROXY загружается">
-      <div className="splash-orbit"><span/><RoxyMark large /></div>
-      <strong>ROXY</strong><small>Студия творчества</small>
-      <div className="splash-progress"><i /></div>
-    </div>
-  );
+  return <RoxyLoadingVideo />;
 }
 
 function RoxyMark({ large = false }: { large?: boolean }) {

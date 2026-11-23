@@ -322,3 +322,7 @@ customers supply the input video specified by the scenario.
 
 Structural template preflight permits only synthetic future video slots.
 Runtime GenerationService.create/prepare_request retains full media validation.
+
+### ROXY startup video (2026-11-23)
+
+The branded startup screen uses local `/mini-app/loading/` MP4/WebM assets. Portrait phones (up to 767px in portrait orientation) play the cropped 9:16 file; wider/landscape browsers use 16:9. The shared `RoxyLoadingVideo` is muted, inline, autoplay/loop, metadata-preloaded and falls back to a static ROXY mark on blocked playback or reduced-motion. The app/auth boundary controls removal when it becomes ready; video playback end is **never** a condition for displaying the app. Static files ship with Next export; no external CDN.
