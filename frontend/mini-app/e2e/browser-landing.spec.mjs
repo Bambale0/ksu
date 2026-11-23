@@ -59,7 +59,7 @@ test('browser user can reach Telegram login and return to gallery', async ({ pag
   await page.getByRole('link', { name: /Начать создавать/ }).click();
   await expect(page).toHaveURL(/#telegram-login$/);
   await expect(page.locator('#telegram-login .roxy-login-widget')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Галерея' }).first().click();
+  await page.locator('.roxy-landing-footer').getByRole('link', { name: 'Галерея' }).click();
   await expect(page).toHaveURL(/#examples$/);
   await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
 });
