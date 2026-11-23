@@ -77,3 +77,12 @@ The public capabilities section uses an intentionally quieter typographic scale 
 The image remains a design concept, not a real user result. Decorative `ROXY STUDIES` and simulated portfolio credits were removed to avoid implying otherwise. Headings and capability rows have a reduced visual weight, and the desktop stage uses a square aspect ratio while responsive breakpoints reflow it to a landscape tablet and portrait mobile frame. The application, payments, API, models and gallery ranking remain untouched.
 
 Manual browser QA should check the image crop and balance at 320/390/768/1024/1440px, as well as #features anchor scroll and normal scrolling. A screenshot captured mid-scroll with the sticky header over an exiting heading is not, by itself, proof of a broken anchor: `scroll-padding-top` remains the only anchor offset mechanism.
+
+
+## Public asset cache invalidation (2026-11-23)
+
+The marketing HTML response is intentionally `Cache-Control: no-store`, but the CSS and gallery JavaScript are served through FastAPI `StaticFiles`. Unversioned asset links can remain cached across application deployments, causing clients to see a new HTML document with old styling or gallery logic.
+
+The HTML now uses `?v=<git-blob-sha-prefix>` on `/site-assets/styles.css` and `/site-assets/popular-trends.js`. The query string does not affect `StaticFiles` path resolution; it gives each new asset content version a distinct browser/CDN cache key. `tests/test_public_site.py` derives the fingerprint from each file's actual bytes and fails CI if an asset changes without the HTML reference changing.
+
+This change does not touch Mini App files or cache settings, user sessions, billing or generator routes. The standalone HTML remains `no-store`. If an old visual is still displayed after deployment, inspect the live document's stylesheet URL, the `200/304` response, and the origin/reverse-proxy route before attributing it to CSS caching.
