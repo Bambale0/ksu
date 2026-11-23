@@ -184,7 +184,7 @@
 .splash.splash-video {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 350; /* Above pending onboarding at 300 during native boot. */
   display: grid;
   place-items: center;
   width: 100%;
