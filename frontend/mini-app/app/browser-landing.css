@@ -288,3 +288,23 @@
   .roxy-landing-button, .roxy-example-picture, .roxy-landing-links a, .roxy-landing-footer a { transition: none; }
   .roxy-landing-button:hover, .roxy-example-tile:hover .roxy-example-picture { transform: none; }
 }
+
+/* App-only browser login: never render marketing inside /mini-app/. */
+.roxy-app-login {
+  min-height: 100dvh;
+  padding: max(32px,env(safe-area-inset-top)) 20px max(32px,env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 15%,rgba(175,105,255,.23),transparent 55%),
+    #09090e;
+  color: #f7f1ff;
+}
+.roxy-app-login .roxy-login-panel {
+  width: min(100%,430px);
+  padding: clamp(25px,5vw,45px);
+}
+.roxy-app-login .roxy-login-panel h1 { margin: 27px 0 12px; font-size: clamp(32px,7vw,43px); letter-spacing: -.05em; }
+.roxy-app-login .roxy-login-panel .roxy-login-widget { min-height: 58px; }
+.roxy-app-login-home { display:inline-flex; margin-top:25px; font-size:14px; color:#ccb0f7; text-decoration:none; }
+.roxy-app-login-home:hover { color:white; }
