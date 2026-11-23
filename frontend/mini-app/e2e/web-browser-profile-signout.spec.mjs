@@ -6,10 +6,14 @@ const NATIVE_TOKEN = 'query_id=native-telegram&hash=fixture';
 
 async function openWebProfile(page, { native = false, account = false } = {}) {
   await page.addInitScript(({ browserToken, nativeToken, storageKey, nativeLaunch }) => {
-    sessionStorage.setItem(storageKey, JSON.stringify({
-      initData: browserToken,
-      expiresAt: Date.now() + 60_000,
-    }));
+    // The login fixture must not re-authenticate after the logout navigation.
+    if (!sessionStorage.getItem('__roxy_logout_fixture_installed')) {
+      sessionStorage.setItem('__roxy_logout_fixture_installed', '1');
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        initData: browserToken,
+        expiresAt: Date.now() + 60_000,
+      }));
+    }
     window.Telegram = { WebApp: {
       initData: nativeLaunch ? nativeToken : '',
       initDataUnsafe: nativeLaunch
