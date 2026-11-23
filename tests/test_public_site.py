@@ -18,7 +18,7 @@ async def test_origin_root_is_standalone_marketing_html_not_redirect() -> None:
     assert html.status_code == 200
     assert "text/html" in html.headers["content-type"]
     assert "ROXY AI STUDIO" in html.text
-    assert 'class="hero-mosaic"' in html.text
+    assert 'class="hero-art"' in html.text
     assert "/site-assets/styles.css" in html.text
     assert "/mini-app/_next/" not in html.text
     assert "no-store" in html.headers["cache-control"]
@@ -202,4 +202,4 @@ def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
     assert '.capabilities-list{grid-template-columns:minmax(0,1fr)}' in css
     assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
     # The only atlas artwork remaining is in the hero, not the capabilities section.
-    assert html.count('class="hero-mosaic"') == 1
+    assert html.count('class="hero-art"') == 1
