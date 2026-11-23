@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
@@ -137,9 +137,11 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
     )
 
 
-@app.get("/", include_in_schema=False)
-async def product_landing() -> RedirectResponse:
-    return RedirectResponse(url="/landing/", status_code=307)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def product_landing() -> FileResponse:
+    """Serve marketing at the origin root; /mini-app/ is the customer application."""
+    path = Path(__file__).resolve().parent / "web" / "landing" / "index.html"
+    return FileResponse(path, media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 app.include_router(health_router)
