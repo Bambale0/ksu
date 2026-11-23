@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { saveBrowserInitData } from "@/lib/browser-auth-session";
-import { ROXY_LANDING_HERO } from "@/lib/roxy-landing-hero";
+import { ROXY_MOSAIC_ATLAS } from "@/lib/roxy-mosaic-atlas";
 import { getStartParamFallback } from "@/lib/telegram";
 
 type TelegramLoginUser = {
@@ -35,6 +35,19 @@ const steps = [
 ];
 
 const styles = ["Киберпанк", "Аниме", "Фэнтези", "3D", "Кинематик", "Портрет"];
+
+
+const filmTiles = [
+  { id: "portrait", label: "Портрет в кинематографическом свете" },
+  { id: "chrome-flower", label: "Хромированный цветок" },
+  { id: "motion", label: "Кинематографическое движение", video: true },
+  { id: "cat", label: "Портрет кота" },
+  { id: "fashion", label: "Фэшн-портрет" },
+  { id: "rain", label: "Портрет под дождём" },
+  { id: "editorial", label: "Редакционная съёмка" },
+  { id: "blossom", label: "Макросъёмка цветка" },
+  { id: "dream", label: "Сюрреалистическая сцена", video: true },
+] as const;
 
 function telegramMiniAppUrl(botUsername: string): string {
   const startParam = getStartParamFallback();
@@ -122,85 +135,125 @@ export function TelegramBrowserLogin() {
 
   return (
     <main className="roxy-browser-landing" aria-labelledby="roxy-landing-title">
-      <div className="roxy-landing-glow roxy-landing-glow-a" aria-hidden="true" />
-      <div className="roxy-landing-glow roxy-landing-glow-b" aria-hidden="true" />
-
       <header className="roxy-landing-nav">
         <a className="roxy-landing-logo" href="#top" aria-label="ROXY — начало страницы">
-          <span className="roxy-landing-logo-mark" aria-hidden="true">✦</span><strong>ROXY</strong>
+          <span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong>
         </a>
         <nav className="roxy-landing-links" aria-label="Разделы лендинга">
-          <a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#examples">Примеры</a><a href="#telegram-login">Telegram</a>
+          <a href="#features">Возможности</a>
+          <a href="#how">Процесс</a>
+          <a href="#examples">Галерея</a>
+          <a href="#telegram-login">Вход</a>
         </nav>
-        <a className="roxy-landing-button roxy-landing-button-small" href={launchHref} target={launchTarget} rel={launchRel}>
-          <TelegramGlyph /> Запустить
-        </a>
+        <a className="roxy-landing-button roxy-landing-button-small" href="#telegram-login">Начать <span aria-hidden="true">↗</span></a>
       </header>
 
-      <section className="roxy-landing-hero" id="top">
-        <div className="roxy-landing-hero-copy">
-          <span className="roxy-landing-pill">✦ AI-креатор в Telegram и браузере</span>
-          <h1 id="roxy-landing-title">Создавай фото и видео <em>с AI</em></h1>
-          <p>Изображения, видео, референсы, промпты и готовые тренды — в одной творческой студии ROXY.</p>
+      <section className="roxy-film-hero" id="top">
+        <div className="roxy-film-mosaic" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as React.CSSProperties} role="group" aria-label="Демонстрационный коллаж возможностей ROXY">
+          {filmTiles.map((tile) => (
+            <div className={"roxy-film-tile roxy-film-tile-" + tile.id} key={tile.id} role="img" aria-label={tile.label}>
+              {"video" in tile && tile.video ? <span className="roxy-film-play" aria-hidden="true">▶</span> : null}
+            </div>
+          ))}
+          <div className="roxy-film-chrome" aria-hidden="true">R<span>✦</span></div>
+        </div>
+        <div className="roxy-film-hero-copy">
+          <span className="roxy-film-kicker">ТВОЯ СТУДИЯ · ТВОИ ПРАВИЛА</span>
+          <h1 id="roxy-landing-title">Создавай фото и видео с AI</h1>
+          <p>Твоя идея превращается в визуал. Создавай, оживляй и переосмысливай в ROXY.</p>
           <div className="roxy-landing-actions">
-            <a className="roxy-landing-button" href={launchHref} target={launchTarget} rel={launchRel}><TelegramGlyph /> Запустить в Telegram</a>
-            <a className="roxy-landing-button roxy-landing-button-ghost" href="#features">Смотреть возможности</a>
-          </div>
-          <div className="roxy-landing-proof" aria-label="Возможности ROXY">
-            <span><b>Фото + видео</b><small>в одном приложении</small></span>
-            <span><b>Готовые тренды</b><small>для быстрого старта</small></span>
-            <span><b>История работ</b><small>всегда под рукой</small></span>
+            <a className="roxy-landing-button roxy-landing-button-primary" href="#telegram-login">Начать создавать <span aria-hidden="true">▶</span></a>
+            <a className="roxy-landing-button roxy-landing-button-ghost" href={launchHref} target={launchTarget} rel={launchRel}><TelegramGlyph /> Запустить в Telegram</a>
           </div>
         </div>
-        <div className="roxy-landing-hero-art">
-          <div className="roxy-hero-halo" aria-hidden="true" />
-          <img src={ROXY_LANDING_HERO} width="320" height="400" alt="ROXY — AI-студия для создания фото и видео" fetchPriority="high" />
-        </div>
+        <a className="roxy-film-scroll" href="#features" aria-label="Перейти к возможностям">↓</a>
       </section>
 
-      <section className="roxy-landing-section" id="features">
-        <header className="roxy-landing-section-head"><span>Возможности</span><h2>Всё для твоего креатива</h2><p>От первой идеи до готовой публикации — без прыжков между десятком сервисов.</p></header>
+      <section className="roxy-landing-section roxy-feature-section" id="features">
+        <header className="roxy-landing-section-head">
+          <span className="roxy-film-kicker">01 / ИНСТРУМЕНТЫ</span>
+          <h2>Всё для твоего креатива</h2>
+          <p>От первого кадра до готового ролика. Один творческий процесс, множество способов воплотить идею.</p>
+        </header>
         <div className="roxy-feature-grid">
-          {features.map((feature) => <article className="roxy-feature-card" key={feature.title}><i aria-hidden="true">{feature.icon}</i><h3>{feature.title}</h3><p>{feature.copy}</p></article>)}
+          {features.map((feature, index) => (
+            <article className="roxy-feature-card" key={feature.title}>
+              <span className="roxy-feature-counter">0{index + 1}</span>
+              <i aria-hidden="true">{feature.icon}</i>
+              <h3>{feature.title}</h3>
+              <p>{feature.copy}</p>
+            </article>
+          ))}
         </div>
-        <div className="roxy-landing-showpiece">
-          <div><span className="roxy-landing-pill">ROXY Creative Studio</span><h3>Одна идея — много способов воплотить её</h3><p>Выбирай модель вручную или просто добавляй референс: ROXY подстроит сценарий создания под задачу.</p></div>
-          <img src={ROXY_LANDING_HERO} width="320" height="400" alt="Инструменты ROXY" loading="lazy" />
-        </div>
-      </section>
-
-      <section className="roxy-landing-section" id="how">
-        <header className="roxy-landing-section-head"><span>Как это работает</span><h2>Три шага от идеи до результата</h2></header>
-        <div className="roxy-step-layout">
-          <div className="roxy-step-grid">{steps.map((step, index) => <article className="roxy-step-card" key={step.title}><b>{index + 1}</b><h3>{step.title}</h3><p>{step.copy}</p></article>)}</div>
-          <div className="roxy-css-orbit" aria-hidden="true"><i /><i /><i /></div>
-        </div>
-      </section>
-
-      <section className="roxy-landing-section" id="examples">
-        <div className="roxy-landing-section-head roxy-section-head-row">
-          <div><span>Вдохновение</span><h2>Найди свой визуальный стиль</h2></div>
-          <div className="roxy-style-chips" aria-label="Популярные стили">{styles.map((style) => <span key={style}>{style}</span>)}</div>
-        </div>
-        <div className="roxy-example-stage">
-          <div className="roxy-example-mosaic" aria-label="Примеры визуального стиля ROXY">
-            <figure><img src={ROXY_LANDING_HERO} alt="AI изображение в ROXY" width="320" height="400" loading="lazy" /></figure>
-            <figure><img src={ROXY_LANDING_HERO} alt="AI видео в ROXY" width="320" height="400" loading="lazy" /></figure>
-            <figure><img src={ROXY_LANDING_HERO} alt="Интерфейс ROXY" width="320" height="400" loading="lazy" /></figure>
+        <div className="roxy-feature-showcase">
+          <div className="roxy-feature-showcase-art" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as React.CSSProperties}>
+            <span className="roxy-feature-shot roxy-feature-shot-before" role="img" aria-label="Исходный визуальный референс" />
+            <span className="roxy-feature-transition" aria-hidden="true">→</span>
+            <span className="roxy-feature-shot roxy-feature-shot-after" role="img" aria-label="Результат творческого преобразования" />
           </div>
-          <div className="roxy-example-copy"><span className="roxy-landing-pill">Фото · Видео · Тренды</span><h3>Не начинай каждый раз с нуля</h3><p>Выбирай готовую идею, добавляй свой референс и адаптируй результат под себя.</p><a className="roxy-landing-button roxy-landing-button-ghost" href={launchHref} target={launchTarget} rel={launchRel}>Открыть ROXY</a></div>
+          <div className="roxy-feature-showcase-copy">
+            <span className="roxy-film-kicker">ОТ РЕФЕРЕНСА К РЕЗУЛЬТАТУ</span>
+            <h3>Одна идея. Бесконечно много версий.</h3>
+            <p>Используй свои кадры, готовые тренды и инструменты редактирования. Экспериментируй без сложного монтажа.</p>
+            <a className="roxy-film-text-link" href="#telegram-login">Попробовать ROXY <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
+      </section>
+
+      <section className="roxy-landing-section roxy-how-section" id="how">
+        <header className="roxy-landing-section-head">
+          <span className="roxy-film-kicker">02 / КАК ЭТО РАБОТАЕТ</span>
+          <h2>Три шага от идеи до результата</h2>
+          <p>Не нужно учиться сложным редакторам. Всё начинается с того, что ты хочешь создать.</p>
+        </header>
+        <div className="roxy-step-grid">
+          {steps.map((step, index) => (
+            <article className="roxy-step-card" key={step.title}>
+              <b>0{index + 1}</b>
+              <span className="roxy-step-arrow" aria-hidden="true">↗</span>
+              <h3>{step.title}</h3>
+              <p>{step.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="roxy-landing-section roxy-examples-section" id="examples">
+        <header className="roxy-landing-section-head">
+          <span className="roxy-film-kicker">03 / ГАЛЕРЕЯ</span>
+          <h2>Найди свой визуальный стиль</h2>
+          <p>Портреты, истории, движение и эксперименты. Эти демонстрационные кадры показывают направление возможностей ROXY.</p>
+        </header>
+        <div className="roxy-style-chips" aria-label="Примеры стилей">
+          {styles.map((style) => <span key={style}>{style}</span>)}
+        </div>
+        <div className="roxy-examples-mosaic" style={{ "--roxy-art": "url(" + ROXY_MOSAIC_ATLAS + ")" } as React.CSSProperties}>
+          {filmTiles.slice(0, 6).map((tile) => (
+            <figure className={"roxy-example-tile roxy-example-" + tile.id} key={tile.id}>
+              <span className="roxy-example-picture" role="img" aria-label={tile.label} />
+              <figcaption>{tile.label} <span aria-hidden="true">↗</span></figcaption>
+            </figure>
+          ))}
+        </div>
+        <a className="roxy-landing-button roxy-landing-button-primary roxy-examples-cta" href="#telegram-login">Создать свою историю <span aria-hidden="true">✦</span></a>
       </section>
 
       <section className="roxy-telegram-section" id="telegram-login">
         <div className="roxy-telegram-copy">
-          <span className="roxy-landing-pill">Telegram Mini App</span><h2>ROXY уже там, где ты общаешься</h2><p>Открывай Mini App в Telegram или войди с Telegram на этом устройстве. Никакого отдельного пароля.</p>
-          <ul><li>Один аккаунт в Telegram и браузере</li><li>Работы и баланс остаются с тобой</li><li>Реферальные и контентные ссылки сохраняют свой контекст</li></ul>
-          {telegramUrl ? <a className="roxy-landing-button" href={telegramUrl} target="_blank" rel="noreferrer"><TelegramGlyph /> Открыть Mini App</a> : null}
+          <span className="roxy-film-kicker">04 / ТВОЯ СТУДИЯ</span>
+          <h2>Твой следующий кадр начинается здесь.</h2>
+          <p>Войди через Telegram на сайте или открой Mini App. История работ и баланс сохраняются в аккаунте.</p>
+          <ul>
+            <li>Фото, видео, референсы и тренды</li>
+            <li>Работы и баланс в одном профиле</li>
+            <li>Реферальные переходы сохраняют контекст</li>
+          </ul>
+          {telegramUrl ? <a className="roxy-landing-button roxy-landing-button-ghost" href={telegramUrl} target="_blank" rel="noreferrer"><TelegramGlyph /> Открыть Mini App</a> : null}
         </div>
         <div className="roxy-login-panel" aria-label="Вход через Telegram">
-          <div className="roxy-landing-logo"><span className="roxy-landing-logo-mark" aria-hidden="true">✦</span><strong>ROXY</strong></div>
-          <h3>Войти с Telegram</h3><p>Продолжишь с тем же профилем, балансом и историей.</p>
+          <div className="roxy-landing-logo"><span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></div>
+          <h3>Войти с Telegram</h3>
+          <p>Продолжи с тем же профилем, балансом и историей.</p>
           <div ref={widgetRef} className="browser-login-widget roxy-login-widget" aria-live="polite" />
           {status === "loading" && <small>Готовлю безопасный вход…</small>}
           {status === "signing-in" && <small>Вхожу в ROXY…</small>}
@@ -209,13 +262,9 @@ export function TelegramBrowserLogin() {
         </div>
       </section>
 
-      <section className="roxy-final-cta">
-        <div className="roxy-final-orb" aria-hidden="true" /><div><div className="roxy-landing-logo"><span className="roxy-landing-logo-mark" aria-hidden="true">✦</span><strong>ROXY</strong></div><h2>Начни создавать уже сегодня</h2><p>Твоя следующая идея может стать изображением или видео через несколько кликов.</p><a className="roxy-landing-button" href={launchHref} target={launchTarget} rel={launchRel}><TelegramGlyph /> Запустить ROXY</a></div>
-      </section>
-
       <footer className="roxy-landing-footer">
-        <div><div className="roxy-landing-logo"><span className="roxy-landing-logo-mark" aria-hidden="true">✦</span><strong>ROXY</strong></div><p>AI-студия для изображений, видео, референсов и трендов.</p></div>
-        <nav aria-label="Ссылки в подвале"><a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#telegram-login">Войти</a></nav>
+        <div><a className="roxy-landing-logo" href="#top"><span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></a><p>Пространство для тех, кто создаёт свой визуальный мир.</p></div>
+        <nav aria-label="Ссылки в подвале"><a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#examples">Галерея</a><a href="#telegram-login">Войти</a></nav>
         <small>© 2026 ROXY</small>
       </footer>
     </main>
