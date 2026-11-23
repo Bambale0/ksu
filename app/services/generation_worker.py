@@ -49,6 +49,26 @@ class GenerationWorkerService:
         return delay
 
     @staticmethod
+    def _unknown_submission_failure_reason(generation: Generation, provider: str) -> str:
+        """Preserve a verified gateway response reason without treating 503 as safe to retry.
+
+        No upstream payload, prompt, URL or request identifier is copied to the
+        public error. The immutable provider snapshot and refund rules stay intact.
+        """
+        params = generation.parameters or {}
+        response = params.get("_provider_response")
+        if (
+            provider == "neironych"
+            and params.get("_model_id") in NeironychGenerationProviderService.IMAGE_MODEL_IDS
+            and isinstance(response, dict)
+            and response.get("provider") == "neironych"
+            and response.get("error_code") == "provider_response_invalid"
+            and response.get("http_status") == 503
+        ):
+            return "Не удалось получить корректный результат изображения. Попробуйте позже."
+        return f"{provider} submission outcome remained unknown after worker interruption"
+
+    @staticmethod
     def _provider_name(generation: Generation) -> str:
         stored = str(generation.provider or "").strip().lower()
         route = (generation.parameters or {}).get("_provider_route")
@@ -223,7 +243,7 @@ class GenerationWorkerService:
             if generation.status == "submitting" and generation.external_id is None:
                 age = utcnow() - generation.updated_at
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
-                    message = f"{provider} submission outcome remained unknown after worker interruption"
+                    message = cls._unknown_submission_failure_reason(generation, provider)
                     await GenerationProviderService.fail_and_refund(session, generation.id, message)
                     await GenerationOutboxService.fail(session, claim.outbox_id, message)
                 else:
