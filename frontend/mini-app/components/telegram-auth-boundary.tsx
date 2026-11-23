@@ -70,22 +70,30 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         return;
       }
 
+      // The canonical cookie-backed web account takes precedence over a legacy
+      // browser Telegram credential saved in sessionStorage. Otherwise an old
+      // credential could silently open a different wallet after email/Yandex login.
+      try {
+        const response = await fetch("/api/v1/web-auth/me", {
+          credentials: "same-origin", cache: "no-store",
+        });
+        const payload = response.ok ? await response.json() : null;
+        if (!active) return;
+        const webValid = payload?.authenticated === true;
+        window.__ROXY_WEB_SESSION_AUTHENTICATED__ = webValid;
+        if (webValid) {
+          setAuthenticated(true);
+          setReady(true);
+          return;
+        }
+      } catch {
+        // Temporary API failure must not disable the existing verified Telegram
+        // browser login. That credential is separately checked by /api/v1/me.
+      }
+
       const browserInitData = getBrowserInitData();
       if (!browserInitData) {
-        try {
-          const response = await fetch("/api/v1/web-auth/me", {
-            credentials: "same-origin", cache: "no-store",
-          });
-          const payload = response.ok ? await response.json() : null;
-          const valid = payload?.authenticated === true;
-          if (active) {
-            window.__ROXY_WEB_SESSION_AUTHENTICATED__ = valid;
-            setAuthenticated(valid);
-            setReady(true);
-          }
-        } catch {
-          if (active) setReady(true);
-        }
+        if (active) setReady(true);
         return;
       }
 
