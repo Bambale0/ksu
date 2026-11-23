@@ -463,7 +463,35 @@ class NexusGenerationProviderService:
         if (generation.parameters or {}).get("_submission_uncertain"):
             disposition = "uncertain"
         if disposition == "permanent":
-            await GenerationProviderService.fail_and_refund(session, generation_id, str(exc))
+            public_error = str(exc)
+            params = generation.parameters or {}
+            # A definite Neironych capability rejection followed by a definite
+            # Nexus credit rejection produces no upstream task. Surface the actual
+            # high-resolution limitation instead of exposing a raw supplier URL.
+            # Do not silently lower resolution or change any other model's route.
+            if (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 402
+                and params.get("_model_id") == "seedance-2.0"
+                and params.get("resolution") == "1080p"
+                and any(
+                    isinstance(attempt, dict)
+                    and attempt.get("provider") == "neironych"
+                    and "capability_mismatch" in str(attempt.get("reason") or "")
+                    for attempt in (params.get("_provider_attempts") or [])
+                )
+            ):
+                public_error = (
+                    "Seedance 2.0: сейчас не удаётся создать видео 1080p с "
+                    "выбранными параметрами. Попробуйте 720p. "
+                    "Если ROX были списаны, они возвращены."
+                )
+                logger.warning(
+                    "seedance20_1080p_upstream_unavailable generation=%s "
+                    "neironych_capability_rejected=true nexus_http=402",
+                    generation_id,
+                )
+            await GenerationProviderService.fail_and_refund(session, generation_id, public_error)
             return
 
         now = datetime.now(timezone.utc)
