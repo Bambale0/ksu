@@ -131,8 +131,9 @@ def test_public_editorial_polish_preserves_usable_real_content() -> None:
     assert ".gallery-item:nth-child(6){grid-column:span 6;grid-row:span 2}" in css
     assert "  .gallery-item:nth-child(6){grid-column:span 2;grid-row:span 1}" in css
     assert "grid-column:span 12" not in css
-    assert "scroll-padding-top:112px" in css
-    assert "scroll-margin-top:" in css
+    assert "scroll-padding-top:100px" in css
+    assert "scroll-padding-top:84px" in css
+    assert "scroll-margin-top:" not in css
     assert "max-width:1000px" in css
     assert "min-width:661px" in css
     assert "max-width:660px" in css
