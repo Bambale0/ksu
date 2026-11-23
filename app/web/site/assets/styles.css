@@ -224,3 +224,33 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   .button,.desktop-nav a,.site-footer a,.gallery-picture,.faq-list summary span,.process-row{transition:none}
   .button:hover,.gallery-item:hover .gallery-picture{transform:none}
 }
+
+
+/* Public, data-driven ROXY trends: no static gallery artwork. */
+.live-trends-grid{min-height:260px;align-content:start}
+.live-trend-tile{background:linear-gradient(145deg,#251a36,#0a090e);isolation:isolate}
+.live-trend-link{position:absolute;inset:0;display:block;overflow:hidden;color:#fff;text-decoration:none;outline-offset:-5px}
+.live-trend-link::after{content:"";position:absolute;z-index:1;inset:34% 0 0;background:linear-gradient(180deg,transparent,rgba(5,4,9,.2) 34%,rgba(2,2,6,.84));pointer-events:none}
+.live-trend-media{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;object-position:center;background:linear-gradient(120deg,#302040,#12101d);transition:transform .42s ease}
+.live-trend-tile:hover .live-trend-media{transform:scale(1.045)}
+.live-trend-tile:focus-within{outline:2px solid #d7b0ff;outline-offset:3px}
+.live-trend-kind{position:absolute;z-index:2;left:16px;top:16px;display:inline-flex;align-items:center;min-height:29px;gap:5px;padding:6px 10px;border:1px solid rgba(255,255,255,.38);border-radius:5px;background:rgba(7,6,12,.66);backdrop-filter:blur(7px);color:#f8f1ff;font-weight:850;font-size:10px;letter-spacing:.095em}
+.live-trend-tile figcaption{z-index:3;align-items:end;gap:12px;background:none;padding:65px 18px 18px;font-size:clamp(12px,1.08vw,15px)}
+.live-trend-tile figcaption strong{font-size:inherit;font-weight:820;line-height:1.27;letter-spacing:-.01em;text-transform:none;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.live-trend-tile figcaption span{color:#dbcedf;white-space:nowrap;font-size:11px;font-weight:640;font-variant-numeric:tabular-nums}
+.live-trends-status{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px;border:1px dashed rgba(215,177,250,.28);background:rgba(18,13,27,.32);text-align:center;color:#bdb2c7}
+.live-trends-status[hidden]{display:none}
+.live-trends-status p{margin:0;font-size:15px;line-height:1.6}
+.live-trends-status .button{min-height:44px}
+.live-trends-grid:empty{min-height:0}
+@media(max-width:660px){
+  .live-trends-grid{min-height:0}
+  .live-trend-kind{top:9px;left:9px;padding:5px 7px;font-size:9px;min-height:24px}
+  .live-trend-tile figcaption{padding:36px 10px 10px;gap:5px}
+  .live-trend-tile figcaption strong{font-size:12px}
+  .live-trend-tile figcaption span{font-size:10px;white-space:normal;text-align:right}
+}
+@media(prefers-reduced-motion:reduce){
+  .live-trend-media{transition:none}
+  .live-trend-tile:hover .live-trend-media{transform:none}
+}
