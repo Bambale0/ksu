@@ -63,3 +63,17 @@ test('browser user can reach Telegram login and return to gallery', async ({ pag
   await expect(page).toHaveURL(/#examples$/);
   await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
 });
+
+
+test('mobile menu opens, navigates and closes cleanly', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openLanding(page);
+  const details = page.locator('.roxy-landing-mobile-menu');
+  const trigger = details.locator('summary');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(details).toHaveAttribute('open', '');
+  await details.getByRole('link', { name: 'Возможности' }).click();
+  await expect(page).toHaveURL(/#features$/);
+  await expect(details).not.toHaveAttribute('open', '');
+});
