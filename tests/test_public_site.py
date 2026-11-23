@@ -72,7 +72,7 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "feature-icon" not in html
     assert "gallery-tags" not in html
     assert "Миллион версий" not in html
-    assert 'data-app-link' in html
+    assert 'data-login-link' in html
     assert "/mini-app/_next/" not in html
     assert "ROXY AI STUDIO" in html
     assert "/site-assets/" in css
@@ -82,3 +82,27 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "@media(max-width:1000px)" in css
     assert "@media(max-width:660px)" in css
     assert "@media(prefers-reduced-motion:reduce)" in css
+
+
+@pytest.mark.asyncio
+async def test_login_is_public_page_without_redirect_to_telegram() -> None:
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        login = await client.get("/login", follow_redirects=False)
+        login_head = await client.head("/login", follow_redirects=False)
+        css = await client.get("/site-assets/login.css")
+        js = await client.get("/site-assets/login.js")
+    assert login.status_code == login_head.status_code == 200
+    assert "Вход в ROXY" in login.text
+    assert "ROXY AI STUDIO" in login.text
+    assert "/site-assets/login.js" in login.text
+    assert "/api/v1/web-auth" in js.text
+    assert "no-store" in login.headers["cache-control"]
+    assert css.status_code == js.status_code == 200
+    assert not login_head.content
+
+
+def test_public_ctas_route_into_login_instead_of_unauthenticated_app() -> None:
+    html = (ROOT / "app/web/site/index.html").read_text(encoding="utf-8")
+    assert html.count('data-login-link') >= 5
+    assert 'href="/login"' in html
+    assert 'href="/mini-app/" data-app-link' not in html
