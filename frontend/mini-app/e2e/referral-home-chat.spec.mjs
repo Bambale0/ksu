@@ -156,7 +156,7 @@ test('storage denial does not block native permission or referral browsing', asy
 test('unauthenticated launch never requests chat permission', async ({ page }) => {
   const requests = await setup(page, { auth: false });
   await page.goto('/mini-app/?startapp=ref_777');
-  await expect(page.locator('.roxy-browser-landing')).toBeVisible();
+  await expect(page.locator('.roxy-app-login')).toBeVisible();
   expect(requests.some((request) => request.path === '/api/v1/onboarding/complete')).toBe(false);
   await expect(page.getByRole('button', { name: 'Подключить чат Telegram', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__writeRequests)).toBe(0);

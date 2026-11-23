@@ -105,6 +105,6 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   if (!ready) {
     return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ROXY…</small></div>;
   }
-  if (!authenticated) return <TelegramBrowserLogin />;
+  if (!authenticated) return <TelegramBrowserLogin showLanding={false} />;
   return <>{children}</>;
 }

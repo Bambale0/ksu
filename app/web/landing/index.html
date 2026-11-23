@@ -1,24 +1,138 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="robots" content="noindex,follow" />
-  <meta name="theme-color" content="#07070b" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07070b">
+  <meta name="description" content="ROXY — студия AI-фото, видео, референсов и трендов. Создавай свой визуальный мир.">
+  <link rel="canonical" href="/">
+  <link rel="preload" href="/landing/roxy-mosaic.webp" as="image" type="image/webp">
+  <link rel="stylesheet" href="/landing/styles.css">
   <title>ROXY — создавай фото и видео с AI</title>
-  <meta name="description" content="ROXY — творческая студия фото, видео, референсов и трендов." />
-  <link rel="canonical" href="/mini-app/" />
-  <script>
-    (() => {
-      const target = new URL("/mini-app/", window.location.origin);
-      target.search = window.location.search;
-      target.hash = window.location.hash;
-      window.location.replace(target.href);
-    })();
-  </script>
-  <meta http-equiv="refresh" content="0; url=/mini-app/" />
 </head>
-<body style="margin:0;background:#07070b;color:#f6f1ff;font:16px system-ui,sans-serif;padding:32px">
-  <main><h1>ROXY</h1><p>Новая страница творческой студии находится в Mini App.</p><a style="color:#d5a7ff" href="/mini-app/">Открыть ROXY</a></main>
+<body>
+<main class="roxy-browser-landing" aria-labelledby="roxy-landing-title">
+  <header class="roxy-landing-nav">
+    <a class="roxy-landing-logo" href="#top" aria-label="ROXY — начало страницы"><span class="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></a>
+    <nav class="roxy-landing-links" aria-label="Разделы лендинга"><a href="#features">Возможности</a><a href="#how">Процесс</a><a href="#examples">Галерея</a><a href="#start">Начать</a></nav>
+    <a class="roxy-landing-button roxy-landing-button-small" href="/mini-app/" data-app-entry>Открыть приложение <span aria-hidden="true">↗</span></a>
+    <details class="roxy-landing-mobile-menu">
+      <summary aria-label="Открыть меню"><span aria-hidden="true">☰</span></summary>
+      <nav aria-label="Мобильное меню"><a href="#features">Возможности</a><a href="#how">Процесс</a><a href="#examples">Галерея</a><a href="#start">Начать</a></nav>
+    </details>
+  </header>
+  <section class="roxy-film-hero" id="top">
+    <div class="roxy-film-mosaic" style="--roxy-art: url('/landing/roxy-mosaic.webp')" role="group" aria-label="Демонстрационный коллаж возможностей ROXY">
+      <div class="roxy-film-tile roxy-film-tile-portrait" role="img" aria-label="Кинематографический портрет"></div>
+      <div class="roxy-film-tile roxy-film-tile-chrome-flower" role="img" aria-label="Хромированный цветок"></div>
+      <div class="roxy-film-tile roxy-film-tile-motion" role="img" aria-label="Кинематографическая сцена"><span class="roxy-film-play" aria-hidden="true">▶</span></div>
+      <div class="roxy-film-tile roxy-film-tile-cat" role="img" aria-label="Портрет кота"></div>
+      <div class="roxy-film-tile roxy-film-tile-fashion" role="img" aria-label="Фэшн-портрет"></div>
+      <div class="roxy-film-tile roxy-film-tile-rain" role="img" aria-label="Портрет под дождём"></div>
+      <div class="roxy-film-tile roxy-film-tile-editorial" role="img" aria-label="Редакционная съёмка"></div>
+      <div class="roxy-film-tile roxy-film-tile-blossom" role="img" aria-label="Макросъёмка цветка"></div>
+      <div class="roxy-film-tile roxy-film-tile-dream" role="img" aria-label="Сюрреалистическая сцена"><span class="roxy-film-play" aria-hidden="true">▶</span></div>
+      <div class="roxy-film-chrome" aria-hidden="true">R<span>✦</span></div>
+    </div>
+    <div class="roxy-film-hero-copy">
+      <span class="roxy-film-kicker">ТВОЯ СТУДИЯ · ТВОИ ПРАВИЛА</span>
+      <h1 id="roxy-landing-title">Создавай фото и видео с AI</h1>
+      <p>Твоя идея превращается в визуал. Создавай, оживляй и переосмысливай в ROXY.</p>
+      <div class="roxy-landing-actions">
+        <a class="roxy-landing-button roxy-landing-button-primary" href="/mini-app/" data-app-entry>Начать создавать <span aria-hidden="true">▶</span></a>
+        <a class="roxy-landing-button roxy-landing-button-ghost" href="#examples">Смотреть примеры <span aria-hidden="true">↘</span></a>
+      </div>
+    </div>
+    <a class="roxy-film-scroll" href="#features" aria-label="Перейти к возможностям">↓</a>
+  </section>
+
+  <section class="roxy-landing-section roxy-feature-section" id="features">
+    <header class="roxy-landing-section-head">
+      <span class="roxy-film-kicker">01 / ИНСТРУМЕНТЫ</span>
+      <h2>Всё для твоего креатива</h2>
+      <p>От первого кадра до готового ролика. Один творческий процесс, множество способов воплотить идею.</p>
+    </header>
+    <div class="roxy-feature-grid">
+      <article class="roxy-feature-card"><span class="roxy-feature-counter">01</span><i aria-hidden="true">✦</i><h3>AI Фото</h3><p>Создавай изображения с нуля или меняй свои фото по референсу и описанию.</p></article>
+      <article class="roxy-feature-card"><span class="roxy-feature-counter">02</span><i aria-hidden="true">▶</i><h3>AI Видео</h3><p>Превращай идеи и изображения в ролики с актуальными видеомоделями.</p></article>
+      <article class="roxy-feature-card"><span class="roxy-feature-counter">03</span><i aria-hidden="true">⌁</i><h3>Промпты</h3><p>Используй готовые идеи и инструменты, чтобы быстрее получать нужный результат.</p></article>
+      <article class="roxy-feature-card"><span class="roxy-feature-counter">04</span><i aria-hidden="true">↗</i><h3>Тренды</h3><p>Запускай готовые тренды и адаптируй их под собственный контент.</p></article>
+    </div>
+    <div class="roxy-feature-showcase">
+      <div class="roxy-feature-showcase-art" style="--roxy-art: url('/landing/roxy-mosaic.webp')">
+        <span class="roxy-feature-shot roxy-feature-shot-before" role="img" aria-label="Исходный визуальный референс"></span>
+        <span class="roxy-feature-transition" aria-hidden="true">→</span>
+        <span class="roxy-feature-shot roxy-feature-shot-after" role="img" aria-label="Демонстрационный результат преобразования"></span>
+      </div>
+      <div class="roxy-feature-showcase-copy">
+        <span class="roxy-film-kicker">ОТ РЕФЕРЕНСА К РЕЗУЛЬТАТУ</span>
+        <h3>Одна идея. Бесконечно много версий.</h3>
+        <p>Используй свои кадры, готовые тренды и инструменты редактирования. Экспериментируй без сложного монтажа.</p>
+        <a class="roxy-film-text-link" href="/mini-app/" data-app-entry>Попробовать ROXY <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="roxy-landing-section roxy-how-section" id="how">
+    <header class="roxy-landing-section-head"><span class="roxy-film-kicker">02 / КАК ЭТО РАБОТАЕТ</span><h2>Три шага от идеи до результата</h2><p>Не нужно учиться сложным редакторам. Всё начинается с того, что ты хочешь создать.</p></header>
+    <div class="roxy-step-grid">
+      <article class="roxy-step-card"><b>01</b><span class="roxy-step-arrow" aria-hidden="true">↗</span><h3>Опиши идею</h3><p>Напиши, что хочешь получить, или выбери готовый тренд.</p></article>
+      <article class="roxy-step-card"><b>02</b><span class="roxy-step-arrow" aria-hidden="true">↗</span><h3>Добавь референс</h3><p>Если нужно — загрузи фото, видео или используй работу из своей истории.</p></article>
+      <article class="roxy-step-card"><b>03</b><span class="roxy-step-arrow" aria-hidden="true">↗</span><h3>Создавай и делись</h3><p>ROXY запустит подходящую модель, а готовый результат останется в истории.</p></article>
+    </div>
+  </section>
+
+  <section class="roxy-landing-section roxy-examples-section" id="examples">
+    <header class="roxy-landing-section-head"><span class="roxy-film-kicker">03 / ГАЛЕРЕЯ</span><h2>Найди свой визуальный стиль</h2><p>Портреты, движение и эксперименты. Эти демонстрационные кадры показывают направление возможностей ROXY.</p></header>
+    <div class="roxy-style-chips" aria-label="Примеры стилей"><span>Киберпанк</span><span>Аниме</span><span>Фэнтези</span><span>3D</span><span>Кинематик</span><span>Портрет</span></div>
+    <div class="roxy-examples-mosaic" style="--roxy-art: url('/landing/roxy-mosaic.webp')">
+      <figure class="roxy-example-tile roxy-example-portrait"><span class="roxy-example-picture" role="img" aria-label="Кинематографический портрет"></span><figcaption>Портрет в кинематографическом свете <span aria-hidden="true">↗</span></figcaption></figure>
+      <figure class="roxy-example-tile roxy-example-chrome-flower"><span class="roxy-example-picture" role="img" aria-label="Хромированный цветок"></span><figcaption>Хромированный цветок <span aria-hidden="true">↗</span></figcaption></figure>
+      <figure class="roxy-example-tile roxy-example-motion"><span class="roxy-example-picture" role="img" aria-label="Кинематографическое движение"></span><figcaption>Кинематографическое движение <span aria-hidden="true">↗</span></figcaption></figure>
+      <figure class="roxy-example-tile roxy-example-cat"><span class="roxy-example-picture" role="img" aria-label="Портрет кота"></span><figcaption>Портрет кота <span aria-hidden="true">↗</span></figcaption></figure>
+      <figure class="roxy-example-tile roxy-example-fashion"><span class="roxy-example-picture" role="img" aria-label="Фэшн-портрет"></span><figcaption>Фэшн-портрет <span aria-hidden="true">↗</span></figcaption></figure>
+      <figure class="roxy-example-tile roxy-example-rain"><span class="roxy-example-picture" role="img" aria-label="Портрет под дождём"></span><figcaption>Портрет под дождём <span aria-hidden="true">↗</span></figcaption></figure>
+    </div>
+    <a class="roxy-landing-button roxy-landing-button-primary roxy-examples-cta" href="/mini-app/" data-app-entry>Создать свою историю <span aria-hidden="true">✦</span></a>
+  </section>
+
+  <section class="roxy-telegram-section" id="start">
+    <div class="roxy-telegram-copy">
+      <span class="roxy-film-kicker">04 / ТВОЯ СТУДИЯ</span>
+      <h2>Твой следующий кадр начинается здесь.</h2>
+      <p>Перейди в приложение и войди через Telegram — история работ и баланс сохраняются в одном аккаунте.</p>
+      <ul><li>Фото, видео, референсы и тренды</li><li>Работы и баланс в одном профиле</li><li>Один и тот же вход с телефона и в браузере</li></ul>
+      <a class="roxy-landing-button roxy-landing-button-primary" href="/mini-app/" data-app-entry>Открыть приложение <span aria-hidden="true">▶</span></a>
+    </div>
+    <div class="roxy-login-panel">
+      <div class="roxy-landing-logo"><span class="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></div>
+      <h3>Твоя студия ждёт тебя</h3><p>Открой приложение, авторизуйся и продолжай создавать.</p>
+      <a class="roxy-landing-button roxy-landing-button-ghost" href="/mini-app/" data-app-entry>Войти в ROXY <span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+  <footer class="roxy-landing-footer"><div><a class="roxy-landing-logo" href="#top"><span class="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></a><p>Пространство для тех, кто создаёт свой визуальный мир.</p></div><nav aria-label="Ссылки в подвале"><a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#examples">Галерея</a><a href="#start">Начать</a></nav><small>© 2026 ROXY</small></footer>
+</main>
+<script>
+(() => {
+  const names = ["startapp", "start", "ref", "tgWebAppStartParam", "start_payload"];
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const target = new URL("/mini-app/", window.location.origin);
+  for (const name of names) {
+    const value = query.get(name) || hash.get(name);
+    if (value) target.searchParams.set(name, value);
+  }
+  document.querySelectorAll("[data-app-entry]").forEach(link => {
+    link.setAttribute("href", target.pathname + target.search);
+  });
+  document.querySelectorAll(".roxy-landing-mobile-menu nav a").forEach(link => {
+    link.addEventListener("click", () => {
+      const menu = link.closest("details");
+      if (menu) menu.open = false;
+    });
+  });
+})();
+</script>
 </body>
 </html>

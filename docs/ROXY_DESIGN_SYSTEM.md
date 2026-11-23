@@ -67,15 +67,23 @@ Canonical tokens live in `frontend/mini-app/app/globals.css`.
 
 The design is dark-first. Violet is the main action language, pink is a brand accent. The separate unauthenticated film-mosaic landing uses chrome-lilac art while the Telegram Mini App retains its tested native chrome. Gold and Telegram blue are not part of customer chrome.
 
-## Browser landing — Film Mosaic
+## Public marketing and application routing
 
-The public unauthenticated landing is implemented in `frontend/mini-app/components/telegram-browser-login.tsx` and its existing `app/browser-landing.css`. Keep it part of the canonical Next.js customer tree; do not resurrect a second interactive UI in `app/web/landing/`. That old URL is an explicit forwarder to `/mini-app/`, preserving query/hash during the JavaScript redirect.
+The public landing and the customer application share an origin but are **different experiences**:
 
-Visual direction: nearly black canvas, tight asymmetric image/video-style mosaic, chrome-lilac `R` centerpiece, editorial type, prominent accessible CTAs. The current compressed 3×3 `lib/roxy-mosaic-atlas.ts` is design-reference artwork provided for this redesign, **not** real customer generations. Do not imply otherwise or substitute private user media for public assets without publication consent. Replace mock artwork with approved, optimized and published media through a dedicated review.
+- `GET / ` serves the ROXY film-mosaic marketing landing with HTTP 200 **without redirecting**. Canonical user-visible entry is the bare domain `/`.
+- `GET /landing/` is a backward-compatible path serving that same static marketing page and its images/CSS, not an app redirect.
+- `GET /mini-app/` is the Next.js customer application. Native Telegram initData opens the app directly; valid browser sessions open the same app; unauthenticated browser visitors see a **compact application login** with the unchanged Telegram Login widget, never the full marketing landing.
+- All CTA links from marketing lead to `/mini-app/` on the same origin. A narrow allowlist of referral/start parameters is transferred from the landing query/hash, avoiding dropped attribution.
+- `/mini-app/route/` and other application routes keep the existing auth, dynamic models, billing, history, onboarding and delivery contracts. Do not redirect them to `/`.
 
-The visual layer must preserve `browser-auth`, `startapp` referral payloads, Telegram Login, all real application routes, dynamic backend model schemas, pricing and wallet behavior. Hero tiles are decorative: the real CTAs must be live links and keep keyboard and focus semantics. Gallery sections have stable copy; the login section retains all loading, ready, signing-in and failure states. No artificial API requests, autoplay or heavy WebGL on first paint.
+The visually distinctive standalone marketing page lives in `app/web/landing/index.html`, `styles.css` and the optimized `roxy-mosaic.webp`. This is a **public marketing exception**, not a second customer application: no forms or product logic are reimplemented there. All actual customer UI remains exclusively under `frontend/mini-app/`, statically exported by Next.js and served under `/mini-app/`.
 
-For quality, verify at 320, 390, 768 and 1280px with Playwright; test a native Telegram deep link and unauthenticated browser login fallback. Check reduced motion, color contrast, loading, no overflow and screenshot comparisons before promoting to production.
+FastAPI `app/main.py` serves the landing at the root using `FileResponse` and mounts the unchanged static directories. The app's compact browser login is rendered by `TelegramAuthBoundary` → `TelegramBrowserLogin(showLanding=false)` so existing signed browser auth and Telegram web-app native paths are unchanged.
+
+Visual direction: nearly black canvas, tight asymmetric photo/video-style mosaic, chrome-lilac `R`, editorial type and accessible CTAs. The current compressed 3×3 atlas is **design-reference artwork** and not actual customer generations; replace with published, permission-cleared sample media when available.
+
+Tests: `tests/test_public_landing_routes.py` validates the public root, legacy alias and standalone CSS/art. `frontend/mini-app/e2e/browser-landing.spec.mjs` now checks the actual compact browser login at `/mini-app/` across 320/390/768/1280px, plus referral preservation and errors. Real release validation must verify `GET /` vs `GET /mini-app/`, the Telegram WebView native entry and latest exact image SHA.
 
 ## Primary navigation
 

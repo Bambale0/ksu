@@ -288,3 +288,43 @@
   .roxy-landing-button, .roxy-example-picture, .roxy-landing-links a, .roxy-landing-footer a { transition: none; }
   .roxy-landing-button:hover, .roxy-example-tile:hover .roxy-example-picture { transform: none; }
 }
+
+
+/* Browser-only access screen for /mini-app/. Keep public marketing on /. */
+.roxy-app-login {
+  min-height: 100dvh;
+  padding: max(24px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 0%, rgba(155,92,255,.19), transparent 460px), #0b0b10;
+  color: #f7f4ff;
+}
+.roxy-app-login-panel {
+  width: min(100%, 440px);
+  border: 1px solid rgba(190,150,255,.24);
+  border-radius: 28px;
+  background: linear-gradient(150deg,rgba(28,21,44,.96),rgba(11,11,16,.97));
+  padding: clamp(24px, 5vw, 39px);
+  box-shadow: 0 18px 64px rgba(0,0,0,.27);
+  text-align: center;
+}
+.roxy-app-login-logo {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: #fff; font-weight: 950; font-size: 26px; font-style: italic;
+  letter-spacing: -.04em; text-decoration: none;
+}
+.roxy-app-login-logo span { font-style: normal; color: #d3b2ff; font-size: 24px; }
+.roxy-app-login-eyebrow { display: block; margin-top: 32px; color: #c2a2f4; font-size: 11px; font-weight: 850; letter-spacing: .17em; }
+.roxy-app-login-panel h1 { font-size: clamp(30px,8vw,42px); letter-spacing: -.05em; line-height: 1.02; margin: 12px 0 14px; }
+.roxy-app-login-panel p { color: #b9b0c4; font-size: 15px; line-height: 1.55; margin: 0; }
+.roxy-app-login-panel .roxy-login-widget { margin: 27px 0 12px; }
+.roxy-app-login-panel small { display: block; color: #aca5b4; font-size: 12px; line-height: 1.6; }
+.roxy-app-login-error { margin: 12px 0; color: #ff8298; }
+.roxy-app-login-telegram {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 24px; min-height: 48px; padding: 11px 20px;
+  border: 1px solid rgba(221,195,255,.45); border-radius: 999px;
+  background: rgba(153,99,234,.17); color: #fff; font-size: 14px; font-weight: 750; text-decoration: none;
+}
+.roxy-app-login-back { display: block; width: fit-content; margin: 25px auto 0; color: #c7b2e9; font-size: 13px; text-underline-offset: 5px; }
+.roxy-app-login a:focus-visible { outline: 3px solid #d3b2ff; outline-offset: 3px; }

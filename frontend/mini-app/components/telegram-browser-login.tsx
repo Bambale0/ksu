@@ -60,7 +60,7 @@ function TelegramGlyph() {
   return <span className="roxy-telegram-glyph" aria-hidden="true">➤</span>;
 }
 
-export function TelegramBrowserLogin() {
+export function TelegramBrowserLogin({ showLanding = true }: { showLanding?: boolean } = {}) {
   const widgetRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [botUsername, setBotUsername] = useState("");
@@ -133,6 +133,28 @@ export function TelegramBrowserLogin() {
   const launchHref = telegramUrl || "#telegram-login";
   const launchTarget = telegramUrl ? "_blank" : undefined;
   const launchRel = telegramUrl ? "noreferrer" : undefined;
+
+  // App routes must never become a public marketing page when auth is missing.
+  // Reuse the same verified browser-auth widget, but render only the app sign-in.
+  if (!showLanding) {
+    return (
+      <main className="roxy-app-login" aria-labelledby="roxy-app-login-title">
+        <section className="roxy-app-login-panel">
+          <a className="roxy-app-login-logo" href="/" aria-label="ROXY — на главную"><span aria-hidden="true">✦</span> ROXY</a>
+          <span className="roxy-app-login-eyebrow">ВХОД В ПРИЛОЖЕНИЕ</span>
+          <h1 id="roxy-app-login-title">Твоя творческая студия</h1>
+          <p>Войди через Telegram, чтобы создавать фото и видео, работать с референсами и продолжить с тем же балансом и историей.</p>
+          <div ref={widgetRef} className="browser-login-widget roxy-login-widget" aria-live="polite" />
+          {status === "loading" && <small role="status">Готовлю безопасный вход…</small>}
+          {status === "signing-in" && <small role="status">Вхожу в ROXY…</small>}
+          {status === "ready" && <small>Авторизация проходит через Telegram.</small>}
+          {status === "error" && <div className="roxy-app-login-error" role="alert"><small>Вход через Telegram временно недоступен.</small></div>}
+          {telegramUrl && <a className="roxy-app-login-telegram" href={telegramUrl} target="_blank" rel="noreferrer"><TelegramGlyph /> Открыть в Telegram</a>}
+          <a className="roxy-app-login-back" href="/">Посмотреть возможности ROXY</a>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="roxy-browser-landing" aria-labelledby="roxy-landing-title">
