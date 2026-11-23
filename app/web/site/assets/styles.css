@@ -91,7 +91,7 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
 .gallery-item:nth-child(3){grid-column:span 4;grid-row:span 2}
 .gallery-item:nth-child(4){grid-column:span 3;grid-row:span 2}
 .gallery-item:nth-child(5){grid-column:span 4;grid-row:span 2}
-.gallery-item:nth-child(6){grid-column:span 5;grid-row:span 2}
+.gallery-item:nth-child(6){grid-column:span 12;grid-row:span 2}
 .gallery-picture{position:absolute;inset:0;background-image:image-set(url("/site-assets/atlas-1920.webp") 1x,url("/site-assets/atlas-3840.webp") 2x);background-repeat:no-repeat;background-size:300% 300%;transition:transform .3s ease}
 .gallery-item:hover .gallery-picture{transform:scale(1.045)}
 .gallery-portrait .gallery-picture{background-position:0% 0%}
@@ -150,7 +150,7 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   html{scroll-padding-top:68px}
   .site-header{min-height:64px;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding:9px 15px}
   .logo{font-size:21px}
-  .logo-wordmark small{font-size:8px}
+  .logo-wordmark small{font-size:10px}
   .site-header .top-action{min-height:41px;font-size:12px;padding:9px 14px}
   .mobile-nav summary{width:42px;height:42px}
   .hero{min-height:max(780px,99svh)}
@@ -171,7 +171,7 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   .hero-copy{bottom:55px;width:calc(100% - 30px)}
   .hero h1{font-size:clamp(41px,10.5vw,59px)}
   .hero-copy p{font-size:15px}
-  .eyebrow{font-size:10px;letter-spacing:.14em}
+  .eyebrow{font-size:11px;letter-spacing:.13em}
   .hero-actions{flex-direction:column;gap:9px;margin-top:24px}
   .hero-actions .button{width:100%}
   .hero-scroll{display:none}
@@ -183,7 +183,7 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   .stage-stamp{font-size:10px;right:13px;top:12px}
   .stage-frame-detail{border-width:5px}
   .capabilities-stage figcaption{font-size:10px;padding:35px 12px 13px}
-  .capabilities-stage figcaption span:last-child{max-width:165px;font-size:9px}
+  .capabilities-stage figcaption span:last-child{max-width:165px;font-size:11px}
   .capabilities-list-caption{font-size:10px}
   .capability{grid-template-columns:28px minmax(0,1fr) 18px;gap:11px;padding:20px 0}
   .capability h3{font-size:24px}
@@ -199,7 +199,7 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   .gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:150px;gap:6px}
   .gallery-item,.gallery-item:nth-child(1),.gallery-item:nth-child(2),.gallery-item:nth-child(3),.gallery-item:nth-child(4),.gallery-item:nth-child(5),.gallery-item:nth-child(6){grid-column:span 1;grid-row:span 1;border-radius:4px}
   .gallery-item:nth-child(1),.gallery-item:nth-child(6){grid-row:span 2}
-  .gallery-item figcaption{display:grid;align-items:start;padding:27px 10px 10px;gap:3px;font-size:10px}
+  .gallery-item figcaption{display:grid;align-items:start;padding:27px 10px 10px;gap:3px;font-size:11px}
   .gallery-item figcaption span:last-child{text-align:left;font-size:11px}
   .gallery-outro{align-items:flex-start;flex-direction:column;gap:10px}
   .gallery-outro p{font-size:14px}
