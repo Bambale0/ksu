@@ -1,6 +1,8 @@
 """The public website owns an explicit, independent multipage surface."""
 from pathlib import Path
 import re
+import subprocess
+import shutil
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -49,3 +51,13 @@ def test_all_pages_share_navigation_and_assets_but_have_distinct_titles():
         assert '/site-assets/experience.css?v=' in html
         assert '/site-assets/navbar.js?v=' in html
     assert 'data-limit="12"' in (ROOT / "gallery.html").read_text(encoding="utf-8")
+
+
+def test_checked_in_public_pages_are_current():
+    if shutil.which("node") is None:
+        pytest.skip("Node is required to verify generated public documents")
+    subprocess.run(
+        ["node", "scripts/build_public_site_pages.mjs", "--check"],
+        cwd=ROOT.parents[2],
+        check=True,
+    )
