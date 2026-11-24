@@ -122,11 +122,17 @@ test('canonical Home fetches its trend list once', async ({ page }) => {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await mockHomeCatalog(page);
-  await page.goto('/mini-app/?route=home');
+  const trendsLoaded = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/trends' && response.ok());
+  await page.goto('/mini-app/?route=home', { waitUntil: 'domcontentloaded' });
+  await trendsLoaded;
   await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
   await expect(page.locator('#roxy-home-trend-folders')).toBeVisible();
-  await page.waitForLoadState('networkidle');
-
+  // Scope stability to the measured endpoint; background telemetry and media
+  // requests are intentionally independent of catalog readiness.
+  await expect.poll(() => trendRequests).toBe(1);
+  await page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]').click();
+  await expect(page.locator('#roxy-home-trend-folders')).toBeVisible();
   expect(trendRequests).toBe(1);
 });
 

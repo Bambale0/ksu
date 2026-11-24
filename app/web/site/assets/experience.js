@@ -19,6 +19,7 @@
     if (!tile) return;
     tile.style.removeProperty("--rx");
     tile.style.removeProperty("--ry");
+    for (const prop of ["--spot-x","--spot-y","--asset-x","--asset-y"]) tile.style.removeProperty(prop);
   }
 
   function draw() {
@@ -64,7 +65,37 @@
     const y = clamp((point.y - rect.top) / Math.max(rect.height, 1), 0, 1) - 0.5;
     activeTile.style.setProperty("--rx", `${(-y * 6).toFixed(2)}deg`);
     activeTile.style.setProperty("--ry", `${(x * 7).toFixed(2)}deg`);
+    activeTile.style.setProperty("--spot-x", `${(x + .5) * 100}%`);
+    activeTile.style.setProperty("--spot-y", `${(y + .5) * 100}%`);
+    activeTile.style.setProperty("--asset-x", `${x * 10}px`);
+    activeTile.style.setProperty("--asset-y", `${y * 8}px`);
   }
+
+  // Independent hero pointer depth, sampled at most once per frame.
+  let heroFrame = 0;
+  let heroPoint = null;
+  function drawHeroPointer() {
+    heroFrame = 0;
+    if (!hero || !heroPoint || reducedMotion.matches || !finePointer.matches) return;
+    const rect = hero.getBoundingClientRect();
+    const x = clamp((heroPoint.x - rect.left) / Math.max(rect.width,1),0,1) - .5;
+    const y = clamp((heroPoint.y - rect.top) / Math.max(rect.height,1),0,1) - .5;
+    hero.style.setProperty("--hero-x", `${x * 20}px`);
+    hero.style.setProperty("--hero-y", `${y * 12}px`);
+  }
+  function resetHeroPointer() {
+    heroPoint = null;
+    hero?.style.removeProperty("--hero-x");
+    hero?.style.removeProperty("--hero-y");
+  }
+  hero?.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "mouse" || reducedMotion.matches || !finePointer.matches) return;
+    heroPoint = {x:event.clientX,y:event.clientY};
+    if (!heroFrame) heroFrame = requestAnimationFrame(drawHeroPointer);
+  }, { passive: true });
+  hero?.addEventListener("pointerleave", resetHeroPointer, { passive: true });
+  reducedMotion.addEventListener?.("change", resetHeroPointer);
+  finePointer.addEventListener?.("change", resetHeroPointer);
 
   // Delegation includes live trend tiles injected after the page has loaded.
   const tileSelector = ".format-card, .gallery-item, .capability";
