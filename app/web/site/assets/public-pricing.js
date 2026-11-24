@@ -87,7 +87,9 @@
           const prices=list.filter(m=>m.mode===mode).map(m=>m.amount);
           if(prices.length)card.append(element("strong","от "+fmt.format(Math.min(...prices))+" ROX"+(mode==="per_second"?" / с":" / запуск")));
         }
-        card.append(element("p",list.length+" режимов в каталоге"));
+        const plural = new Intl.PluralRules("ru-RU").select(list.length);
+        const noun = plural === "one" ? "режим" : plural === "few" ? "режима" : "режимов";
+        card.append(element("p",list.length+" "+noun+" в каталоге"));
         grid.append(card);
       }
     }else{

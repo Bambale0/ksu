@@ -191,4 +191,4 @@ function enrichPage(name,html,editorial){
     </section>`;
  return html.replace('    <nav class="page-next"',`    ${section}\n    <nav class="page-next"`).replace(/[ \t]+$/gm,"");
 }
-export function withEditorial(name,html){return enrichPage(name,html,editorial);}
+export function withEditorial(name,html){return enrichPage(name,html,editorial).replace(/[ \t]+$/gm,"");}
