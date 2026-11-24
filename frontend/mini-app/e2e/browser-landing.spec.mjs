@@ -89,6 +89,7 @@ test('legacy browser entry navigates to real public documents and preserves only
     ['Возможности', '/features', 'features'],
     ['Процесс', '/process', 'process'],
     ['Галерея', '/gallery', 'gallery'],
+    ['Вопросы', '/faq', 'faq'],
   ];
   for (const [label, path, identity] of expected) {
     await expect(links.getByRole('link', {name: label, exact: true}))
