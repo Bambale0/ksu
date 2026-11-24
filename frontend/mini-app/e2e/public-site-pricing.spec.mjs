@@ -69,3 +69,27 @@ test('gallery labels first step price and gracefully handles unavailable image',
  await expect(page.locator('.live-trend-placeholder')).toBeVisible();
  await expect(page.locator('.live-trend-link')).toHaveAttribute('href','/login?trend=11111111-1111-4111-8111-111111111111');
 });
+
+test('catalogue retains priced models with unfamiliar operation names',async({page})=>{
+ await setup(page);
+ const extra=[
+  {...video,title:'Grok Video Upscale',operation:'video_upscale',price_rox:'5.00',ui_schema:{fields:[]}},
+  {...video,title:'Grok Video Extend',operation:'video_extend',price_rox:'10.00',ui_schema:{fields:[]}},
+  {...video,title:'Future Video Mode',operation:'future_video_operation',price_rox:'17.00',ui_schema:{fields:[]}}
+ ];
+ await page.route('**/api/v1/generations/models',route=>route.fulfill({json:{models:[photo,video,music,...extra]}}));
+ await page.goto('/pricing');
+ const models=page.locator('[data-catalog="all"]');
+ await expect(models.locator('.model-price-card')).toHaveCount(6);
+ await expect(models).toContainText('Grok Video Upscale');
+ await expect(models).toContainText('Grok Video Extend');
+ await expect(models).toContainText('Future Video Mode');
+ await expect(models).toContainText('Параметры в студии');
+ await expect(page.locator('[data-catalog="overview"]')).toContainText('4 режима в каталоге');
+ await page.goto('/features/video');
+ await expect(page.locator('.model-price-card')).toHaveCount(4);
+ await page.goto('/features/text');
+ await expect(page.locator('.model-price-card')).toHaveCount(1);
+ await expect(page.locator('.model-price-card')).toContainText('QA Photo');
+});
+

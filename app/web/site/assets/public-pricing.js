@@ -10,7 +10,8 @@
     layer_decomposition:"Разделение на слои", text_to_video:"Видео по тексту",
     image_to_video:"Видео по фото", text_or_image_to_video:"Видео по тексту или фото",
     multimodal_video:"Видео с референсами", motion_control:"Перенос движения",
-    audio_driven_avatar:"Аватар по фото и аудио", text_to_music:"Музыка по описанию"
+    audio_driven_avatar:"Аватар по фото и аудио", text_to_music:"Музыка по описанию",
+    video_upscale:"Повышение разрешения видео", video_extend:"Продление видео"
   };
   const media = { image:"Фото", video:"Видео", audio:"Музыка" };
   function element(tag, value, klass) {
@@ -29,7 +30,7 @@
     if (group === "all" || group === "overview") return true;
     if (group === "photo") return m.media === "image";
     if (group === "video") return m.media === "video";
-    if (group === "text") return !m.fields.some(f=>["file","files"].includes(f.control) && f.required) && (m.media === "image" || m.media === "video") && !["image_edit","image_to_image","image_to_video","motion_control","audio_driven_avatar","layer_decomposition"].includes(m.operation);
+    if (group === "text") return !m.fields.some(f=>["file","files"].includes(f.control) && f.required) && (m.media === "image" || m.media === "video") && ["text_to_image","generate_or_edit","text_to_video","text_or_image_to_video","multimodal_video"].includes(m.operation);
     if (group === "own-photo") return imageFields(m) && ["image","video"].includes(m.media);
     if (group === "reference") return m.fields.some(f=>["file","files"].includes(f.control) && f.group === "references") && ["image","video"].includes(m.media);
     return false;
@@ -47,7 +48,7 @@
     if (!Array.isArray(data?.models)) throw new Error("invalid catalog");
     return data.models.flatMap(m=>{
       const amount = number(m?.retail_price_rox ?? m?.price_rox);
-      if (!m || !Object.hasOwn(media,m.media_type) || !Object.hasOwn(operations,m.operation) || !["flat","per_second"].includes(m.price_mode) || !Number.isFinite(amount) || amount<=0 || typeof m.title!=="string" || !m.title.trim()) return [];
+      if (!m || !Object.hasOwn(media,m.media_type) || !["flat","per_second"].includes(m.price_mode) || !Number.isFinite(amount) || amount<=0 || typeof m.title!=="string" || !m.title.trim()) return [];
       return [{title:m.title.slice(0,160),media:m.media_type,operation:m.operation,mode:m.price_mode,amount,fields:Array.isArray(m.ui_schema?.fields)?m.ui_schema.fields.filter(f=>f && typeof f==="object"):[]}];
     });
   }
@@ -96,7 +97,7 @@
       for(const m of models){
         const card=element("article",null,"model-price-card");
         card.dataset.media=m.media;
-        card.append(element("span",media[m.media],"price-kicker"),element("h3",m.title),element("p",operations[m.operation]),element("strong",price(m)));
+        card.append(element("span",media[m.media],"price-kicker"),element("h3",m.title),element("p",Object.hasOwn(operations,m.operation)?operations[m.operation]:"Параметры в студии"),element("strong",price(m)));
         const spec=details(m);
         if(spec)card.append(element("small",spec));
         grid.append(card);
