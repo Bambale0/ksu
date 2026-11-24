@@ -158,12 +158,16 @@ _PUBLIC_PAGE_FILES = {
 
 
 @app.api_route("/features", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/gallery", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/gallery/", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/process", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/process/", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/faq", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/faq/", methods=["GET", "HEAD"], include_in_schema=False)
 async def public_product_page(request: Request) -> FileResponse:
     return FileResponse(
-        site_dir / _PUBLIC_PAGE_FILES[request.url.path],
+        site_dir / _PUBLIC_PAGE_FILES[request.url.path.rstrip("/")],
         media_type="text/html",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )

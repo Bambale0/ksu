@@ -121,3 +121,8 @@ Public GET/HEAD pages /features, /gallery, /process and /faq are explicit FastAP
 
 
 Release verification: the existing production workflow checks every public route using GET and HEAD against the exact deployed application image and verifies the matching `data-page` identity, in addition to existing health and worker image checks. This is not a substitute for external-domain browser QA. Unknown public paths remain excluded from the allowlist.
+
+
+## Legacy browser entry routing correction (2026-11-24)
+
+Production reproduction on release 459236e8: the marketing site's Start CTA enters /mini-app/ and an unauthenticated browser sees the older TelegramBrowserLogin film mosaic. Its marketing links pointed to local #features, #how and #examples instead of the real public pages. Those header, mobile, footer and hero-arrow links now target /, /features, /process, /gallery and /faq on the same origin, passing only bounded referral keys. Login CTAs and the Telegram widget remain in the existing authentication contour; native Telegram and deep-link authentication are unchanged. Dedicated first-party /login remains part of independent PR #645. Both slash spellings of the four marketing pages now directly return the same no-store document; the canonical metadata remains slashless. This removes the observed 307 Location with an http scheme without changing global proxy trust or redirect settings. The deploy smoke now checks both spellings. Regression tests explicitly require real route navigation and GET/HEAD 200 without Location. No changes to DB or paid operations.
