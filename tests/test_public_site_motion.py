@@ -66,3 +66,23 @@ def test_rx_branded_social_preview_is_present_and_has_explicit_dimensions():
     assert preview[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10])
     assert int.from_bytes(preview[16:20], "big") == 1200
     assert int.from_bytes(preview[20:24], "big") == 630
+
+
+def test_hero_uses_approved_artwork_not_enlarged_sprite():
+    html = HTML.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    js = JS.read_text(encoding="utf-8")
+    assert html.count('class="hero-line"') == 3
+    assert '/site-assets/roxy-official-mark.webp' in html
+    photo_rule = css.split(".hero-art-photo{", 1)[1].split("}", 1)[0]
+    assert "roxy-reference-hero.webp" in photo_rule
+    assert "background-size:contain" in photo_rule
+    assert "atlas-" not in photo_rule
+    for name in ("roxy-reference-hero.webp", "roxy-official-mark.webp"):
+        data = (ROOT / "assets" / name).read_bytes()
+        assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    assert "--hero-x" in js and "--hero-y" in js
+    assert "--asset-x" in js and "--spot-x" in js
+    assert "resetHeroPointer" in js
+    assert "feTurbulence" in css
+    assert 'class="meta-tag"' in html
