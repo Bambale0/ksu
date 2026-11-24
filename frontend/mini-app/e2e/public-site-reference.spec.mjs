@@ -86,3 +86,59 @@ test('floating navigation stays usable and RX shines only with motion enabled', 
   await expect(header.locator('.mobile-nav')).not.toHaveAttribute('open','');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
 });
+
+
+// The first screen is the reference for the rest of the same public campaign.
+// Check rendered geometry and actual controls rather than snapshotting prose.
+for (const width of [320,390,768,1440,1648]) {
+  test(`hero visual language continues through the public site at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:900});
+    await openSite(page);
+    await page.emulateMedia({reducedMotion:'reduce'});
+    const sections=page.locator('main > .section, main > .final-section');
+    await expect(sections).toHaveCount(5);
+    const metrics=await page.evaluate(() => {
+      const hero=document.querySelector('.hero h1');
+      const card=document.querySelector('.format-card');
+      const feature=document.querySelector('.capability');
+      const heading=document.querySelector('#features-title');
+      const bounds=[...document.querySelectorAll('main > .section, main > .final-section, .site-footer')].map(n=>{
+        const r=n.getBoundingClientRect();
+        return {left:r.left,right:r.right,width:r.width,scroll:n.scrollWidth,client:n.clientWidth};
+      });
+      return {
+        overflow:document.documentElement.scrollWidth-innerWidth,
+        headingFont:getComputedStyle(heading).fontFamily,
+        heroFont:getComputedStyle(hero).fontFamily,
+        featureBackground:getComputedStyle(feature).backgroundImage,
+        heroCardBackground:getComputedStyle(card).backgroundImage,
+        featureRadius:getComputedStyle(feature).borderTopLeftRadius,
+        featureTransform:getComputedStyle(feature).transform,
+        bounds,
+        columns:getComputedStyle(document.querySelector('.capabilities-list')).gridTemplateColumns.split(' ').length,
+        finalArtwork:getComputedStyle(document.querySelector('.final-section'),'::after').backgroundImage,
+      };
+    });
+    expect(metrics.overflow).toBeLessThanOrEqual(1);
+    expect(metrics.headingFont).toBe(metrics.heroFont);
+    expect(metrics.featureBackground).toContain('linear-gradient');
+    expect(metrics.heroCardBackground).toContain('linear-gradient');
+    expect(parseFloat(metrics.featureRadius)).toBeGreaterThan(0);
+    expect(metrics.featureTransform).toBe('none');
+    expect(metrics.columns).toBe(width<=700?1:2);
+    expect(metrics.finalArtwork).toContain('roxy-rx-transparent.png');
+    for(const rect of metrics.bounds){
+      expect(rect.left).toBeGreaterThanOrEqual(-1);
+      expect(rect.right).toBeLessThanOrEqual(width+1);
+      expect(rect.scroll-rect.client).toBeLessThanOrEqual(1);
+    }
+    const faq=page.locator('#faq details').first();
+    await faq.locator('summary').click();
+    await expect(faq).toHaveAttribute('open','');
+    await expect(faq.locator('p')).toBeVisible();
+    await faq.locator('summary').press('Enter');
+    await expect(faq).not.toHaveAttribute('open','');
+    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/mini-app/');
+    await expect(page.locator('.capability-link')).toHaveAttribute('href','/mini-app/');
+  });
+}

@@ -3,28 +3,16 @@
   const header = document.querySelector(".site-header");
   if (!header) return;
   const nav = header.querySelector(".desktop-nav");
-  const links = Array.from(nav?.querySelectorAll('a[href^="#"]') || []);
+  const links = Array.from(nav?.querySelectorAll('a[data-site-link]') || []);
   const action = header.querySelector(".top-action");
   const menu = header.querySelector(".mobile-nav");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
   const fine = matchMedia("(hover: hover) and (pointer: fine)");
-  const targets = links.map(link => ({link,section:document.getElementById(link.hash.slice(1))})).filter(entry=>entry.section);
-  let active = links[0], hovered = null, focused = null, frame = 0, pointer = null;
+  const active = links.find(link => link.getAttribute("aria-current") === "page") || links[0];
+  let hovered = null, focused = null, frame = 0, pointer = null;
   function draw() {
     frame = 0;
     header.classList.toggle("is-compact",scrollY > 72);
-    let sectionLink = targets[0]?.link;
-    let highest = -Infinity;
-    for (const entry of targets) {
-      const top = entry.section.getBoundingClientRect().top;
-      if (top <= 145 && top > highest) { highest=top;sectionLink=entry.link; }
-    }
-    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) sectionLink=targets[targets.length-1]?.link;
-    if (sectionLink && sectionLink !== active) active=sectionLink;
-    for (const link of links) {
-      if (link===active) link.setAttribute("aria-current","location");
-      else link.removeAttribute("aria-current");
-    }
     const shown=hovered || focused || active;
     if (nav && shown && nav.clientWidth) {
       nav.style.setProperty("--pill-x",shown.offsetLeft+"px");
