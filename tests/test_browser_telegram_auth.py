@@ -76,7 +76,10 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     action = (root / "frontend/mini-app/components/generation-action-app.tsx").read_text(encoding="utf-8")
 
-    assert "TelegramBrowserLogin" in boundary
+    assert "<TelegramBrowserLogin />" in boundary
+    assert 'href={"/login" +' in gate
+    assert 'fetch("/api/v1/web-auth/me"' in boundary
+    assert "window.__ROXY_WEB_SESSION_AUTHENTICATED__" in boundary
     assert "getInitDataFallback" in boundary
     assert "getBrowserInitData" in boundary
     assert "tg.initData = browserInitData" not in boundary
@@ -105,5 +108,7 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "tg.initData = recoveredInitData" in telegram
     assert "telegram-web-app.js" in layout
     assert "const tg = initTelegram();" in social
-    assert "tg?.initData ? api.me()" in social
+    assert "(tg?.initData || isWebSessionAuthenticated()) ? api.me()" in social
+    assert "isWebSessionAuthenticated" in telegram
+    assert boundary.index('fetch("/api/v1/web-auth/me"') < boundary.index("const browserInitData = getBrowserInitData();")
     assert "const tg = initTelegram();" in action

@@ -15,6 +15,7 @@ from app.db import feed_models  # noqa: F401
 from app.db import history_models  # noqa: F401
 from app.db import media_models  # noqa: F401
 from app.db import models  # noqa: F401
+from app.db import web_auth_models  # noqa: F401
 from app.db import notification_models  # noqa: F401
 from app.db import nexus_models  # noqa: F401
 from app.db import onboarding_models  # noqa: F401

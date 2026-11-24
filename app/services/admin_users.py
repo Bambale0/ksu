@@ -34,7 +34,9 @@ class AdminUserConflict(RuntimeError):
 
 class AdminUserService:
     @staticmethod
-    def _masked_telegram_id(value: int) -> str:
+    def _masked_telegram_id(value: int | None) -> str | None:
+        if value is None:
+            return None
         text = str(value)
         return "****" if len(text) <= 4 else f"***{text[-4:]}"
 

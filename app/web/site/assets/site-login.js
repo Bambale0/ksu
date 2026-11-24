@@ -13,8 +13,8 @@
   if (validTrend) target.searchParams.set("id", trend);
   else {
     const tool = query.get("tool") || "";
-    if (query.get("section") === "partners") {
-      target.searchParams.set("route","partners");
+    if (["partners","profile"].includes(query.get("section"))) {
+      target.searchParams.set("route",query.get("section"));
     } else if (["photo","video","text","own-photo","reference"].includes(tool)) {
       target.searchParams.set("route","create");
       if (tool === "video") target.searchParams.set("create_media","video");
@@ -28,6 +28,18 @@
   const retry = document.getElementById("login-retry");
   const proceed = document.getElementById("login-continue");
   const hint = document.getElementById("login-target");
+  const extra = document.getElementById("login-extra");
+  const yandex = document.getElementById("login-yandex");
+  const emailForm = document.getElementById("login-email-form");
+  const codeForm = document.getElementById("login-code-form");
+  const emailInput = document.getElementById("login-email");
+  const codeInput = document.getElementById("login-code");
+  const link = document.getElementById("login-link");
+  const logout = document.getElementById("login-logout");
+  let useWeb = false;
+  let linkMode = false;
+  let cookieSession = false;
+  let pendingEmail = "";
   let busy = false;
   let loading = false;
   if (validTrend) hint.hidden = false;
@@ -46,25 +58,95 @@
     return "";
   }
   async function existingSession() {
-    const credential = savedCredential();
-    if (!credential) return false;
-    try {
-      const result = await fetch("/api/v1/me", {credentials:"same-origin",cache:"no-store",headers:{"X-Telegram-Init-Data":credential}});
-      if (result.ok) {
+    const web = await fetch("/api/v1/web-auth/me", {credentials:"same-origin",cache:"no-store"});
+    if (web.status !== 404) {
+      if (!web.ok) throw new Error("session unavailable");
+      const session = await web.json();
+      if (session.authenticated === true) {
+        sessionStorage.removeItem(key);
+        cookieSession = true;
+        linkMode = query.get("mode") === "link";
+        logout.hidden = false;
+        if (linkMode) return false;
         proceed.href = destination;
         proceed.hidden = false;
+        link.hidden = false;
         message("Ты уже вошёл в аккаунт. Продолжи в студии.");
         return true;
       }
-      if (result.status === 401 || result.status === 403) sessionStorage.removeItem(key);
-    } catch {}
+    }
+    const credential = savedCredential();
+    if (!credential) return false;
+    const result = await fetch("/api/v1/me", {credentials:"same-origin",cache:"no-store",headers:{"X-Telegram-Init-Data":credential}});
+    if (result.ok && query.get("mode") !== "link") {
+      proceed.href = destination;
+      proceed.hidden = false;
+      logout.hidden = false;
+      message("Ты уже вошёл в аккаунт. Продолжи в студии.");
+      return true;
+    }
+    if (result.status === 401 || result.status === 403) sessionStorage.removeItem(key);
     return false;
   }
+  async function send(path, payload) {
+    const response = await fetch(path,{method:"POST",credentials:"same-origin",cache:"no-store",headers:{"Accept":"application/json","Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const data = await response.json();
+    if (!response.ok || data.ok !== true) throw new Error("request failed");
+    return data;
+  }
+  function finishWebLogin() {
+    sessionStorage.removeItem(key);
+    location.assign(linkMode ? "/login?linked=1" : destination);
+  }
+  emailForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (busy || !useWeb || !emailForm.checkValidity()) return;
+    busy = true;
+    const button = emailForm.querySelector("button");
+    button.disabled = true;
+    try {
+      const email = emailInput.value.trim();
+      await send("/api/v1/web-auth/email/request",{email});
+      pendingEmail = email;
+      codeForm.hidden = false;
+      codeInput.focus();
+      message("Код отправлен. Он действителен 10 минут.");
+    } catch { message("Не удалось отправить код. Попробуй позже.",true); }
+    finally { busy = false; button.disabled = false; }
+  });
+  codeForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (busy || !useWeb || !pendingEmail || !codeForm.checkValidity()) return;
+    busy = true;
+    const button = codeForm.querySelector("button");
+    button.disabled = true;
+    try {
+      await send("/api/v1/web-auth/email/verify",{email:pendingEmail,code:codeInput.value.trim(),link:linkMode});
+      finishWebLogin();
+    } catch { message("Не удалось подтвердить код или привязать аккаунт. Запроси новый код.",true); }
+    finally { busy = false; button.disabled = false; }
+  });
+  logout.addEventListener("click", async () => {
+    if (busy) return;
+    busy = true;
+    logout.disabled = true;
+    try {
+      if (cookieSession) await send("/api/v1/web-auth/logout",{});
+      sessionStorage.removeItem(key);
+      location.replace("/login");
+    } catch { message("Сервер не подтвердил выход. Повтори попытку.",true); }
+    finally { busy = false; logout.disabled = false; }
+  });
   window.onRoxyTelegramAuth = async (user) => {
     if (busy) return;
     busy = true;
     message("Входим в ROXY…");
     try {
+      if (useWeb) {
+        await send("/api/v1/web-auth/telegram",{telegram_auth:user,link:linkMode});
+        finishWebLogin();
+        return;
+      }
       const response = await fetch("/api/v1/browser-auth", {
         method:"POST", credentials:"same-origin", cache:"no-store",
         headers:{"Accept":"application/json","Content-Type":"application/json"},
@@ -85,11 +167,33 @@
     retry.hidden = true;
     proceed.hidden = true;
     widget.replaceChildren();
+    extra.hidden = true;
+    yandex.hidden = true;
+    emailForm.hidden = true;
+    codeForm.hidden = true;
+    link.hidden = true;
+    logout.hidden = true;
+    linkMode = false;
+    cookieSession = false;
     message("Подключаем безопасный вход…");
     try {
       if (await existingSession()) return;
-      const response = await fetch("/api/v1/browser-auth/config",{credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+      let response = await fetch("/api/v1/web-auth/config",{credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+      useWeb = response.status !== 404;
+      if (!useWeb) response = await fetch("/api/v1/browser-auth/config",{credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+      if (!response.ok) throw new Error("unavailable login");
       const config = await response.json();
+      const providers = useWeb ? config.providers || {} : {telegram:true};
+      if (providers.yandex) {
+        yandex.href = "/api/v1/web-auth/yandex/start?" + new URLSearchParams({next:destination,...(linkMode?{link:"true"}:{})});
+        yandex.hidden = false;
+      }
+      if (providers.email) emailForm.hidden = false;
+      extra.hidden = !providers.email && !providers.yandex;
+      if (!providers.telegram) {
+        message(extra.hidden ? "Способы входа пока недоступны." : "Выбери доступный способ входа.",extra.hidden);
+        return;
+      }
       const bot = String(config.bot_username || "").replace(/^@/,"");
       if (!response.ok || !/^[A-Za-z0-9_]{5,32}$/.test(bot)) throw new Error("unavailable login");
       const script = document.createElement("script");

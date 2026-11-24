@@ -160,6 +160,8 @@ _PUBLIC_PAGE_FILES = {
     "/features/own-photo": "feature-own-photo.html",
     "/features/reference": "feature-reference.html",
     "/login": "login.html",
+    "/pricing": "pricing.html",
+    "/partners": "partners.html",
 }
 
 
@@ -183,6 +185,10 @@ _PUBLIC_PAGE_FILES = {
 @app.api_route("/features/reference/", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/login", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/login/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/pricing", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/pricing/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/partners", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/partners/", methods=["GET", "HEAD"], include_in_schema=False)
 async def public_product_page(request: Request) -> FileResponse:
     return FileResponse(
         site_dir / _PUBLIC_PAGE_FILES[request.url.path.rstrip("/")],

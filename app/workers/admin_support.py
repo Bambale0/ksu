@@ -62,6 +62,10 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
             )
             await session.commit()
             return
+        if user.telegram_id is None:
+            SupportOutboxDeliveryService.terminal(row, status="undeliverable", error="telegram_not_connected")
+            await session.commit()
+            return
         # Commit the intent before crossing Telegram's non-idempotent boundary.
         # An expired in-flight intent is uncertain, whereas an unused claim is safe to recover.
         SupportOutboxDeliveryService.start_sending(row)

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage, isGenerationMediaReady, isTerminalGeneration, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { SavedReferencePicker } from "@/lib/reference-memory";
-import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
+import { isWebSessionAuthenticated, haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type {
   ActivePromo,
   Draft,
@@ -597,7 +597,7 @@ export function RoxySocialApp() {
 
     (async () => {
       try {
-        const meResult = await (tg?.initData ? api.me() : Promise.resolve(null));
+        const meResult = await ((tg?.initData || isWebSessionAuthenticated()) ? api.me() : Promise.resolve(null));
         if (!active) return;
         if (meResult) setMe(meResult);
       } catch {
@@ -606,7 +606,7 @@ export function RoxySocialApp() {
       } finally {
         if (active) setBooting(false);
       }
-      if (!active || !tg?.initData) return;
+      if (!active || !(tg?.initData || isWebSessionAuthenticated())) return;
     })();
 
     const onPop = () => setRoute(initialRoute());

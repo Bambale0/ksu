@@ -4,9 +4,10 @@ const tools = ['photo','video','text','own-photo','reference'];
 const trend = '11111111-1111-4111-8111-111111111111';
 
 async function widget(page, options={}) {
-  await page.route('**/api/v1/browser-auth/config',route=>route.fulfill({
+  await page.route('**/api/v1/web-auth/me',route=>route.fulfill({json:{authenticated:false}}));
+  await page.route('**/api/v1/web-auth/config',route=>route.fulfill({
     status:options.configStatus || 200,
-    json:{bot_username:'RoxyTestBot'}
+    json:{bot_username:'RoxyTestBot',providers:{telegram:true,email:false,yandex:false}}
   }));
   await page.route('https://telegram.org/js/telegram-widget.js?22',route=>route.fulfill({
     status:200,contentType:'application/javascript',body:'window.__roxyWidgetLoaded=true;'
@@ -51,10 +52,10 @@ test('chosen trend opens standalone login and returns to exact trend only after 
     json:{items:[{id:trend,title:'Тестовый тренд',preview_kind:'image',preview_url:'/site-assets/atlas-1920.webp',usage_count:1}]}
   }));
   let writes=0;
-  await page.route('**/api/v1/browser-auth',route=>{
+  await page.route('**/api/v1/web-auth/telegram',route=>{
     writes++;
     expect(route.request().postDataJSON().telegram_auth.id).toBe(42);
-    return route.fulfill({json:{ok:true,init_data:'query_id=browser-test&hash=synthetic',expires_in:3600}});
+    return route.fulfill({json:{ok:true,user_id:'11111111-1111-4111-8111-111111111111'},headers:{'set-cookie':'roxy_web_session=fixture-cookie; Path=/; HttpOnly; SameSite=Lax'}});
   });
   await page.route('**/api/v1/me',route=>route.fulfill({json:{id:'synthetic',telegram_id:42}}));
   await page.goto('/gallery?ref=QA&unknown=discard');
@@ -74,7 +75,8 @@ test('chosen trend opens standalone login and returns to exact trend only after 
   expect(url.searchParams.has('unknown')).toBe(false);
   expect(url.searchParams.has('init_data')).toBe(false);
   expect(writes).toBe(1);
-  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('__roxy_browser_init_data_v1')).initData)).toBe('query_id=browser-test&hash=synthetic');
+  expect(await page.evaluate(()=>sessionStorage.getItem('__roxy_browser_init_data_v1'))).toBeNull();
+  expect((await page.context().cookies()).some(c=>c.name==='roxy_web_session' && c.httpOnly)).toBe(true);
 });
 
 test('entry rejects arbitrary destinations, handles unavailable provider and never exposes unauthenticated continue',async({page})=>{
@@ -87,7 +89,7 @@ test('entry rejects arbitrary destinations, handles unavailable provider and nev
   await widget(page);
   await page.locator('#login-retry').click();
   await expect(page.locator('#login-status')).toContainText('Подтверди вход');
-  await page.route('**/api/v1/browser-auth',route=>route.fulfill({status:401,json:{detail:'Invalid login'}}));
+  await page.route('**/api/v1/web-auth/telegram',route=>route.fulfill({status:401,json:{detail:'Invalid login'}}));
   await page.evaluate(()=>{void window.onRoxyTelegramAuth({id:42,first_name:'Test',auth_date:1,hash:'fixture'});});
   await expect(page.locator('#login-status')).toHaveAttribute('role','alert');
   expect(new URL(page.url()).pathname).toBe('/login');
@@ -95,6 +97,7 @@ test('entry rejects arbitrary destinations, handles unavailable provider and nev
 });
 
 test('existing signed browser session can continue but arbitrary next URL is ignored',async({page})=>{
+  await page.route('**/api/v1/web-auth/me',route=>route.fulfill({json:{authenticated:false}}));
   await page.addInitScript(()=>sessionStorage.setItem('__roxy_browser_init_data_v1',JSON.stringify({initData:'query_id=existing&hash=fixture',expiresAt:Date.now()+60000})));
   await page.route('**/api/v1/me',route=>route.fulfill({json:{id:'synthetic',telegram_id:42}}));
   await page.goto('/login?next=https%3A%2F%2Fexample.invalid&trend=invalid&ref=QA');
@@ -131,4 +134,32 @@ test('video tool entry continues to the real create screen with the video catego
   await page.locator('#login-continue').click();
   await expect(page.locator('.family-tabs .active')).toHaveText('Видео');
   expect(paidWrites).toBe(0);
+});
+
+test('cookie session takes precedence over old browser credential and permits provider linking',async({page})=>{
+  await page.addInitScript(()=>sessionStorage.setItem('__roxy_browser_init_data_v1',JSON.stringify({initData:'stale-identity',expiresAt:Date.now()+60000})));
+  await page.route('**/api/v1/web-auth/me',route=>route.fulfill({json:{authenticated:true,user_id:'11111111-1111-4111-8111-111111111111'}}));
+  await page.route('**/api/v1/web-auth/config',route=>route.fulfill({json:{providers:{telegram:false,email:true,yandex:true}}}));
+  await page.route('**/api/v1/web-auth/email/request',route=>route.fulfill({json:{ok:true}}));
+  let linked=false;
+  await page.route('**/api/v1/web-auth/email/verify',route=>{
+    const payload=route.request().postDataJSON();
+    expect(payload).toEqual({email:'qa@example.test',code:'123456',link:true});
+    linked=true;
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/login');
+  await expect(page.locator('#login-continue')).toBeVisible();
+  expect(await page.evaluate(()=>sessionStorage.getItem('__roxy_browser_init_data_v1'))).toBeNull();
+  await page.locator('#login-link').click();
+  await expect(page.locator('#login-yandex')).toBeVisible();
+  const yandex=new URL(await page.locator('#login-yandex').getAttribute('href'),page.url());
+  expect(yandex.searchParams.get('link')).toBe('true');
+  await page.locator('#login-email').fill('qa@example.test');
+  await page.locator('#login-email-form button').click();
+  await expect(page.locator('#login-code-form')).toBeVisible();
+  await page.locator('#login-code').fill('123456');
+  await page.locator('#login-code-form button').click();
+  await expect(page).toHaveURL(/login\?linked=1$/);
+  expect(linked).toBe(true);
 });

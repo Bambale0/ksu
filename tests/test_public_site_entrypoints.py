@@ -10,7 +10,7 @@ from app.main import app
 
 ROOT = Path(__file__).resolve().parents[1] / "app/web/site"
 TOOLS = ("photo", "video", "text", "own-photo", "reference")
-ROUTES = [(f"/features/{name}", f"feature-{name}") for name in TOOLS] + [("/login", "login")]
+ROUTES = [(f"/features/{name}", f"feature-{name}") for name in TOOLS] + [("/login", "login"), ("/pricing", "pricing")]
 
 
 @pytest.mark.asyncio

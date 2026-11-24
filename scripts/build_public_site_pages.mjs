@@ -2,6 +2,7 @@
 // Run: node scripts/build_public_site_pages.mjs [--check]
 import {readFileSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {withEditorial} from './public_site_editorial.mjs';
 const dir=fileURLToPath(new URL('../app/web/site/',import.meta.url));
 const pageData={
   "features": {
@@ -278,7 +279,7 @@ const toolsData=[
     ]
   }
 ];
-const loginVersion="e7dc50d3cb36";
+const loginVersion="a8bea458d311";
 function buildPages(home,pageData,toolsData,loginVersion){
  const result={};
  const shell=home.match(/^(.*?)<main id="content">/s)?.[1],suffix=home.match(/<\/main>([\s\S]*)$/)?.[1];
@@ -338,7 +339,18 @@ function buildPages(home,pageData,toolsData,loginVersion){
   </section>`;
   result[id]=clean(pre(id,d.name,d.description,"/features/"+d.id,"/features"," tool-page")+`<main id="content">\n    ${section}\n    ${next("/features","Все возможности")}\n    ${final}\n  </main>`+end());
  }
- const loginShell=pre("login","Вход","Вход в ROXY AI STUDIO через Telegram.","/login","/login"," login-page")
+ const partners=`<section class="section partner-intro" data-commercial-motion="partner" aria-labelledby="partners-title">
+    ${breadcrumb("Партнёрам")}
+    <div class="editorial-intro"><div><span class="eyebrow">ROXY / ПАРТНЁРСКАЯ ПРОГРАММА</span><h1 class="page-intro" id="partners-title">Твоя аудитория. <em>Твои возможности.</em></h1></div><p>Два направления: приглашай новых пользователей или создавай работы для публикации и повторов. Фактические условия и начисления доступны в личном кабинете.</p></div>
+    <div class="partner-spread">
+      <article class="partner-story" data-commercial-motion="partner"><a class="promo-art" href="/login?section=partners" data-app-link aria-label="Открыть партнёрский кабинет"><img src="/site-assets/roxy-promo-1.webp?v=eaaca7723da1" width="1440" height="810" loading="lazy" decoding="async" alt="Партнёрская программа ROXY"></a><span class="eyebrow">01 / ПРИГЛАШАЙ</span><h2>Делись ROXY</h2><p>Используй персональную ссылку из кабинета. Вознаграждение рассчитывается по действующим правилам программы, а не по одному только переходу на сайт. Ставки и доступные к выводу суммы проверяй в аккаунте.</p><a class="button button-primary" href="/login?section=partners" data-app-link>Открыть кабинет ↗</a></article>
+      <article class="partner-story" data-commercial-motion="creator"><a class="promo-art" href="/login?section=partners" data-app-link aria-label="Открыть программу авторов"><img src="/site-assets/roxy-promo-2.webp?v=e4c0ca173cde" width="1440" height="810" loading="lazy" decoding="async" alt="Программа авторов ROXY"></a><span class="eyebrow">02 / СОЗДАВАЙ</span><h2>Публикуй работы</h2><p>Создавай визуалы, которыми можно делиться, и публикуй их в ROXY. Начисления за повторы зависят от действующих условий, типа работы и фактических оплаченных действий. Не все публикации обязательно приносят доход.</p><a class="button button-outline" href="/login?section=partners" data-app-link>Условия для авторов ↗</a></article>
+    </div>
+    <p class="price-explanation">Промо-изображения — оригинальные иллюстрации из студии. Точные ставки, статус участия, история начислений и условия вывода показываются в персональном кабинете. Сайт не обещает гарантированный заработок.</p>
+    <div class="page-details"><article class="detail-panel"><h2>Как начать</h2><p>Войди в действующий аккаунт, открой партнёрский раздел, изучи условия и скопируй персональную ссылку. Не создавай второй профиль ради участия.</p></article><article class="detail-panel"><h2>Как проверить начисления</h2><p>Открой историю в кабинете. Если ожидаемая операция не отображается, обратись в поддержку с данными операции, не передавая пароли или коды входа.</p></article></div>
+  </section>`;
+ result.partners=clean(pre("partners","Партнёрам","Партнёрская программа и программа авторов ROXY. Условия участия, персональные ссылки и начисления.","/partners","/partners"," partners-page")+`<main id="content">\n    ${partners}\n    ${next("/pricing","Цены и пополнение")}\n  </main>`+end());
+ const loginShell=pre("login","Вход","Вход в ROXY AI STUDIO через подтверждённый способ авторизации.","/login","/login"," login-page")
     .replace('name="robots" content="index,follow"','name="robots" content="noindex,nofollow"')
     .replace('href="/login" data-app-link>Начать <span aria-hidden="true">↗</span>','href="/" data-site-link>На главную <span aria-hidden="true">↗</span>');
  const login=`<section class="section login-layout" aria-labelledby="login-title">
@@ -351,9 +363,16 @@ function buildPages(home,pageData,toolsData,loginVersion){
    </div>
    <div class="login-panel">
     <h2>Вход в ROXY</h2>
-    <p>Подтверди вход через Telegram, чтобы продолжить с существующим профилем.</p>
+    <p>Войди тем способом, который привязан к твоему аккаунту. Дополнительный способ можно привязать после входа.</p>
     <p class="login-target" id="login-target" hidden>После входа откроется выбранный тренд.</p>
     <div class="login-widget" id="login-widget" aria-live="polite"></div>
+    <div id="login-extra" hidden>
+      <a class="button button-outline" id="login-yandex" hidden>Войти с Яндекс ID ↗</a>
+      <form id="login-email-form" hidden><label for="login-email">Электронная почта</label><input id="login-email" type="email" autocomplete="email" required maxlength="254"><button class="button button-outline" type="submit">Получить код</button></form>
+      <form id="login-code-form" hidden><label for="login-code">Код из письма</label><input id="login-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required><button class="button button-primary" type="submit">Подтвердить код</button></form>
+    </div>
+    <a class="button button-outline" id="login-link" href="/login?mode=link" hidden>Привязать способ входа</a>
+    <button class="button button-outline" type="button" id="login-logout" hidden>Выйти из аккаунта</button>
     <p class="login-status" id="login-status" role="status" aria-live="polite">Подключаем безопасный вход…</p>
     <a class="button button-primary" id="login-continue" hidden>Продолжить в студии ↗</a>
     <button class="button button-outline" type="button" id="login-retry" hidden>Попробовать ещё раз</button>
@@ -363,8 +382,10 @@ function buildPages(home,pageData,toolsData,loginVersion){
  result.login=clean(loginShell+`<main id="content">\n    ${login}\n  </main>`+end().replace("</body>",`<script src="/site-assets/site-login.js?v=${loginVersion}" defer></script>\n</body>`));
  return result;
 }
+pageData.pricing={label:"Цены",title:"Понятные цены ROXY.",accent:"цены ROXY.",description:"Актуальная стоимость моделей фото, видео и музыки и рублёвые пакеты ROX.",heading:"pricing-title",next:["/features","Выбрать инструмент"],details:[]};
 const pages=buildPages(readFileSync(dir+'index.html','utf8'),pageData,toolsData,loginVersion);
-for(const [name,html] of Object.entries(pages)){
+for(const [name,raw] of Object.entries(pages)){
+ const html=withEditorial(name,raw);
  const path=dir+name+'.html';
  if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==html)throw new Error('Stale generated page: '+name);}
  else writeFileSync(path,html,'utf8');

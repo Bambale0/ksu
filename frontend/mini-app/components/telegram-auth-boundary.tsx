@@ -60,7 +60,7 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
 
     const run = async () => {
       const nativeInitData = getInitDataFallback();
-      if (nativeInitData) {
+      if (nativeInitData && nativeInitData !== getBrowserInitData()) {
         // Native Telegram already enters the existing signed WebApp auth contour.
         // Do not add an eager /me probe here: it would become the first app API
         // request and bypass the shared launch/start-param headers used by routing.
@@ -68,6 +68,30 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
           setAuthenticated(true);
           setReady(true);
         }
+        return;
+      }
+
+      // The canonical cookie-backed web account takes precedence over a legacy
+      // browser Telegram credential saved in sessionStorage. Otherwise an old
+      // credential could silently open a different wallet after email/Yandex login.
+      try {
+        const response = await fetch("/api/v1/web-auth/me", {
+          credentials: "same-origin", cache: "no-store",
+        });
+        if (!response.ok && response.status !== 404) throw new Error("Web session unavailable");
+        const payload = response.status === 404 ? null : await response.json();
+        if (!active) return;
+        const webValid = payload?.authenticated === true;
+        window.__ROXY_WEB_SESSION_AUTHENTICATED__ = webValid;
+        if (webValid) {
+          clearBrowserInitData();
+          setAuthenticated(true);
+          setReady(true);
+          return;
+        }
+      } catch {
+        // Do not fall back to a different stored identity when session state is unknown.
+        if (active) setReady(true);
         return;
       }
 
@@ -94,7 +118,17 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         // where every API call will fail with 401.
         clearBrowserInitData();
         restoreFacade();
-        setAuthenticated(false);
+        try {
+          const response = await fetch("/api/v1/web-auth/me", {
+            credentials: "same-origin", cache: "no-store",
+          });
+          const payload = response.ok ? await response.json() : null;
+          const webValid = payload?.authenticated === true;
+          window.__ROXY_WEB_SESSION_AUTHENTICATED__ = webValid;
+          setAuthenticated(webValid);
+        } catch {
+          setAuthenticated(false);
+        }
       }
       setReady(true);
     };

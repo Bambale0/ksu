@@ -324,12 +324,12 @@ async def share(
             session, generation_id=generation_id, surface=payload.surface
         )
         card = await _updated_feed_card(session, generation, user=user, surface=payload.surface)
-        referral_code = str(user.telegram_id)
+        referral_code = str(user.telegram_id) if user.telegram_id is not None else ""
         link = _direct_mini_app_link(
-            FeedService.post_deep_link(generation.id, referral_code)
+            FeedService.post_deep_link(generation.id, referral_code) if referral_code else None
         )
         remix_link = _direct_mini_app_link(
-            FeedService.remix_deep_link(generation.id, referral_code)
+            FeedService.remix_deep_link(generation.id, referral_code) if referral_code else None
         )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
@@ -441,11 +441,11 @@ async def link(
         )
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    referral_code = str(user.telegram_id)
+    referral_code = str(user.telegram_id) if user.telegram_id is not None else ""
     value = _direct_mini_app_link(
-        FeedService.post_deep_link(generation.id, referral_code)
+        FeedService.post_deep_link(generation.id, referral_code) if referral_code else None
         if kind == "post"
-        else FeedService.remix_deep_link(generation.id, referral_code)
+        else FeedService.remix_deep_link(generation.id, referral_code) if referral_code else None
     )
     return {"kind": kind, "surface": surface, "link": value}
 

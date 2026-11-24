@@ -10,7 +10,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage } from "@/lib/generation-delivery";
-import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
+import { isWebSessionAuthenticated, haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type { Draft, FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote, Route, UiField } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 import { WebProfileLogout } from "./web-profile-logout";
@@ -299,10 +299,10 @@ export function RoxyApp() {
       try {
         const [modelResult, meResult, recentResult, feedResult, onboardingResult] = await Promise.allSettled([
           api.models(),
-          tg?.initData ? api.me() : Promise.resolve(null),
-          tg?.initData ? api.generations("limit=12") : Promise.resolve({ items: [] }),
-          tg?.initData ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
-          tg?.initData ? api.onboarding() : Promise.resolve(null),
+          (tg?.initData || isWebSessionAuthenticated()) ? api.me() : Promise.resolve(null),
+          (tg?.initData || isWebSessionAuthenticated()) ? api.generations("limit=12") : Promise.resolve({ items: [] }),
+          (tg?.initData || isWebSessionAuthenticated()) ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
+          (tg?.initData || isWebSessionAuthenticated()) ? api.onboarding() : Promise.resolve(null),
         ]);
         if (!active) return;
         if (modelResult.status === "fulfilled") {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { isReferralDiscoveryLaunch } from "@/lib/referral-entry";
-import { getStartParamFallback, haptic, initTelegram, notify, openExternalLink } from "@/lib/telegram";
+import { isWebSessionAuthenticated, getStartParamFallback, haptic, initTelegram, notify, openExternalLink } from "@/lib/telegram";
 import type { Me } from "@/lib/types";
 import styles from "./user-onboarding.module.css";
 
@@ -145,7 +145,7 @@ export function UserOnboardingGate() {
     let active = true;
     setDeferDiscoveryTour(isReferralDiscoveryLaunch());
     setStatusError("");
-    Promise.allSettled([api.onboarding(), tg?.initData ? api.me() : Promise.resolve(null)]).then(([onboardingResult, meResult]) => {
+    Promise.allSettled([api.onboarding(), (tg?.initData || isWebSessionAuthenticated()) ? api.me() : Promise.resolve(null)]).then(([onboardingResult, meResult]) => {
       if (!active) return;
       if (onboardingResult.status === "fulfilled") {
         const next = onboardingResult.value as OnboardingStatus;

@@ -17,6 +17,7 @@ from app.services.onboarding import OnboardingService
 from app.services.referral_audit import log_signed_referral_validation
 from app.services.trends import TrendService
 from app.services.users import UserService
+from app.services.web_sessions import assert_first_party, current_web_user_id
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -55,6 +56,17 @@ def _onboarding_gate_applies(request: Request) -> bool:
         return False
     return path.startswith("/api/v1/")
 
+
+async def _require_current_onboarding(request: Request, session: AsyncSession, user: User) -> None:
+    """Use the same mutation gate for native Telegram and first-party web sessions."""
+    if _onboarding_gate_applies(request) and not await OnboardingService.is_complete(session, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "code": "onboarding_required",
+                "version": OnboardingService.current_version(),
+            },
+        )
 
 async def _validated_startapp_inviter(
     session: AsyncSession,
@@ -154,10 +166,23 @@ async def get_current_user(
     x_telegram_init_data: Annotated[str | None, Header()] = None,
     x_telegram_start_param: Annotated[str | None, Header()] = None,
 ) -> User:
+    if not x_telegram_init_data:
+        # Same-origin cookie sessions are verified by Redis; never forge
+        # Telegram initData for browser-only users.
+        web_user_id = await current_web_user_id(request)
+        if web_user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            assert_first_party(request)
+        user = await session.get(User, web_user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account unavailable")
+        await _require_current_onboarding(request, session, user)
+        session.info["current_user_id"] = user.id
+        return user
+
     if not settings.bot_token:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bot is not configured")
-    if not x_telegram_init_data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Telegram initData")
     try:
         init_data = safe_parse_webapp_init_data(settings.bot_token, x_telegram_init_data)
         # Real aiogram WebAppInitData always carries auth_date. Some unit tests
@@ -208,14 +233,7 @@ async def get_current_user(
     await session.commit()
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is restricted")
-    if _onboarding_gate_applies(request) and not await OnboardingService.is_complete(session, user.id):
-        raise HTTPException(
-            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
-            detail={
-                "code": "onboarding_required",
-                "version": OnboardingService.current_version(),
-            },
-        )
+    await _require_current_onboarding(request, session, user)
     # Carry the authenticated principal on this SQLAlchemy session so shared
     # quote/model preflight code can read only this user's trusted reference
     # metadata without changing every service method signature.
@@ -234,7 +252,7 @@ async def get_optional_current_user(
 ) -> User | None:
     """Authenticate signed Mini App requests while preserving public read previews."""
 
-    if not x_telegram_init_data:
+    if not x_telegram_init_data and not request.cookies.get("roxy_web_session"):
         return None
     return await get_current_user(
         request,

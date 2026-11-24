@@ -203,3 +203,13 @@ def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
     assert 'href="/features" data-site-link>Перейти к инструментам' in html
     # The only atlas artwork remaining is in the hero, not the capabilities section.
     assert html.count('class="hero-art"') == 1
+
+@pytest.mark.asyncio
+async def test_crossplatform_login_has_provider_controls() -> None:
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        login = await client.get("/login", follow_redirects=False)
+        config = await client.get("/api/v1/web-auth/config")
+    assert login.status_code == config.status_code == 200
+    assert 'id="login-email-form"' in login.text
+    assert 'id="login-yandex"' in login.text
+    assert set(config.json()["providers"]) == {"telegram", "email", "yandex"}

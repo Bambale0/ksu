@@ -1112,3 +1112,31 @@ async def test_nexus_prompt_limit_refunds_once_and_delivers_actionable_inbox_and
     assert message in bot.calls[0][1]
     assert "20 ROX возвращены на баланс" in bot.calls[0][1]
     assert "private prompt" not in bot.calls[0][1]
+
+@pytest.mark.asyncio
+async def test_web_only_customer_retains_inbox_without_invalid_telegram_push() -> None:
+    bot = FakeBot()
+    async with SessionFactory() as session:
+        user = User(telegram_id=None, first_name="Web")
+        session.add(user)
+        await session.flush()
+        notification = await NotificationService.create(
+            session, user_id=user.id, kind="push", title="Готово", body="Результат готов",
+        )
+        await session.commit()
+        delivery = await session.scalar(select(NotificationDelivery).where(
+            NotificationDelivery.notification_id == notification.id,
+        ))
+        assert delivery is not None
+        delivery.status = "sending"
+        await session.commit()
+        delivery_id = delivery.id
+
+    await _process_delivery(bot, delivery_id)  # type: ignore[arg-type]
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        assert delivery is not None
+        assert delivery.status == "suppressed"
+        assert delivery.last_error == "telegram_not_connected"
+        assert await session.get(Notification, delivery.notification_id) is not None
+    assert bot.calls == []

@@ -343,22 +343,28 @@ class PartnerService:
         return items[offset : offset + limit]
 
     @staticmethod
-    def referral_link(telegram_id: int) -> str | None:
+    def referral_link(telegram_id: int | None) -> str | None:
         """Canonical public referral link: connect the private bot chat first."""
 
+        if telegram_id is None:
+            return None
         payload = referral_payload(telegram_id)
         return bot_start_link(payload)
 
     @staticmethod
-    def referral_mini_app_link(telegram_id: int) -> str | None:
+    def referral_mini_app_link(telegram_id: int | None) -> str | None:
         """Secondary Mini App URL kept for diagnostics and BotFather setups that support it."""
 
+        if telegram_id is None:
+            return None
         payload = referral_payload(telegram_id)
         return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     @staticmethod
-    def profile_link(telegram_id: int) -> str | None:
+    def profile_link(telegram_id: int | None) -> str | None:
         """Public author profile link with referral attribution preserved."""
 
+        if telegram_id is None:
+            return None
         payload = profile_payload(telegram_id)
         return bot_start_link(payload)

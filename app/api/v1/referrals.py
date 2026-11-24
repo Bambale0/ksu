@@ -71,7 +71,7 @@ def _partner_chat_url() -> str | None:
 async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     first, second = await PartnerService.invitation_counts(session, user.id)
     accounting = await PartnerWalletTransferService.accounting(session, user.id)
-    payload = f"ref_{user.telegram_id}"
+    payload = f"ref_{user.telegram_id}" if user.telegram_id is not None else ""
     wallet = await session.get(Wallet, user.id)
     wallet_rox = Decimal(wallet.balance if wallet is not None else 0)
     referral_link = PartnerService.referral_link(user.telegram_id)

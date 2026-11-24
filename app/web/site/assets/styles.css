@@ -227,3 +227,10 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--lilac);outline-off
   .live-trend-media{transition:none}
   .live-trend-tile:hover .live-trend-media{transform:none}
 }
+
+/* First-party authentication actions preserve the independent marketing layout. */
+.site-actions{display:flex;justify-self:end;align-items:center;gap:19px}
+.top-login{display:inline-flex;min-height:42px;align-items:center;color:#d6c7df;font-size:14px;font-weight:720;border-bottom:1px solid transparent}
+.top-login:hover{color:white;border-color:#d9b0ff}
+@media(max-width:660px){.site-actions{gap:10px}.top-login{font-size:12px}.site-header .site-actions .top-action{font-size:12px}}
+@media(max-width:360px){.site-actions .top-login{display:none}}

@@ -132,7 +132,7 @@ def test_public_promos_are_exact_original_mini_app_assets():
         assert f"/site-assets/{name}?v={fingerprint}" in html
         with Image.open(ROOT / "assets" / name) as image:
             assert image.size == (1440, 810)
-    assert html.count('href="/login?section=partners" data-app-link') == 4
+    assert html.count('href="/partners" data-site-link') >= 4
     final = re.search(r'<section class="final-section"[\s\S]*?</section>', html).group()
     assert "roxy-promo-1.webp" in final
     assert "roxy-rx-transparent.png" not in final

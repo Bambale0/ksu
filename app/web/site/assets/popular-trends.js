@@ -105,6 +105,14 @@
       video.dataset.src = mediaUrl;
       const poster = validMedia(item.poster_url);
       if (poster) video.poster = poster;
+      else {
+        const placeholder = document.createElement("span");
+        placeholder.className = "live-trend-placeholder";
+        placeholder.textContent = "Видео · открыть тренд";
+        link.appendChild(placeholder);
+        video.addEventListener("playing", () => { placeholder.hidden = true; });
+        video.addEventListener("error", () => { placeholder.hidden = false; });
+      }
       video.setAttribute("aria-hidden", "true");
       video.tabIndex = -1;
       link.appendChild(video);
@@ -116,8 +124,21 @@
       img.loading = "lazy";
       img.decoding = "async";
       img.alt = "";
-      img.src = mediaUrl;
-      link.appendChild(img);
+      const thumbnail = validMedia(item.poster_url);
+      const fallback = document.createElement("span");
+      fallback.className = "live-trend-placeholder";
+      fallback.textContent = "Превью недоступно · открыть тренд";
+      fallback.hidden = true;
+      img.addEventListener("error", () => {
+        if (thumbnail && img.src === thumbnail && thumbnail !== mediaUrl) {
+          img.src = mediaUrl;
+          return;
+        }
+        img.hidden = true;
+        fallback.hidden = false;
+      });
+      img.src = thumbnail || mediaUrl;
+      link.append(img, fallback);
     }
 
     const marker = document.createElement("span");
@@ -131,7 +152,18 @@
     heading.textContent = title;
     const usage = document.createElement("span");
     usage.textContent = metric(item.usage_count);
-    caption.append(heading, usage);
+    const meta = document.createElement("div");
+    meta.className = "live-trend-meta";
+    const rawCost = item.catalog_cost_rox;
+    const cost = typeof rawCost === "string" && /^\d+(?:\.\d{1,2})?$/.test(rawCost) ? Number(rawCost) : NaN;
+    if (Number.isFinite(cost) && cost > 0) {
+      const label = document.createElement("span");
+      label.className = "live-trend-price";
+      label.textContent = (item.catalog_cost_kind === "first_step" ? "1-й этап: " : "Ориентир: ") + new Intl.NumberFormat("ru-RU", { maximumFractionDigits:2 }).format(cost) + " ROX";
+      meta.append(label);
+    }
+    meta.append(usage);
+    caption.append(heading, meta);
     figure.append(link, caption);
     return figure;
   };

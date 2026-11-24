@@ -280,6 +280,7 @@ export function TelegramBrowserLogin() {
           <div className="roxy-landing-logo"><span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></div>
           <h3>Войти с Telegram</h3>
           <p>Продолжи с тем же профилем, балансом и историей.</p>
+          <a className="roxy-film-text-link" href={"/login" + (typeof window !== "undefined" ? window.location.search : "")}>Войти через почту или Яндекс ID <span aria-hidden="true">↗</span></a>
           <div ref={widgetRef} className="browser-login-widget roxy-login-widget" aria-live="polite" />
           {status === "loading" && <small>Готовлю безопасный вход…</small>}
           {status === "signing-in" && <small>Вхожу в ROXY…</small>}
