@@ -32,10 +32,8 @@ export function WebProfileLogout() {
 
   const signOut = () => {
     clearBrowserInitData();
-    // A full navigation drops the temporary Telegram SDK facade and its
-    // in-memory auth state. The existing /mini-app/ route is the login gate
-    // until first-party /login (PR #645) becomes the production route.
-    window.location.replace("/mini-app/");
+    // A full navigation drops the SDK facade and returns to the actual public login.
+    window.location.replace("/login");
   };
 
   return (

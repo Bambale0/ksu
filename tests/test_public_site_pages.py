@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[1] / "app/web/site"
-PAGES = ("features", "gallery", "process", "faq")
+PAGES = ("features", "gallery", "process", "faq", "partners")
 
 
 @pytest.mark.asyncio

@@ -140,7 +140,7 @@ for (const width of [320,390,768,1440,1648]) {
     await expect(faq.locator('p')).toBeVisible();
     await faq.locator('summary').press('Enter');
     await expect(faq).not.toHaveAttribute('open','');
-    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/login?section=partners');
+    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/partners');
     await expect(page.locator('.capability-link')).toHaveAttribute('href','/features');
   });
 }
@@ -159,10 +159,14 @@ test('original Mini App promos retain their whole image and partner destination'
     const box=await picture.boundingBox();
     expect(Math.abs(box.width/box.height-16/9)).toBeLessThan(.04);
     expect(await picture.evaluate(el=>getComputedStyle(el).objectFit)).toBe('contain');
-    await expect(link).toHaveAttribute('href','/login?section=partners&ref=QA');
+    await expect(link).toHaveAttribute('href','/partners?ref=QA');
     await link.click();
+    await expect(page.locator('body')).toHaveAttribute('data-page','partners');
+    await expect(page.locator('.partner-story .button-primary')).toHaveAttribute('href','/login?section=partners&ref=QA');
+    await page.locator('.partner-story .button-primary').click();
     await expect(page.locator('body')).toHaveAttribute('data-page','login');
     await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=partners&ref=QA');
+    await page.goBack();
     await page.goBack();
     await expect(page.locator('body')).toHaveAttribute('data-page','home');
   }
