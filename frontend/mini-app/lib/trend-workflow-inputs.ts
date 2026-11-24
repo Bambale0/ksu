@@ -33,7 +33,10 @@ export function workflowPromptError(prompt: string, capacity: number, kind: "ima
 export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInput[], capacity: number): TrendAdminInput[] {
   // Never delete/reorder configured fields or infer business-specific meanings.
   const inputs = current.map((input) => ({ ...input }));
-  if (!workflowPromptError(prompt, capacity, "image")) {
+  // A mistyped canonical photo field must be repaired explicitly by the admin
+  // rather than replaced by a phantom image slot.
+  if (!inputs.some((input) => input.id === "person_photo" && input.type !== "image")
+    && !workflowPromptError(prompt, capacity, "image")) {
     const count = photoNumbers(prompt).length;
     let photos = inputs.filter((input) => input.type === "image").length;
     while (photos < count) {
@@ -56,6 +59,9 @@ export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInpu
 }
 
 export function workflowInputError(inputs: TrendAdminInput[], prompt: string, capacity: number): string {
+  if (inputs.some((input) => input.id === "person_photo" && input.type !== "image")) {
+    return "Поле person_photo должно быть фотографией. Нажмите «Исправить фото» в редакторе.";
+  }
   const images = inputs.filter((input) => input.type === "image");
   if (scalarKeys(prompt).some((id) => !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(id))) {
     return "Для ключа поля используйте латинские буквы, цифры и подчёркивание; начните с буквы.";

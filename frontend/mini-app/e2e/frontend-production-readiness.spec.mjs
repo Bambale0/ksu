@@ -248,22 +248,38 @@ test('promo bootstrap failure is an error with retry, never a fake inactive prom
 test('creator application is unavailable until authoritative partnership status loads', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  // Hold the actual response until assertions have observed the pending
+  // state; a fixed 250 ms delay races slow WebKit hydration and navigation.
+  let releaseStatus;
+  const statusGate = new Promise((resolve) => { releaseStatus = resolve; });
+  let markStatusRequested;
+  const statusRequested = new Promise((resolve) => { markStatusRequested = resolve; });
   await page.route('**/api/v1/creator-partnership', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    markStatusRequested();
+    await statusGate;
     return json(route, { application: null, agreement: null, grants: [], total_granted_rox: '0' });
   });
 
-  await page.goto('/mini-app/creator-partnership/');
-  await expect(page.getByText('Загружаем статус партнёрства…')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Отправить заявку' })).toHaveCount(0);
+  try {
+    await page.goto('/mini-app/creator-partnership/', { waitUntil: 'domcontentloaded' });
+    await statusRequested;
+    await expect(page.getByText('Загружаем статус партнёрства…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Отправить заявку' })).toHaveCount(0);
+  } finally {
+    releaseStatus();
+  }
   await expect(page.getByRole('button', { name: 'Отправить заявку' })).toBeVisible();
 });
 
 test('partner withdrawal honors the server minimum before allowing submit', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  // Hold the authoritative response until the loading-state assertion has
+  // actually run. A 200 ms wall-clock delay races WebKit navigation/hydration.
+  let releaseStats;
+  const statsGate = new Promise((resolve) => { releaseStats = resolve; });
   await page.route('**/api/v1/referrals/stats', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await statsGate;
     return json(route, {
       withdrawable_rub: '1500',
       pending_referral_rub: '0',
@@ -277,8 +293,13 @@ test('partner withdrawal honors the server minimum before allowing submit', asyn
   await page.route('**/api/v1/referrals/withdrawals?limit=50', (route) => json(route, { items: [] }));
   await page.route('**/api/v1/referrals/wallet-transfers?limit=50', (route) => json(route, { items: [] }));
 
-  await page.goto('/mini-app/partner-wallet/');
-  await expect(page.getByText('Загружаем партнёрский баланс…')).toBeVisible();
+  try {
+    await page.goto('/mini-app/partner-wallet/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('Загружаем партнёрский баланс…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Создать заявку' })).toHaveCount(0);
+  } finally {
+    releaseStats();
+  }
 
   const amount = page.getByLabel('Сумма, ₽').nth(1);
   const requisites = page.getByLabel('Реквизиты');
@@ -302,8 +323,14 @@ test('payments show bootstrap progress instead of a false unavailable state', as
       starter: { credits: '300', bonus_credits: '30', total_credits: '330', prices: { RUB: '300' } },
     },
   };
+  // Synchronize with the pending provider request rather than elapsed time.
+  let releasePackages;
+  const packagesGate = new Promise((resolve) => { releasePackages = resolve; });
+  let markPackagesRequested;
+  const packagesRequested = new Promise((resolve) => { markPackagesRequested = resolve; });
   await page.route('**/api/v1/payments/yookassa/packages', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    markPackagesRequested();
+    await packagesGate;
     return json(route, packages);
   });
   await page.route('**/api/v1/payments/card/packages', (route) => json(route, { ...packages, provider: 'card', label: 'Lava Top', configured: false, packages: {} }));
@@ -311,9 +338,15 @@ test('payments show bootstrap progress instead of a false unavailable state', as
   await page.route('**/api/v1/payments?limit=50', (route) => json(route, { items: [] }));
   await page.route('**/api/v1/promocodes/active', (route) => json(route, { active: false, program_active: true }));
 
-  await page.goto('/mini-app/payments/');
-  await expect(page.getByText('Загружаем способы оплаты и историю…')).toBeVisible();
-  await expect(page.getByText('Пополнение сейчас недоступно.')).toHaveCount(0);
+  try {
+    await page.goto('/mini-app/payments/', { waitUntil: 'domcontentloaded' });
+    await packagesRequested;
+    await expect(page.getByText('Загружаем способы оплаты и историю…')).toBeVisible();
+    await expect(page.getByText('Пополнение сейчас недоступно.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveCount(0);
+  } finally {
+    releasePackages();
+  }
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toBeVisible();
 });
 

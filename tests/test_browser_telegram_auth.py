@@ -76,7 +76,8 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     action = (root / "frontend/mini-app/components/generation-action-app.tsx").read_text(encoding="utf-8")
 
-    assert "TelegramBrowserLogin" not in boundary
+    assert "<TelegramBrowserLogin />" in boundary
+    assert 'href={"/login" +' in gate
     assert 'fetch("/api/v1/web-auth/me"' in boundary
     assert "window.__ROXY_WEB_SESSION_AUTHENTICATED__" in boundary
     assert "getInitDataFallback" in boundary

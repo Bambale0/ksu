@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { clearBrowserInitData } from "@/lib/browser-auth-session";
+import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
 import { getInitDataFallback, isWebSessionAuthenticated } from "@/lib/telegram";
 
 /**
@@ -14,13 +14,28 @@ export function WebProfileLogout() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
-  if (!isWebSessionAuthenticated() || getInitDataFallback()) return null;
+  const [sessionKind, setSessionKind] = useState<"cookie" | "legacy" | null>(null);
+  useEffect(() => {
+    const browserCredential = getBrowserInitData();
+    const currentInitData = getInitDataFallback();
+    const nativeUser = Boolean(window.Telegram?.WebApp?.initDataUnsafe?.user);
+    if (nativeUser || (currentInitData && currentInitData !== browserCredential)) return;
+    if (isWebSessionAuthenticated()) setSessionKind("cookie");
+    else if (browserCredential) setSessionKind("legacy");
+  }, []);
+
+  if (!sessionKind) return null;
 
   const logout = async () => {
     if (working) return;
     setWorking(true);
     setError("");
     try {
+      if (sessionKind === "legacy") {
+        clearBrowserInitData();
+        window.location.replace("/mini-app/");
+        return;
+      }
       const response = await fetch("/api/v1/web-auth/logout", {
         method: "POST",
         credentials: "same-origin",

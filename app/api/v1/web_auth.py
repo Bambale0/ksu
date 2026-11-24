@@ -96,7 +96,7 @@ def _target_path(raw: str | None) -> str:
     ):
         return "/mini-app/"
     allowed = ("startapp", "start_payload", "ref")
-    query = dict((key, value) for key, value in 
+    query = dict((key, value) for key, value in
                  __import__("urllib.parse", fromlist=["parse_qsl"]).parse_qsl(parsed.query)
                  if key in allowed and len(value) <= 256)
     return "/mini-app/" + ("?" + urlencode(query) if query else "")

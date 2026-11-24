@@ -42,6 +42,7 @@ from app.api.v1 import (
     support,
     trend_collections,
     trends,
+    public_site,
     uploads,
 )
 
@@ -65,6 +66,7 @@ api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
 api_router.include_router(feed_remix.router)
 api_router.include_router(feed_reference_media.router)
+api_router.include_router(public_site.router)
 api_router.include_router(trends.router)
 api_router.include_router(trend_collections.router)
 api_router.include_router(prompt_tools.router)
