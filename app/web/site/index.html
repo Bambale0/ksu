@@ -3,23 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07070b">
-  <meta name="description" content="ROXY AI STUDIO — создание фото и видео с AI по описанию, фото или референсу. Авторские визуальные идеи.">
+  <meta name="theme-color" content="#0c0813">
+  <meta name="description" content="ROXY AI STUDIO — креативная студия для создания фотографий и видео по тексту, собственному фото и референсам.">
   <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://ksuapi.xn--e1aikcel5c5a.online/">
+  <meta property="og:url" content="https://ksuapi.xn--e1aikcel5c5a.online/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="ROXY AI STUDIO — фото, видео и визуальные идеи">
+  <meta property="og:title" content="ROXY AI STUDIO — создавай кадры, которые выглядят как завтра">
   <meta property="og:description" content="Создавай кадры, меняй стиль и добавляй движение. От первого референса до готового изображения или видео.">
-  <meta property="og:image" content="/site-assets/atlas-1920.webp">
+  <meta property="og:image" content="https://ksuapi.xn--e1aikcel5c5a.online/site-assets/roxy-social-preview.png?v=3e595c1ac488">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ROXY AI STUDIO — RX, фото и видео">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://ksuapi.xn--e1aikcel5c5a.online/site-assets/roxy-social-preview.png?v=3e595c1ac488">
   <title>ROXY AI STUDIO — фото, видео и визуальные идеи</title>
+  <link rel="icon" type="image/svg+xml" href="/site-assets/roxy-mark.svg">
   <link rel="preload" as="image" type="image/webp" href="/site-assets/atlas-1920.webp">
   <link rel="stylesheet" href="/site-assets/styles.css?v=5137e926521c">
+  <link rel="stylesheet" href="/site-assets/experience.css?v=7593b4552818">
 </head>
 <body>
+  <div class="reading-progress" id="reading-progress" role="progressbar" aria-label="Прогресс чтения страницы" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+  <svg class="scroll-trace" aria-hidden="true" viewBox="0 0 78 560" preserveAspectRatio="none"><defs><linearGradient id="trace-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ae5dff"/><stop offset=".58" stop-color="#ff82ca"/><stop offset="1" stop-color="#ab65ff"/></linearGradient></defs><path id="scroll-trace-path" d="M39 0 C22 110 57 195 39 278 C20 365 58 455 39 560"/></svg>
   <a class="skip-link" href="#content">К содержимому</a>
   <header class="site-header">
-    <a class="logo" href="/" aria-label="ROXY AI STUDIO — на главную"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a>
+    <a class="logo" href="/" aria-label="ROXY AI STUDIO — на главную"><span class="brand-monogram" aria-hidden="true"><svg viewBox="0 0 96 62" focusable="false"><defs><linearGradient id="header-rx-gradient" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9557ff"/><stop offset=".54" stop-color="#bf5fee"/><stop offset="1" stop-color="#ff72bc"/></linearGradient></defs><text x="2" y="46" stroke="url(#header-rx-gradient)">RX</text></svg></span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a>
     <nav class="desktop-nav" aria-label="Разделы сайта">
-      <a href="#features">Возможности</a><a href="#process">Процесс</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a>
+      <a href="#top">Главная</a><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#process">Процесс</a><a href="#faq">Вопросы</a>
     </nav>
     <a class="button button-small top-action" href="/mini-app/" data-app-link>Начать <span aria-hidden="true">↗</span></a>
     <details class="mobile-nav">
@@ -32,24 +43,31 @@
   </header>
 
   <main id="content">
+    <span id="top" aria-hidden="true"></span>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-mosaic" aria-hidden="true">
-        <div class="tile tile-portrait"></div><div class="tile tile-lily"></div><div class="tile tile-sunset"></div>
-        <div class="tile tile-cat"></div><div class="tile tile-fashion"></div><div class="tile tile-rain"></div>
-        <div class="tile tile-cosmic"></div><div class="tile tile-perfume"></div><div class="tile tile-marble"></div>
-        <div class="chrome-letter">R<span>✦</span></div>
+      <div class="hero-glow" data-parallax data-depth=".045" aria-hidden="true"></div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="hero-art-photo" data-parallax data-depth="-.11"></div>
+        <div class="hero-art-outline" data-parallax data-depth=".065"></div>
+        <div class="hero-art-ribbon" data-parallax data-depth=".095"></div>
       </div>
-      <div class="hero-fade" aria-hidden="true"></div>
-      <div class="hero-copy">
-        <span class="eyebrow">ROXY AI STUDIO / DIGITAL IMAGE MAKING</span>
-        <h1 id="hero-title">Кадры, которых<br>ещё нет.</h1>
-        <p>Создавай фотографии и видео по описанию, своему снимку или референсу. Свет, стиль и движение — под твою идею.</p>
+      <div class="hero-copy" data-parallax data-depth=".018">
+        <span class="eyebrow">КРЕАТИВНАЯ AI-СТУДИЯ</span>
+        <h1 id="hero-title">Создавай кадры,<em>которые выглядят как завтра.</em></h1>
+        <p>Фотографии и видео по тексту, своему снимку или референсу. Стиль, свет и движение — в твоей студии.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="/mini-app/" data-app-link>Начать создавать <span aria-hidden="true">▶</span></a>
-          <a class="button button-outline" href="#gallery">Смотреть галерею <span aria-hidden="true">↘</span></a>
+          <a class="button button-outline" href="#gallery">Смотреть галерею <span aria-hidden="true">↗</span></a>
         </div>
+        <div class="hero-meta"><span>AI CONTENT SUITE</span><i aria-hidden="true"></i><span>PHOTO / VIDEO / MOTION</span></div>
       </div>
-      <a class="hero-scroll" href="#features" aria-label="Перейти к возможностям">↓</a>
+      <nav class="hero-formats" aria-label="Инструменты студии">
+        <a class="format-card" href="/mini-app/" data-app-link><span class="format-icon" aria-hidden="true">▣</span><strong>Фото</strong></a>
+        <a class="format-card" href="/mini-app/" data-app-link><span class="format-icon" aria-hidden="true">▷</span><strong>Видео</strong></a>
+        <a class="format-card" href="/mini-app/" data-app-link><span class="format-icon" aria-hidden="true">T</span><strong>По тексту</strong></a>
+        <a class="format-card" href="/mini-app/" data-app-link><span class="format-icon" aria-hidden="true">▧</span><strong>По своему фото</strong></a>
+        <a class="format-card" href="/mini-app/" data-app-link><span class="format-icon" aria-hidden="true">▱</span><strong>По референсу</strong></a>
+      </nav>
     </section>
 
     <section class="section capabilities-section" id="features" aria-labelledby="features-title">
@@ -129,8 +147,9 @@
       <a class="button button-primary" href="/mini-app/" data-app-link>Открыть ROXY <span aria-hidden="true">↗</span></a>
     </section>
   </main>
-  <footer class="site-footer"><div class="footer-brand"><a href="/" class="logo"><span class="logo-spark" aria-hidden="true">✦</span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a><p>AI Creative Studio. Пространство для твоих идей.</p></div><nav aria-label="Ссылки сайта"><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a><a href="/mini-app/" data-app-link>Приложение</a></nav><small>© ROXY AI STUDIO 2026</small></footer>
+  <footer class="site-footer"><div class="footer-brand"><a href="/" class="logo"><span class="brand-monogram" aria-hidden="true"><svg viewBox="0 0 96 62" focusable="false"><defs><linearGradient id="footer-rx-gradient" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9557ff"/><stop offset=".54" stop-color="#bf5fee"/><stop offset="1" stop-color="#ff72bc"/></linearGradient></defs><text x="2" y="46" stroke="url(#footer-rx-gradient)">RX</text></svg></span><span class="logo-wordmark">ROXY<small>AI STUDIO</small></span></a><p>AI Creative Studio. Пространство для твоих идей.</p></div><nav aria-label="Ссылки сайта"><a href="#features">Возможности</a><a href="#gallery">Галерея</a><a href="#faq">Вопросы</a><a href="/mini-app/" data-app-link>Приложение</a></nav><small>© ROXY AI STUDIO 2026</small></footer>
   <script src="/site-assets/popular-trends.js?v=355be44ce12f" defer></script>
+  <script src="/site-assets/experience.js?v=4f7e4cadfda5" defer></script>
   <script>
     (() => {
       const current = new URLSearchParams(location.search);
