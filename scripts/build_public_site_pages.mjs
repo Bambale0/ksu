@@ -278,7 +278,7 @@ const toolsData=[
     ]
   }
 ];
-const loginVersion="c2ac2d8c0fdc";
+const loginVersion="d9e84ddcc419";
 function buildPages(home,pageData,toolsData,loginVersion){
  const result={};
  const shell=home.match(/^(.*?)<main id="content">/s)?.[1],suffix=home.match(/<\/main>([\s\S]*)$/)?.[1];
@@ -331,7 +331,7 @@ function buildPages(home,pageData,toolsData,loginVersion){
   const section=`<section class="section tool-section" aria-labelledby="tool-title">
     ${breadcrumb(d.name,true)}
     <div class="editorial-intro"><div><span class="eyebrow">${d.name} / ROXY STUDIO</span><h1 class="page-intro" id="tool-title">${heading}</h1></div><p>${d.intro}</p></div>
-    <div class="tool-actions"><a class="button button-primary" href="/login" data-app-link>Начать создавать <span aria-hidden="true">↗</span></a><a class="button button-outline" href="/gallery" data-site-link>Смотреть тренды</a></div>
+    <div class="tool-actions"><a class="button button-primary" href="/login?tool=${d.id}" data-app-link>Начать создавать <span aria-hidden="true">↗</span></a><a class="button button-outline" href="/gallery" data-site-link>Смотреть тренды</a></div>
     <div class="tool-example"><strong>Пример описания</strong>${d.example}</div>
     <div class="page-details">${d.blocks.map(([h,p])=>`<article class="detail-panel"><h2>${h}</h2><p>${p}</p></article>`).join("\n")}</div>
     <nav class="tool-picker" aria-label="Другие инструменты">${toolsData.filter(t=>t.id!==d.id).map(t=>`<a href="/features/${t.id}" data-site-link>${t.name}</a>`).join("")}</nav>

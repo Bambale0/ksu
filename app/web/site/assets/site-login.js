@@ -11,6 +11,14 @@
   const validTrend = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(trend);
   const target = new URL(validTrend ? "/mini-app/trend/" : "/mini-app/", location.origin);
   if (validTrend) target.searchParams.set("id", trend);
+  else {
+    const tool = query.get("tool") || "";
+    if (["photo","video","text","own-photo","reference"].includes(tool)) {
+      target.searchParams.set("route","create");
+      if (tool === "video") target.searchParams.set("create_media","video");
+      else if (tool === "photo" || tool === "own-photo") target.searchParams.set("create_media","image");
+    }
+  }
   for (const [name, value] of approved) target.searchParams.set(name, value);
   const destination = target.pathname + target.search;
   const status = document.getElementById("login-status");

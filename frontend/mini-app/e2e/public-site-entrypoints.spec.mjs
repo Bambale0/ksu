@@ -31,7 +31,7 @@ for (const width of [320,390,768,1440,1648]) {
       await expect(page.locator('h1')).toBeVisible();
       await expect(page.locator('.desktop-nav a[aria-current="page"]')).toHaveText('Возможности');
       expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-      await expect(page.locator('.tool-actions .button-primary')).toHaveAttribute('href','/login?ref=QA');
+      await expect(page.locator('.tool-actions .button-primary')).toHaveAttribute('href','/login?tool='+id+'&ref=QA');
       await page.locator('.tool-actions .button-primary').click();
       await expect(page.locator('body')).toHaveAttribute('data-page','login');
       await expect(page.locator('#login-status')).toContainText('Подтверди вход через Telegram');
@@ -100,4 +100,35 @@ test('existing signed browser session can continue but arbitrary next URL is ign
   await page.goto('/login?next=https%3A%2F%2Fexample.invalid&trend=invalid&ref=QA');
   await expect(page.locator('#login-continue')).toBeVisible();
   await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?ref=QA');
+});
+
+
+test('video tool entry continues to the real create screen with the video category selected',async({page})=>{
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('__roxy_browser_init_data_v1',JSON.stringify({initData:'query_id=existing&hash=fixture',expiresAt:Date.now()+60000}));
+    localStorage.setItem('ksu-selected-media','image');
+  });
+  const model=(id,media)=>({
+    id,title:media==='video'?'Тест видео':'Тест фото',family:id,media_type:media,
+    operation:media==='video'?'text_to_video':'text_to_image',
+    known_fields:['prompt'],required_fields:['prompt'],price_rox:'10.00',
+    ui_schema:{defaults:{},fields:[{name:'prompt',label:'Описание',control:'textarea',required:true}]},
+  });
+  let paidWrites=0;
+  await page.route('**/api/v1/**',route=>{
+    const req=route.request();
+    const path=new URL(req.url()).pathname;
+    if(path==='/api/v1/me')return route.fulfill({json:{id:'synthetic',telegram_id:42,first_name:'QA',balance_rox:'1000',is_admin:false}});
+    if(path==='/api/v1/onboarding')return route.fulfill({json:{enabled:false,completed:true}});
+    if(path==='/api/v1/generations/models')return route.fulfill({json:{models:[model('qa-photo','image'),model('qa-video','video')],families:[]}});
+    if(req.method()==='POST' && path==='/api/v1/generations')paidWrites++;
+    return route.fulfill({json:{items:[]}});
+  });
+  await page.goto('/features/video?ref=QA');
+  await page.locator('.tool-actions .button-primary').click();
+  await expect(page.locator('#login-continue')).toBeVisible();
+  await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=create&create_media=video&ref=QA');
+  await page.locator('#login-continue').click();
+  await expect(page.locator('.family-tabs .active')).toHaveText('Видео');
+  expect(paidWrites).toBe(0);
 });
