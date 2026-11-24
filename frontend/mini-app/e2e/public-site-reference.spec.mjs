@@ -96,7 +96,7 @@ for (const width of [320,390,768,1440,1648]) {
     await openSite(page);
     await page.emulateMedia({reducedMotion:'reduce'});
     const sections=page.locator('main > .section, main > .final-section');
-    await expect(sections).toHaveCount(6);
+    await expect(sections).toHaveCount(7);
     const metrics=await page.evaluate(() => {
       const hero=document.querySelector('.hero h1');
       const card=document.querySelector('.format-card');

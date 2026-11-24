@@ -137,3 +137,7 @@ Tool-page entry buttons preserve an allowlisted tool identifier through /login. 
 
 ## Public promos
 Original Mini App promo WebPs reused byte-for-byte in public assets. Author rewards after hero, partner artwork replaces closing RX on shared pages. Native 16:9 without cropping, lazy decoding, responsive single column at <=1000px. Both images and CTA buttons go through /login?section=partners to existing /mini-app/?route=partners. No program rules changed. Graphic amounts are original artwork, actual eligibility governed by live program terms.
+
+
+## Live public pricing and editorial information (2026-11-25)
+The public catalogue and tool pages read the existing anonymous GET /api/v1/generations/models retail prices, never an admin effective price, and render supported operations and validated public UI-schema capabilities. No duplicate price configuration. /pricing uses the existing configured RUB package endpoint /api/v1/payments/yookassa/packages (not generic nominal ROX conversion); all totals and bonuses come from the response. Base unit tariffs are distinguished from exact quote, which may vary by quality, duration, video references, and quantity. Unknown/invalid records are not displayed; loading/error/retry and empty states are explicit. No checkout is initiated by the public price page. Expanded content on features, gallery, process, FAQ and each tool page explains practical flows, limits and what is not guaranteed. Existing login remains Telegram-only. All routes retain the shared visual system and canonical generated documents.
