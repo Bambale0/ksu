@@ -73,7 +73,7 @@ def test_hero_uses_approved_artwork_not_enlarged_sprite():
     css = CSS.read_text(encoding="utf-8")
     js = JS.read_text(encoding="utf-8")
     assert html.count('class="hero-line"') == 3
-    assert '/site-assets/roxy-official-mark.webp' in html
+    assert '/site-assets/roxy-rx-transparent.png' in html
     photo_rule = css.split(".hero-art-photo{", 1)[1].split("}", 1)[0]
     assert "roxy-reference-hero.webp" in photo_rule
     assert "background-size:contain" in photo_rule
@@ -86,3 +86,22 @@ def test_hero_uses_approved_artwork_not_enlarged_sprite():
     assert "resetHeroPointer" in js
     assert "feTurbulence" in css
     assert 'class="meta-tag"' in html
+
+
+def test_floating_glass_navigation_and_alpha_logo_contract():
+    html = HTML.read_text(encoding="utf-8")
+    css = (ROOT / "assets/navbar.css").read_text(encoding="utf-8")
+    js = (ROOT / "assets/navbar.js").read_text(encoding="utf-8")
+    png = (ROOT / "assets/roxy-rx-transparent.png").read_bytes()
+    assert png[:8] == bytes([137,80,78,71,13,10,26,10])
+    assert png[25] == 6  # RGBA, not a black-backed RGB bitmap
+    assert 'class="nav-slider"' in html
+    assert html.index('<header class="site-header">') < html.index('id="reading-progress"') < html.index('</header>')
+    assert 'mask: url("/site-assets/roxy-rx-transparent.png' in css
+    assert "backdrop-filter: blur(" in css and "rx-contour-shine" in css
+    assert "prefers-reduced-motion:reduce" in css
+    assert "aria-current" in js and "requestAnimationFrame" in js
+    for filename in ("navbar.css","navbar.js"):
+        data = (ROOT / "assets" / filename).read_bytes()
+        fingerprint = sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()[:12]
+        assert f"/site-assets/{filename}?v={fingerprint}" in html
