@@ -154,6 +154,12 @@ _PUBLIC_PAGE_FILES = {
     "/gallery": "gallery.html",
     "/process": "process.html",
     "/faq": "faq.html",
+    "/features/photo": "feature-photo.html",
+    "/features/video": "feature-video.html",
+    "/features/text": "feature-text.html",
+    "/features/own-photo": "feature-own-photo.html",
+    "/features/reference": "feature-reference.html",
+    "/login": "login.html",
 }
 
 
@@ -165,6 +171,18 @@ _PUBLIC_PAGE_FILES = {
 @app.api_route("/process/", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/faq", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/faq/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/photo", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/photo/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/video", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/video/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/text", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/text/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/own-photo", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/own-photo/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/reference", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/features/reference/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/login", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/login/", methods=["GET", "HEAD"], include_in_schema=False)
 async def public_product_page(request: Request) -> FileResponse:
     return FileResponse(
         site_dir / _PUBLIC_PAGE_FILES[request.url.path.rstrip("/")],

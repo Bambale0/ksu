@@ -23,8 +23,8 @@
   };
 
   const openTrendUrl = (id) => {
-    const url = new URL("/mini-app/trend/", location.origin);
-    url.searchParams.set("id", id);
+    const url = new URL("/login", location.origin);
+    url.searchParams.set("trend", id);
     const current = new URLSearchParams(location.search);
     for (const name of ["startapp", "start_payload", "ref"]) {
       const value = current.get(name);

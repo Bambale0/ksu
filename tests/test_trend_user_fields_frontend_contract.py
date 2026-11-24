@@ -62,7 +62,9 @@ def test_existing_trend_can_be_upgraded_with_user_fields_without_new_id() -> Non
 
     assert 'Array.isArray(payload.user_fields) ? payload.user_fields.slice(0, 6) : []' in admin
     assert 'setEditingId(duplicate ? null : item.id)' in admin
-    assert 'if (editingId) await trendAdminApi.update(editingId, body);' in admin
+    assert 'const saved = editingId' in admin
+    assert '? await trendAdminApi.update(editingId, body)' in admin
+    assert ': await trendAdminApi.create(body)' in admin
     # Existing UUID is preserved; the new async update still PATCHes that ID.
     assert 'update: async (id: string, body: TrendWriteBody)' in client
     assert 'const save = retryableWrite("trend-update", path, body)' in client

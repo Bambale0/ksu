@@ -395,9 +395,9 @@ jobs:
           curl -fsSI "${app_base}/admin-app/" >/dev/null
 
           # Verify every independent public document on the exact deployed image.
-          for page in home features gallery process faq; do
-            route="/${page}"
-            if [[ "${page}" == "home" ]]; then route="/"; fi
+          for spec in "home:/" "features:/features" "gallery:/gallery" "process:/process" "faq:/faq" "feature-photo:/features/photo" "feature-video:/features/video" "feature-text:/features/text" "feature-own-photo:/features/own-photo" "feature-reference:/features/reference" "login:/login"; do
+            page="${spec%%:*}"
+            route="${spec#*:}"
             curl -fsSI --max-time 15 "${app_base}${route}" >/dev/null
             document="$(curl -fsS --max-time 15 "${app_base}${route}")"
             if [[ "${document}" != *"data-page=\"${page}\""* ]]; then
@@ -464,7 +464,7 @@ jobs:
             echo "- every production runtime service running check: required"
             echo "- web admin security key validation only (no credential changes): required"
             echo "- admin-app HTTP smoke check: required"
-            echo "- all five public website documents: GET/HEAD and route identity required"
+            echo "- all eleven public website documents: GET/HEAD and route identity required"
             echo "- historical media maintenance requires a separate explicit manual action"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"

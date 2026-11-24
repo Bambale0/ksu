@@ -14,7 +14,7 @@ for (const [width,height] of [[320,740],[390,844],[768,1024],[1440,900],[1648,92
     await openSite(page);
     const art = page.locator('.hero-art-photo');
     expect(await art.evaluate(node => getComputedStyle(node).backgroundSize)).toBe('contain');
-    expect(await art.evaluate(node => getComputedStyle(node).backgroundImage)).toContain('roxy-reference-hero.webp');
+    expect(await art.evaluate(node => getComputedStyle(node).backgroundImage)).toContain('roxy-hero-cutout.webp');
     const lines = page.locator('.hero-line');
     await expect(lines).toHaveCount(3);
     await expect(page.locator('.hero-formats .format-card')).toHaveCount(5);
@@ -138,7 +138,7 @@ for (const width of [320,390,768,1440,1648]) {
     await expect(faq.locator('p')).toBeVisible();
     await faq.locator('summary').press('Enter');
     await expect(faq).not.toHaveAttribute('open','');
-    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/mini-app/');
-    await expect(page.locator('.capability-link')).toHaveAttribute('href','/mini-app/');
+    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/login');
+    await expect(page.locator('.capability-link')).toHaveAttribute('href','/features');
   });
 }
