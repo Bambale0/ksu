@@ -105,6 +105,14 @@
       video.dataset.src = mediaUrl;
       const poster = validMedia(item.poster_url);
       if (poster) video.poster = poster;
+      else {
+        const placeholder = document.createElement("span");
+        placeholder.className = "live-trend-placeholder";
+        placeholder.textContent = "Видео · открыть тренд";
+        link.appendChild(placeholder);
+        video.addEventListener("playing", () => { placeholder.hidden = true; });
+        video.addEventListener("error", () => { placeholder.hidden = false; });
+      }
       video.setAttribute("aria-hidden", "true");
       video.tabIndex = -1;
       link.appendChild(video);
@@ -116,8 +124,21 @@
       img.loading = "lazy";
       img.decoding = "async";
       img.alt = "";
-      img.src = mediaUrl;
-      link.appendChild(img);
+      const thumbnail = validMedia(item.poster_url);
+      const fallback = document.createElement("span");
+      fallback.className = "live-trend-placeholder";
+      fallback.textContent = "Превью недоступно · открыть тренд";
+      fallback.hidden = true;
+      img.addEventListener("error", () => {
+        if (thumbnail && img.src === thumbnail && thumbnail !== mediaUrl) {
+          img.src = mediaUrl;
+          return;
+        }
+        img.hidden = true;
+        fallback.hidden = false;
+      });
+      img.src = thumbnail || mediaUrl;
+      link.append(img, fallback);
     }
 
     const marker = document.createElement("span");

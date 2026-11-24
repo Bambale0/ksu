@@ -93,11 +93,27 @@
     }else{
       for(const m of models){
         const card=element("article",null,"model-price-card");
+        card.dataset.media=m.media;
         card.append(element("span",media[m.media],"price-kicker"),element("h3",m.title),element("p",operations[m.operation]),element("strong",price(m)));
         const spec=details(m);
         if(spec)card.append(element("small",spec));
         grid.append(card);
       }
+    }
+    if(group==="all"){
+      const filters=element("div",null,"price-filters");
+      filters.setAttribute("role","group");
+      filters.setAttribute("aria-label","Тип модели");
+      for(const [value,label] of [["all","Все"],...Object.entries(media).filter(([key])=>models.some(m=>m.media===key))]){
+        const button=element("button",label,"price-filter");
+        button.type="button";button.dataset.media=value;button.setAttribute("aria-pressed",String(value==="all"));
+        button.addEventListener("click",()=>{
+          for(const b of filters.querySelectorAll("button"))b.setAttribute("aria-pressed",String(b===button));
+          for(const c of grid.children)c.hidden=value!=="all"&&c.dataset.media!==value;
+        });
+        filters.append(button);
+      }
+      block.append(filters);
     }
     block.append(grid);
   }

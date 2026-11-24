@@ -167,15 +167,19 @@ const editorial={
 };
 function enrichPage(name,html,editorial){
  if(name==="pricing"){
-   return html.replace('data-catalog="overview"','data-catalog="all"')
-    .replace('class="subpage" data-page="pricing"','class="subpage pricing-page" data-page="pricing"')
-    .replace('Актуальные базовые тарифы из каталога ROXY. Выбирай модель и оплачивай конкретный запуск, а не обещание результата.','Базовые тарифы действующего каталога, а ниже — рублёвые пакеты пополнения. Сумма покупки пакета и стоимость генерации показаны отдельно.')
-    .replace('</section>\n    <nav class="page-next"',`<h2 class="price-subhead">Пополнение баланса в рублях</h2>
-      <p class="price-explanation">Ниже — текущие рублёвые пакеты доступного способа оплаты. Бонусы пакета включены в итоговое количество ROX. Дополнительные акции, способы оплаты и их условия проверяй в профиле перед оплатой.</p>
+   return html.replace('class="subpage" data-page="pricing"','class="subpage pricing-page" data-page="pricing"')
+    .replace('Актуальные базовые тарифы из каталога ROXY. Стоимость зависит от выбранной модели и параметров.','Базовые тарифы действующего каталога и реальные рублёвые пакеты пополнения. Сумма покупки пакета и стоимость генерации показаны отдельно.')
+    .replace('<div data-catalog="overview" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>',`<div data-catalog="overview" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>
+      <h2 class="price-subhead" id="packages-title">Пополнение баланса в рублях</h2>
+      <p class="price-explanation">Рублёвые пакеты доступного способа оплаты. Бонусы пакета уже включены в итоговое количество ROX. Дополнительные акции и способы оплаты проверяй в профиле перед оплатой.</p>
       <div data-packages aria-live="polite"><p class="price-status">Загружаем пакеты…</p></div>
-      <div class="price-actions"><a class="button button-primary" href="/login" data-app-link>Войти для пополнения ↗</a><a class="button button-outline" href="/faq" data-site-link>Вопросы об оплате</a></div>
-    </section>\n    <nav class="page-next"`);
+      <div class="price-actions"><a class="button button-primary" href="/login?section=profile" data-app-link>Войти и открыть профиль ↗</a><a class="button button-outline" href="/faq" data-site-link>Вопросы об оплате</a></div>
+      <h2 class="price-subhead" id="models-title">Стоимость генераций по моделям</h2>
+      <p class="price-explanation">Выбери фото, видео или музыку. Здесь базовые тарифы, а не окончательный расчёт конкретной работы.</p>
+      <div data-catalog="all" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>`)
+    .replace('<div class="page-details"></div>','');
  }
+
  const d=editorial[name];if(!d)return html;
  const section=`<section class="section editorial-detail" aria-labelledby="detail-title">
       <span class="eyebrow">ROXY / ПОДРОБНЕЕ</span>

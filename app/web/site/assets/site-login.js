@@ -13,8 +13,8 @@
   if (validTrend) target.searchParams.set("id", trend);
   else {
     const tool = query.get("tool") || "";
-    if (query.get("section") === "partners") {
-      target.searchParams.set("route","partners");
+    if (["partners","profile"].includes(query.get("section"))) {
+      target.searchParams.set("route",query.get("section"));
     } else if (["photo","video","text","own-photo","reference"].includes(tool)) {
       target.searchParams.set("route","create");
       if (tool === "video") target.searchParams.set("create_media","video");
