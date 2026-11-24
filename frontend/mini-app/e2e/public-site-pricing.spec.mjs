@@ -92,4 +92,3 @@ test('catalogue retains priced models with unfamiliar operation names',async({pa
  await expect(page.locator('.model-price-card')).toHaveCount(1);
  await expect(page.locator('.model-price-card')).toContainText('QA Photo');
 });
-
