@@ -15,7 +15,7 @@ import secrets
 import smtplib
 import ssl
 from email.message import EmailMessage
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from uuid import UUID
 
 import httpx
@@ -86,20 +86,32 @@ def _otp_digest(email: str, otp: str) -> str:
 
 
 def _target_path(raw: str | None) -> str:
-    """Open-redirect protection and browser-only entry routes."""
-    path = str(raw or "").strip()
-    parsed = urlsplit(path)
-    if (
-        parsed.scheme or parsed.netloc
-        or parsed.path.rstrip("/") != "/mini-app"
-        or parsed.fragment
-    ):
+    """Only known studio routes and bounded public launch parameters."""
+    try:
+        parsed = urlsplit(str(raw or "").strip())
+    except ValueError:
         return "/mini-app/"
-    allowed = ("startapp", "start_payload", "ref")
-    query = dict((key, value) for key, value in
-                 __import__("urllib.parse", fromlist=["parse_qsl"]).parse_qsl(parsed.query)
-                 if key in allowed and len(value) <= 256)
-    return "/mini-app/" + ("?" + urlencode(query) if query else "")
+    path = parsed.path.rstrip("/")
+    if parsed.scheme or parsed.netloc or parsed.fragment or path not in {"/mini-app", "/mini-app/trend"}:
+        return "/mini-app/"
+    params = dict(parse_qsl(parsed.query))
+    query = {}
+    if path == "/mini-app/trend":
+        try:
+            query["id"] = str(UUID(params.get("id", "")))
+        except (ValueError, TypeError, AttributeError):
+            return "/mini-app/"
+    else:
+        route = params.get("route")
+        if route in {"create", "profile", "partners"}:
+            query["route"] = route
+        if route == "create" and params.get("create_media") in {"image", "video"}:
+            query["create_media"] = params["create_media"]
+    for key in ("startapp", "start_payload", "ref"):
+        value = params.get(key)
+        if value and len(value) <= 256:
+            query[key] = value
+    return path + "/" + ("?" + urlencode(query) if query else "")
 
 
 def _mail_send_sync(email: str, otp: str) -> None:

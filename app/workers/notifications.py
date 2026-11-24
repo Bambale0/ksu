@@ -514,6 +514,13 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             _sync_generation_delivery(generation, delivery)
             await session.commit()
             return
+        if user.telegram_id is None:
+            await NotificationDeliveryService.mark_terminal(
+                session, delivery, status="suppressed", error="telegram_not_connected",
+            )
+            _sync_generation_delivery(generation, delivery)
+            await session.commit()
+            return
         if notification.kind == SUPPORT_INCOMING_KIND:
             if not await SupportConversationService.authorized_operator(session, user.id, lock=True):
                 await NotificationDeliveryService.mark_terminal(

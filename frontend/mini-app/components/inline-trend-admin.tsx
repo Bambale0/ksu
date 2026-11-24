@@ -982,12 +982,19 @@ export function InlineTrendAdmin() {
     setError("");
     try {
       const body = { title: draft.title.trim(), payload, is_active: draft.isActive };
-      if (editingId) await trendAdminApi.update(editingId, body);
-      else await trendAdminApi.create(body);
+      const saved = editingId
+        ? await trendAdminApi.update(editingId, body)
+        : await trendAdminApi.create(body);
+      if (draftVersion.current !== version) return;
+      // Keep the confirmed write visible even if the list refresh fails.
+      if (editingId && saved.id === editingId) {
+        setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
+      }
+      // Reopening must not read the pre-save manager snapshot.
+      await refresh();
       if (draftVersion.current !== version) return;
       setFormOpen(false);
       setEditingId(null);
-      await refresh();
     } catch (cause) {
       setError(trendSaveError(cause));
     } finally {

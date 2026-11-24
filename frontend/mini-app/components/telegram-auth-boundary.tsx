@@ -60,7 +60,7 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
 
     const run = async () => {
       const nativeInitData = getInitDataFallback();
-      if (nativeInitData) {
+      if (nativeInitData && nativeInitData !== getBrowserInitData()) {
         // Native Telegram already enters the existing signed WebApp auth contour.
         // Do not add an eager /me probe here: it would become the first app API
         // request and bypass the shared launch/start-param headers used by routing.
@@ -78,18 +78,21 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         const response = await fetch("/api/v1/web-auth/me", {
           credentials: "same-origin", cache: "no-store",
         });
-        const payload = response.ok ? await response.json() : null;
+        if (!response.ok && response.status !== 404) throw new Error("Web session unavailable");
+        const payload = response.status === 404 ? null : await response.json();
         if (!active) return;
         const webValid = payload?.authenticated === true;
         window.__ROXY_WEB_SESSION_AUTHENTICATED__ = webValid;
         if (webValid) {
+          clearBrowserInitData();
           setAuthenticated(true);
           setReady(true);
           return;
         }
       } catch {
-        // Temporary API failure must not disable the existing verified Telegram
-        // browser login. That credential is separately checked by /api/v1/me.
+        // Do not fall back to a different stored identity when session state is unknown.
+        if (active) setReady(true);
+        return;
       }
 
       const browserInitData = getBrowserInitData();

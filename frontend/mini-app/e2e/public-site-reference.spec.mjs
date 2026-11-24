@@ -14,7 +14,7 @@ for (const [width,height] of [[320,740],[390,844],[768,1024],[1440,900],[1648,92
     await openSite(page);
     const art = page.locator('.hero-art-photo');
     expect(await art.evaluate(node => getComputedStyle(node).backgroundSize)).toBe('contain');
-    expect(await art.evaluate(node => getComputedStyle(node).backgroundImage)).toContain('roxy-reference-hero.webp');
+    expect(await art.evaluate(node => getComputedStyle(node).backgroundImage)).toContain('roxy-hero-cutout.webp');
     const lines = page.locator('.hero-line');
     await expect(lines).toHaveCount(3);
     await expect(page.locator('.hero-formats .format-card')).toHaveCount(5);
@@ -85,4 +85,89 @@ test('floating navigation stays usable and RX shines only with motion enabled', 
   await header.locator('.mobile-nav nav').getByRole('link',{name:'Возможности'}).click();
   await expect(header.locator('.mobile-nav')).not.toHaveAttribute('open','');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+});
+
+
+// The first screen is the reference for the rest of the same public campaign.
+// Check rendered geometry and actual controls rather than snapshotting prose.
+for (const width of [320,390,768,1440,1648]) {
+  test(`hero visual language continues through the public site at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:900});
+    await openSite(page);
+    await page.emulateMedia({reducedMotion:'reduce'});
+    const sections=page.locator('main > .section, main > .final-section');
+    await expect(sections).toHaveCount(7);
+    const metrics=await page.evaluate(() => {
+      const hero=document.querySelector('.hero h1');
+      const card=document.querySelector('.format-card');
+      const feature=document.querySelector('.capability');
+      const heading=document.querySelector('#features-title');
+      const bounds=[...document.querySelectorAll('main > .section, main > .final-section, .site-footer')].map(n=>{
+        const r=n.getBoundingClientRect();
+        return {left:r.left,right:r.right,width:r.width,scroll:n.scrollWidth,client:n.clientWidth};
+      });
+      return {
+        overflow:document.documentElement.scrollWidth-innerWidth,
+        headingFont:getComputedStyle(heading).fontFamily,
+        heroFont:getComputedStyle(hero).fontFamily,
+        featureBackground:getComputedStyle(feature).backgroundImage,
+        heroCardBackground:getComputedStyle(card).backgroundImage,
+        featureRadius:getComputedStyle(feature).borderTopLeftRadius,
+        featureTransform:getComputedStyle(feature).transform,
+        bounds,
+        columns:getComputedStyle(document.querySelector('.capabilities-list')).gridTemplateColumns.split(' ').length,
+        finalArtwork:getComputedStyle(document.querySelector('.final-section'),'::after').backgroundImage,
+      };
+    });
+    expect(metrics.overflow).toBeLessThanOrEqual(1);
+    expect(metrics.headingFont).toBe(metrics.heroFont);
+    expect(metrics.featureBackground).toContain('linear-gradient');
+    expect(metrics.heroCardBackground).toContain('linear-gradient');
+    expect(parseFloat(metrics.featureRadius)).toBeGreaterThan(0);
+    expect(metrics.featureTransform).toBe('none');
+    expect(metrics.columns).toBe(width<=700?1:2);
+    expect(metrics.finalArtwork).toBe('none');
+    await expect(page.locator('#creators .promo-art img')).toHaveAttribute('src',/roxy-promo-2\.webp\?v=/);
+    await expect(page.locator('.final-section .promo-art img')).toHaveAttribute('src',/roxy-promo-1\.webp\?v=/);
+    for(const rect of metrics.bounds){
+      expect(rect.left).toBeGreaterThanOrEqual(-1);
+      expect(rect.right).toBeLessThanOrEqual(width+1);
+      expect(rect.scroll-rect.client).toBeLessThanOrEqual(1);
+    }
+    const faq=page.locator('#faq details').first();
+    await faq.locator('summary').click();
+    await expect(faq).toHaveAttribute('open','');
+    await expect(faq.locator('p')).toBeVisible();
+    await faq.locator('summary').press('Enter');
+    await expect(faq).not.toHaveAttribute('open','');
+    await expect(page.locator('.final-section .button-primary')).toHaveAttribute('href','/partners');
+    await expect(page.locator('.capability-link')).toHaveAttribute('href','/features');
+  });
+}
+
+
+test('original Mini App promos retain their whole image and partner destination',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>sessionStorage.setItem('__roxy_browser_init_data_v1',JSON.stringify({initData:'query_id=fixture&hash=fixture',expiresAt:Date.now()+60000})));
+  await page.route('**/api/v1/me',route=>route.fulfill({json:{id:'fixture',telegram_id:42}}));
+  await page.goto('/?ref=QA&unknown=discard');
+  for(const selector of ['#creators .promo-art','.final-section .promo-art']){
+    const link=page.locator(selector);
+    await link.scrollIntoViewIfNeeded();
+    const picture=link.locator('img');
+    await expect.poll(()=>picture.evaluate(el=>el.complete && el.naturalWidth>0)).toBe(true);
+    const box=await picture.boundingBox();
+    expect(Math.abs(box.width/box.height-16/9)).toBeLessThan(.04);
+    expect(await picture.evaluate(el=>getComputedStyle(el).objectFit)).toBe('contain');
+    await expect(link).toHaveAttribute('href','/partners?ref=QA');
+    await link.click();
+    await expect(page.locator('body')).toHaveAttribute('data-page','partners');
+    await expect(page.locator('.partner-story .button-primary')).toHaveAttribute('href','/login?section=partners&ref=QA');
+    await page.locator('.partner-story .button-primary').click();
+    await expect(page.locator('body')).toHaveAttribute('data-page','login');
+    await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=partners&ref=QA');
+    await page.goBack();
+    await page.goBack();
+    await expect(page.locator('body')).toHaveAttribute('data-page','home');
+  }
 });

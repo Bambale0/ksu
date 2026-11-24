@@ -54,14 +54,15 @@ for (const width of [320, 390, 768, 1280]) {
   });
 }
 
-test('browser user can reach Telegram login and return to gallery', async ({ page }) => {
+test('browser user can reach Telegram login and open the actual public gallery', async ({ page }) => {
   await openLanding(page);
   await page.getByRole('link', { name: /Начать создавать/ }).click();
   await expect(page).toHaveURL(/#telegram-login$/);
   await expect(page.locator('#telegram-login .roxy-login-widget')).toHaveCount(1);
   await page.locator('.roxy-landing-footer').getByRole('link', { name: 'Галерея' }).click();
-  await expect(page).toHaveURL(/#examples$/);
-  await expect(page.locator('.roxy-examples-mosaic figure')).toHaveCount(6);
+  await expect(page).toHaveURL(/\/gallery$/);
+  await expect(page.locator('body')).toHaveAttribute('data-page', 'gallery');
+  await expect(page.locator('#gallery-title')).toBeVisible();
 });
 
 
@@ -74,6 +75,37 @@ test('mobile menu opens, navigates and closes cleanly', async ({ page }) => {
   await trigger.click();
   await expect(details).toHaveAttribute('open', '');
   await details.getByRole('link', { name: 'Возможности' }).click();
-  await expect(page).toHaveURL(/#features$/);
-  await expect(details).not.toHaveAttribute('open', '');
+  await expect(page).toHaveURL(/\/features$/);
+  await expect(page.locator('body')).toHaveAttribute('data-page', 'features');
+  await expect(page.locator('#features-title')).toBeVisible();
+  await expect(page.locator('.mobile-nav')).not.toHaveAttribute('open', '');
+});
+
+
+test('legacy browser entry navigates to real public documents and preserves only approved referral keys', async ({page}) => {
+  await openLanding(page, '?startapp=ref_777&ref=QA&unknown=discard');
+  const links = page.locator('.roxy-landing-links');
+  const expected = [
+    ['Возможности', '/features', 'features'],
+    ['Процесс', '/process', 'process'],
+    ['Галерея', '/gallery', 'gallery'],
+    ['Вопросы', '/faq', 'faq'],
+  ];
+  for (const [label, path, identity] of expected) {
+    await expect(links.getByRole('link', {name: label, exact: true}))
+      .toHaveAttribute('href', path + '?startapp=ref_777&ref=QA');
+    await links.getByRole('link', {name: label, exact: true}).click();
+    await expect(page.locator('body')).toHaveAttribute('data-page', identity);
+    const url = new URL(page.url());
+    expect(url.pathname).toBe(path);
+    expect(url.searchParams.get('startapp')).toBe('ref_777');
+    expect(url.searchParams.get('ref')).toBe('QA');
+    expect(url.searchParams.has('unknown')).toBe(false);
+    await page.goBack();
+    await expect(page.locator('.roxy-browser-landing')).toBeVisible();
+  }
+  await expect(page.locator('.roxy-landing-nav .roxy-landing-logo'))
+    .toHaveAttribute('href', '/?startapp=ref_777&ref=QA');
+  await page.locator('.roxy-landing-nav .roxy-landing-logo').click();
+  await expect(page.locator('body')).toHaveAttribute('data-page', 'home');
 });

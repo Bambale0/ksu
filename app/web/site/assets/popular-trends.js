@@ -6,7 +6,8 @@
   const status = document.getElementById("popular-trends-status");
   if (!gallery || !status) return;
 
-  const endpoint = "/api/v1/public-site/popular-trends?limit=6";
+  const limit = gallery.dataset.limit === "12" ? 12 : 6;
+  const endpoint = limit === 12 ? "/api/v1/public-site/popular-trends?limit=12" : "/api/v1/public-site/popular-trends?limit=6";
   const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const saveData = navigator.connection?.saveData === true;
@@ -22,8 +23,8 @@
   };
 
   const openTrendUrl = (id) => {
-    const url = new URL("/mini-app/trend/", location.origin);
-    url.searchParams.set("id", id);
+    const url = new URL("/login", location.origin);
+    url.searchParams.set("trend", id);
     const current = new URLSearchParams(location.search);
     for (const name of ["startapp", "start_payload", "ref"]) {
       const value = current.get(name);
@@ -104,6 +105,14 @@
       video.dataset.src = mediaUrl;
       const poster = validMedia(item.poster_url);
       if (poster) video.poster = poster;
+      else {
+        const placeholder = document.createElement("span");
+        placeholder.className = "live-trend-placeholder";
+        placeholder.textContent = "Видео · открыть тренд";
+        link.appendChild(placeholder);
+        video.addEventListener("playing", () => { placeholder.hidden = true; });
+        video.addEventListener("error", () => { placeholder.hidden = false; });
+      }
       video.setAttribute("aria-hidden", "true");
       video.tabIndex = -1;
       link.appendChild(video);
@@ -115,8 +124,21 @@
       img.loading = "lazy";
       img.decoding = "async";
       img.alt = "";
-      img.src = mediaUrl;
-      link.appendChild(img);
+      const thumbnail = validMedia(item.poster_url);
+      const fallback = document.createElement("span");
+      fallback.className = "live-trend-placeholder";
+      fallback.textContent = "Превью недоступно · открыть тренд";
+      fallback.hidden = true;
+      img.addEventListener("error", () => {
+        if (thumbnail && img.src === thumbnail && thumbnail !== mediaUrl) {
+          img.src = mediaUrl;
+          return;
+        }
+        img.hidden = true;
+        fallback.hidden = false;
+      });
+      img.src = thumbnail || mediaUrl;
+      link.append(img, fallback);
     }
 
     const marker = document.createElement("span");
@@ -130,7 +152,18 @@
     heading.textContent = title;
     const usage = document.createElement("span");
     usage.textContent = metric(item.usage_count);
-    caption.append(heading, usage);
+    const meta = document.createElement("div");
+    meta.className = "live-trend-meta";
+    const rawCost = item.catalog_cost_rox;
+    const cost = typeof rawCost === "string" && /^\d+(?:\.\d{1,2})?$/.test(rawCost) ? Number(rawCost) : NaN;
+    if (Number.isFinite(cost) && cost > 0) {
+      const label = document.createElement("span");
+      label.className = "live-trend-price";
+      label.textContent = (item.catalog_cost_kind === "first_step" ? "1-й этап: " : "Ориентир: ") + new Intl.NumberFormat("ru-RU", { maximumFractionDigits:2 }).format(cost) + " ROX";
+      meta.append(label);
+    }
+    meta.append(usage);
+    caption.append(heading, meta);
     figure.append(link, caption);
     return figure;
   };
@@ -173,7 +206,7 @@
         if (!item || !uuid.test(String(item.id)) || unique.has(item.id)) return false;
         unique.add(item.id);
         return true;
-      }).slice(0, 6);
+      }).slice(0, limit);
       activeVideos.clear();
       createObserver();
       const tiles = items.map(buildTile).filter(Boolean);

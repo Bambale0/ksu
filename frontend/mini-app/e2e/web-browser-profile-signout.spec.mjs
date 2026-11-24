@@ -74,8 +74,8 @@ test('signed-in website profile offers logout and clears browser credentials', a
   const logout = page.getByRole('button', { name: 'Выйти из аккаунта' });
   await expect(logout).toBeVisible();
   await logout.click();
-  await expect(page).toHaveURL(/\/mini-app\/$/);
-  await expect(page.getByRole('heading', { name: 'Создавай фото и видео с AI' })).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator('body')).toHaveAttribute('data-page','login');
   expect(await page.evaluate((key) => sessionStorage.getItem(key), STORAGE_KEY)).toBeNull();
 });
 

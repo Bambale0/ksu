@@ -77,6 +77,11 @@ async def _process(bot: Bot, delivery_id: uuid.UUID) -> None:
             await _maybe_complete_campaign(session, row.campaign_id)
             await session.commit()
             return
+        if user.telegram_id is None:
+            CampaignDeliveryService.terminal(row, status="suppressed", error="telegram_not_connected")
+            await _maybe_complete_campaign(session, row.campaign_id)
+            await session.commit()
+            return
         preference = await session.get(UserPreference, user.id)
         if preference is not None and (
             not preference.notifications_enabled or not preference.marketing_notifications

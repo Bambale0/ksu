@@ -586,6 +586,13 @@ export function RoxySocialApp() {
     tg?.onEvent?.("viewportChanged", safe);
     const initial = initialRoute();
     setRoute(initial);
+    // The public tool entry can choose a category, never a model or a paid action.
+    if (initial === "create") {
+      const media = new URL(window.location.href).searchParams.get("create_media");
+      if (media === "image" || media === "video") {
+        setCreateLaunch({ nonce: ++createLaunchSeq.current, kind: "new", media });
+      }
+    }
     void loadModels();
 
     (async () => {

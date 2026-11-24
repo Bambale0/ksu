@@ -394,6 +394,31 @@ jobs:
           curl -fsSI "${app_base}/mini-app/" >/dev/null
           curl -fsSI "${app_base}/admin-app/" >/dev/null
 
+          # Verify every independent public document on the exact deployed image.
+          for spec in "home:/" "features:/features" "gallery:/gallery" "process:/process" "faq:/faq" "feature-photo:/features/photo" "feature-video:/features/video" "feature-text:/features/text" "feature-own-photo:/features/own-photo" "feature-reference:/features/reference" "login:/login" "pricing:/pricing" "partners:/partners"; do
+            page="${spec%%:*}"
+            route="${spec#*:}"
+            curl -fsSI --max-time 15 "${app_base}${route}" >/dev/null
+            document="$(curl -fsS --max-time 15 "${app_base}${route}")"
+            if [[ "${document}" != *"data-page=\"${page}\""* ]]; then
+              echo "Public website route returned the wrong document: ${route}" >&2
+              exit 1
+            fi
+            echo "Public website smoke passed: ${route}"
+            if [[ "${page}" != "home" ]]; then
+              slash_route="${route}/"
+              # A trailing slash is a real route, never an HTTP scheme downgrade.
+              slash_status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -I "${app_base}${slash_route}")"
+              test "${slash_status}" = 200
+              slash_document="$(curl -fsS --max-time 15 "${app_base}${slash_route}")"
+              if [[ "${slash_document}" != *"data-page=\"${page}\""* ]]; then
+                echo "Public slash alias returned the wrong document: ${slash_route}" >&2
+                exit 1
+              fi
+              echo "Public website smoke passed: ${slash_route}"
+            fi
+          done
+
           docker compose exec -T app python - <<'PYTHON'
           from app.core.config import settings
 
@@ -439,6 +464,7 @@ jobs:
             echo "- every production runtime service running check: required"
             echo "- web admin security key validation only (no credential changes): required"
             echo "- admin-app HTTP smoke check: required"
+            echo "- all thirteen public website documents: GET/HEAD and route identity required"
             echo "- historical media maintenance requires a separate explicit manual action"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"

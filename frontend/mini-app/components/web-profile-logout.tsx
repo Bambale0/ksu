@@ -33,7 +33,7 @@ export function WebProfileLogout() {
     try {
       if (sessionKind === "legacy") {
         clearBrowserInitData();
-        window.location.replace("/mini-app/");
+        window.location.replace("/login");
         return;
       }
       const response = await fetch("/api/v1/web-auth/logout", {
@@ -64,6 +64,7 @@ export function WebProfileLogout() {
         <span className="kicker">Веб-аккаунт</span>
         <p className="muted">Выйти из аккаунта на этом устройстве. Ваш баланс, работы и привязки сохранятся.</p>
       </div>
+      {sessionKind === "cookie" ? <a className="secondary" href="/login?mode=link">Привязать способ входа</a> : null}
       <button
         className="secondary web-profile-logout"
         type="button"

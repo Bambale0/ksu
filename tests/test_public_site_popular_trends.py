@@ -95,6 +95,8 @@ async def test_popular_trends_sort_by_real_counter_and_hide_private_recipes(monk
             "preview_url": item.payload["preview_url"],
             "media_type": "video" if item.id.int == 2 else "image",
             "preview_thumbnail_url": None,
+            "cost_credits": "125.50" if item.id.int == 2 else "20.00",
+            "workflow_type": "sequential" if item.id.int == 2 else None,
             "prompt": "SECRET NEVER PUBLIC",
             "parameters": {"provider_key": "DO NOT LEAK"},
         }
@@ -107,6 +109,10 @@ async def test_popular_trends_sort_by_real_counter_and_hide_private_recipes(monk
     assert payload["items"][0]["preview_kind"] == "video"
     assert payload["items"][0]["usage_count"] == 600
     assert payload["items"][1]["preview_kind"] == "image"
+    assert payload["items"][0]["catalog_cost_rox"] == "125.50"
+    assert payload["items"][0]["catalog_cost_kind"] == "first_step"
+    assert payload["items"][1]["catalog_cost_rox"] == "20.00"
+    assert payload["items"][1]["catalog_cost_kind"] == "estimate"
     assert "prompt" not in str(payload)
     assert "provider_key" not in str(payload)
     assert session.queries == 1

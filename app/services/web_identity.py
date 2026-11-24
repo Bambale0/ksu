@@ -97,7 +97,7 @@ async def verified_telegram_identity(
     telegram_id = int(verified_user["id"])
     existing = await UserService.get_by_telegram_id(session, telegram_id)
     if link_user_id is not None:
-        owner = await session.get(User, link_user_id)
+        owner = await session.get(User, link_user_id, with_for_update=True)
         if owner is None or not owner.is_active:
             raise HTTPException(403, "Account unavailable")
         if existing is not None and existing.id != owner.id:
@@ -109,7 +109,11 @@ async def verified_telegram_identity(
         owner.username = str(verified_user.get("username") or "") or None
         if not owner.first_name or owner.first_name == "ROXY":
             owner.first_name = str(verified_user.get("first_name") or "ROXY")[:255]
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(409, "Telegram is already connected to another account") from exc
         return owner
 
     tg_user = TelegramUser(

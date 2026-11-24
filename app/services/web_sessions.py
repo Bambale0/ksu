@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import uuid
 from urllib.parse import urlsplit
@@ -14,6 +15,10 @@ from app.core.config import settings
 COOKIE = "roxy_web_session"
 SESSION_TTL = 7 * 24 * 60 * 60
 SESSION_PREFIX = "roxy:web-session:"
+
+
+def _valid_token(token: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{38,256}", token))
 
 
 def token_key(token: str) -> str:
@@ -40,11 +45,11 @@ def redis_from_request(request: Request) -> Redis:
 
 async def current_web_user_id(request: Request) -> uuid.UUID | None:
     token = str(request.cookies.get(COOKIE) or "")
-    if len(token) < 38 or len(token) > 256:
+    if not _valid_token(token):
         return None
     try:
         raw = await redis_from_request(request).get(token_key(token))
-        return uuid.UUID(str(raw)) if raw else None
+        return uuid.UUID(raw.decode("ascii") if isinstance(raw, bytes) else str(raw)) if raw else None
     except HTTPException:
         raise
     except (ValueError, TypeError):
@@ -59,7 +64,7 @@ async def issue_web_session(request: Request, response: Response, user_id: uuid.
     token = secrets.token_urlsafe(48)
     try:
         await redis.set(token_key(token), str(user_id), ex=SESSION_TTL)
-        if prior_token and len(prior_token) >= 38:
+        if _valid_token(prior_token):
             await redis.delete(token_key(prior_token))
     except Exception as exc:
         raise HTTPException(503, "Authentication storage unavailable") from exc
@@ -72,7 +77,7 @@ async def issue_web_session(request: Request, response: Response, user_id: uuid.
 
 async def revoke_web_session(request: Request, response: Response) -> None:
     token = str(request.cookies.get(COOKIE) or "")
-    if token and len(token) >= 38:
+    if _valid_token(token):
         try:
             await redis_from_request(request).delete(token_key(token))
         except Exception as exc:

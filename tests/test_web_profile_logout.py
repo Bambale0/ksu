@@ -84,3 +84,28 @@ def test_web_logout_is_rendered_only_for_browser_session_in_all_profile_surfaces
     ):
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "<WebProfileLogout />" in text
+
+@pytest.mark.asyncio
+async def test_invalid_cookie_cannot_break_new_login_or_logout() -> None:
+    redis = FakeRedis()
+    request = request_for(redis, cookie=COOKIE + "=" + "!" * 64)
+    assert await current_web_user_id(request) is None
+    await revoke_web_session(request, Response())
+    issued = Response()
+    owner = uuid4()
+    await issue_web_session(request, issued, owner)
+    assert await current_web_user_id(request_for(redis, cookie=issued.headers["set-cookie"].split(";")[0])) == owner
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("/mini-app/?route=create&create_media=video&ref=QA", "/mini-app/?route=create&create_media=video&ref=QA"),
+    ("/mini-app/trend/?id=11111111-1111-4111-8111-111111111111&ref=QA", "/mini-app/trend/?id=11111111-1111-4111-8111-111111111111&ref=QA"),
+    ("/mini-app/?route=partners&ref=QA&unknown=discard", "/mini-app/?route=partners&ref=QA"),
+    ("https://example.invalid", "/mini-app/"),
+    ("//example.invalid/mini-app/", "/mini-app/"),
+    ("/mini-app/trend/?id=invalid", "/mini-app/"),
+])
+def test_provider_callback_uses_only_verified_studio_destinations(raw, expected):
+    from app.api.v1.web_auth import _target_path
+
+    assert _target_path(raw) == expected

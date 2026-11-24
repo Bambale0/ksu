@@ -76,7 +76,7 @@ def test_editorial_site_contract_and_independent_branding() -> None:
     assert "feature-icon" not in html
     assert "gallery-tags" not in html
     assert "Миллион версий" not in html
-    assert 'data-login-link' in html
+    assert 'data-app-link' in html
     assert "/mini-app/_next/" not in html
     assert "ROXY AI STUDIO" in html
     assert "/site-assets/" in css
@@ -160,7 +160,7 @@ def test_typographic_capabilities_contract_preserves_functionality() -> None:
     assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
     assert '.capability h3{' in css
     assert 'max-width:440px' in css
-    assert 'href="/login" data-login-link data-app-link>Перейти к инструментам' in html
+    assert 'href="/features" data-site-link>Перейти к инструментам' in html
     assert 'class="capabilities-stage"' not in html
     assert '.stage-frame' not in css
     assert 'ROXY<br>STUDIES' not in html
@@ -200,29 +200,16 @@ def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
     assert '.capabilities-layout{display:block;' in css
     assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
     assert '.capabilities-list{grid-template-columns:minmax(0,1fr)}' in css
-    assert 'href="/login" data-login-link data-app-link>Перейти к инструментам' in html
+    assert 'href="/features" data-site-link>Перейти к инструментам' in html
     # The only atlas artwork remaining is in the hero, not the capabilities section.
     assert html.count('class="hero-art"') == 1
 
 @pytest.mark.asyncio
-async def test_login_is_public_page_without_redirect_to_telegram() -> None:
+async def test_crossplatform_login_has_provider_controls() -> None:
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
         login = await client.get("/login", follow_redirects=False)
-        login_head = await client.head("/login", follow_redirects=False)
-        css = await client.get("/site-assets/login.css")
-        js = await client.get("/site-assets/login.js")
-    assert login.status_code == login_head.status_code == 200
-    assert "Вход в ROXY" in login.text
-    assert "ROXY AI STUDIO" in login.text
-    assert "/site-assets/login.js" in login.text
-    assert "/api/v1/web-auth" in js.text
-    assert "no-store" in login.headers["cache-control"]
-    assert css.status_code == js.status_code == 200
-    assert not login_head.content
-
-
-def test_public_ctas_route_into_login_instead_of_unauthenticated_app() -> None:
-    html = (ROOT / "app/web/site/index.html").read_text(encoding="utf-8")
-    assert html.count('data-login-link') >= 5
-    assert 'href="/login"' in html
-    assert 'href="/mini-app/" data-app-link' not in html
+        config = await client.get("/api/v1/web-auth/config")
+    assert login.status_code == config.status_code == 200
+    assert 'id="login-email-form"' in login.text
+    assert 'id="login-yandex"' in login.text
+    assert set(config.json()["providers"]) == {"telegram", "email", "yandex"}
