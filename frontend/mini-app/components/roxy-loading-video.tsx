@@ -46,13 +46,14 @@ export function RoxyLoadingVideo({ message = "Студия творчества"
         muted
         playsInline
         loop
-        preload="metadata"
+        preload="auto"
         aria-hidden="true"
+        onLoadedData={() => setPlaying(true)}
         onPlaying={() => setPlaying(true)}
         onError={() => setFallback(true)}
       >
-        <source src="/mini-app/loading/roxy-loading-mobile-9x16.webm" type="video/webm" media={MOBILE_MEDIA} />
         <source src="/mini-app/loading/roxy-loading-mobile-9x16.mp4" type="video/mp4" media={MOBILE_MEDIA} />
+        <source src="/mini-app/loading/roxy-loading-mobile-9x16.webm" type="video/webm" media={MOBILE_MEDIA} />
         <source src="/mini-app/loading/roxy-loading-web-16x9.webm" type="video/webm" />
         <source src="/mini-app/loading/roxy-loading-web-16x9.mp4" type="video/mp4" />
       </video>

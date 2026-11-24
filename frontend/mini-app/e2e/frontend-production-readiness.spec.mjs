@@ -262,8 +262,12 @@ test('creator application is unavailable until authoritative partnership status 
 test('partner withdrawal honors the server minimum before allowing submit', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  // Hold the authoritative response until the loading-state assertion has
+  // actually run. A 200 ms wall-clock delay races WebKit navigation/hydration.
+  let releaseStats;
+  const statsGate = new Promise((resolve) => { releaseStats = resolve; });
   await page.route('**/api/v1/referrals/stats', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await statsGate;
     return json(route, {
       withdrawable_rub: '1500',
       pending_referral_rub: '0',
@@ -277,8 +281,13 @@ test('partner withdrawal honors the server minimum before allowing submit', asyn
   await page.route('**/api/v1/referrals/withdrawals?limit=50', (route) => json(route, { items: [] }));
   await page.route('**/api/v1/referrals/wallet-transfers?limit=50', (route) => json(route, { items: [] }));
 
-  await page.goto('/mini-app/partner-wallet/');
-  await expect(page.getByText('Загружаем партнёрский баланс…')).toBeVisible();
+  try {
+    await page.goto('/mini-app/partner-wallet/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('Загружаем партнёрский баланс…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Создать заявку' })).toHaveCount(0);
+  } finally {
+    releaseStats();
+  }
 
   const amount = page.getByLabel('Сумма, ₽').nth(1);
   const requisites = page.getByLabel('Реквизиты');
