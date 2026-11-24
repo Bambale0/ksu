@@ -18,7 +18,7 @@ def test_new_hero_replaces_tile_mosaic_and_keeps_real_ctas():
     assert html.count('class="format-card"') == 5
     assert 'class="brand-monogram"' in html
     assert 'id="popular-trends"' in html
-    assert '/mini-app/' in html
+    assert '/login' in html
     assert 'data-app-link' in html
 
 
@@ -75,10 +75,10 @@ def test_hero_uses_approved_artwork_not_enlarged_sprite():
     assert html.count('class="hero-line"') == 3
     assert '/site-assets/roxy-rx-transparent.png' in html
     photo_rule = css.split(".hero-art-photo{", 1)[1].split("}", 1)[0]
-    assert "roxy-reference-hero.webp" in photo_rule
+    assert "roxy-hero-cutout.webp" in photo_rule
     assert "background-size:contain" in photo_rule
     assert "atlas-" not in photo_rule
-    for name in ("roxy-reference-hero.webp", "roxy-official-mark.webp"):
+    for name in ("roxy-hero-cutout.webp", "roxy-official-mark.webp"):
         data = (ROOT / "assets" / name).read_bytes()
         assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
     assert "--hero-x" in js and "--hero-y" in js
@@ -105,3 +105,34 @@ def test_floating_glass_navigation_and_alpha_logo_contract():
         data = (ROOT / "assets" / filename).read_bytes()
         fingerprint = sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()[:12]
         assert f"/site-assets/{filename}?v={fingerprint}" in html
+
+
+def test_hero_cutout_has_real_transparency_and_soft_edges():
+    from PIL import Image
+
+    with Image.open(ROOT / "assets" / "roxy-hero-cutout.webp") as image:
+        assert image.mode == "RGBA"
+        alpha = image.getchannel("A")
+        histogram = alpha.histogram()
+        assert histogram[0] > image.width * image.height * 0.1
+        assert sum(histogram[1:250]) > image.width * image.height * 0.05
+        assert sum(histogram[250:]) > image.width * image.height * 0.2
+
+
+def test_public_promos_are_exact_original_mini_app_assets():
+    import re
+    from PIL import Image
+
+    source = ROOT.parents[2] / "frontend/mini-app/public/promo"
+    html = HTML.read_text(encoding="utf-8")
+    for name in ("roxy-promo-1.webp", "roxy-promo-2.webp"):
+        data = (ROOT / "assets" / name).read_bytes()
+        assert data == (source / name).read_bytes()
+        fingerprint = sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()[:12]
+        assert f"/site-assets/{name}?v={fingerprint}" in html
+        with Image.open(ROOT / "assets" / name) as image:
+            assert image.size == (1440, 810)
+    assert html.count('href="/login?section=partners" data-app-link') == 4
+    final = re.search(r'<section class="final-section"[\s\S]*?</section>', html).group()
+    assert "roxy-promo-1.webp" in final
+    assert "roxy-rx-transparent.png" not in final

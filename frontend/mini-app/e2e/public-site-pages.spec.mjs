@@ -47,12 +47,12 @@ for(const width of [320,390,768,1440,1648]){
       await expect(page.locator('.desktop-nav a[aria-current="page"]')).toHaveText(label);
       expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
       const title=await page.title(); expect(titles.has(title)).toBe(false); titles.add(title);
-      await expect(page.locator('.top-action')).toHaveAttribute('href','/mini-app/?ref=QA');
+      await expect(page.locator('.top-action')).toHaveAttribute('href','/login?ref=QA');
       if(path==='/gallery'){
         await page.locator('#popular-trends').scrollIntoViewIfNeeded();
         await expect(page.locator('.live-trend-tile')).toHaveCount(12);
         expect(requests).toContain(12);
-        await expect(page.locator('.live-trend-link').first()).toHaveAttribute('href',/\/mini-app\/trend\/\?id=.*&ref=QA$/);
+        await expect(page.locator('.live-trend-link').first()).toHaveAttribute('href',/\/login\?trend=.*&ref=QA$/);
       }
       if(path==='/faq'){
         const faq=page.locator('.faq-list details').first();

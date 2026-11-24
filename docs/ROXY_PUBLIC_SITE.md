@@ -121,3 +121,19 @@ Public GET/HEAD pages /features, /gallery, /process and /faq are explicit FastAP
 
 
 Release verification: the existing production workflow checks every public route using GET and HEAD against the exact deployed application image and verifies the matching `data-page` identity, in addition to existing health and worker image checks. This is not a substitute for external-domain browser QA. Unknown public paths remain excluded from the allowlist.
+
+
+## Legacy browser entry routing correction (2026-11-24)
+
+Production reproduction on release 459236e8: the marketing site's Start CTA enters /mini-app/ and an unauthenticated browser sees the older TelegramBrowserLogin film mosaic. Its marketing links pointed to local #features, #how and #examples instead of the real public pages. Those header, mobile, footer and hero-arrow links now target /, /features, /process, /gallery and /faq on the same origin, passing only bounded referral keys. Login CTAs and the Telegram widget remain in the existing authentication contour; native Telegram and deep-link authentication are unchanged. Dedicated first-party /login remains part of independent PR #645. Both slash spellings of the four marketing pages now directly return the same no-store document; the canonical metadata remains slashless. This removes the observed 307 Location with an http scheme without changing global proxy trust or redirect settings. The deploy smoke now checks both spellings. Regression tests explicitly require real route navigation and GET/HEAD 200 without Location. No changes to DB or paid operations.
+
+
+## Transparent hero and distinct tool pages (2026-11-24)
+
+Hero uses the transparent cutout WebP, preserving the original reference asset for rollback. The foreground portrait has an actual alpha channel and the surrounding site lighting is independent CSS. Each hero tile opens its own standalone public route (/features/photo, /features/video, /features/text, /features/own-photo, /features/reference). Marketing start/sign-in buttons go to /login. That page uses the existing Telegram browser-auth API and existing same-tab sessionStorage format, validates existing sessions and accepts only validated UUID trend targets plus bounded referral keys. After verified authentication it opens the existing Mini App or the selected trend. No email/Yandex capability is invented; full identity remains #645. All pages use explicit GET/HEAD routes and slash aliases, deterministic generated documents, and release smoke checks. Existing original hero image and native Mini App auth remain unchanged.
+
+Tool-page entry buttons preserve an allowlisted tool identifier through /login. The authenticated destination is the existing creation screen; photo/own-photo and video select the existing image/video category via validated create_media, while text/reference leave model selection to the user. No generation is automatically started. The WebKit release audit includes standalone pages and entrypoints.
+
+
+## Public promos
+Original Mini App promo WebPs reused byte-for-byte in public assets. Author rewards after hero, partner artwork replaces closing RX on shared pages. Native 16:9 without cropping, lazy decoding, responsive single column at <=1000px. Both images and CTA buttons go through /login?section=partners to existing /mini-app/?route=partners. No program rules changed. Graphic amounts are original artwork, actual eligibility governed by live program terms.

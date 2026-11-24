@@ -160,7 +160,7 @@ def test_typographic_capabilities_contract_preserves_functionality() -> None:
     assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
     assert '.capability h3{' in css
     assert 'max-width:440px' in css
-    assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
+    assert 'href="/features" data-site-link>Перейти к инструментам' in html
     assert 'class="capabilities-stage"' not in html
     assert '.stage-frame' not in css
     assert 'ROXY<br>STUDIES' not in html
@@ -200,6 +200,6 @@ def test_capabilities_is_readable_without_repeated_decorative_atlas() -> None:
     assert '.capabilities-layout{display:block;' in css
     assert '.capabilities-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))' in css
     assert '.capabilities-list{grid-template-columns:minmax(0,1fr)}' in css
-    assert 'href="/mini-app/" data-app-link>Перейти к инструментам' in html
+    assert 'href="/features" data-site-link>Перейти к инструментам' in html
     # The only atlas artwork remaining is in the hero, not the capabilities section.
     assert html.count('class="hero-art"') == 1

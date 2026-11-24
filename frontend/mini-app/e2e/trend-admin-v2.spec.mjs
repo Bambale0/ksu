@@ -107,8 +107,8 @@ function v2Payload(videoModelId = videoModel.id) {
   };
 }
 
-async function setup(page, { items = [], models = [photoModel, videoModel], touch = false } = {}) {
-  const state = { items, models, writes: [], errors: [], unexpectedWrites: [] };
+async function setup(page, { items = [], models = [photoModel, videoModel], touch = false, waitAfterWriteList } = {}) {
+  const state = { items, models, writes: [], errors: [], unexpectedWrites: [], refreshAfterWrite: 0 };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.addInitScript(() => {
     window.Telegram = { WebApp: {
@@ -125,7 +125,13 @@ async function setup(page, { items = [], models = [photoModel, videoModel], touc
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/v1/me') return json({ id: 'admin', telegram_id: 777, first_name: 'Admin', is_admin: true, balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') {
+      if (waitAfterWriteList && state.writes.length) {
+        state.refreshAfterWrite += 1;
+        await waitAfterWriteList;
+      }
+      return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    }
     if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
       const body = request.postDataJSON();
       state.writes.push(body);
@@ -646,3 +652,31 @@ test('new workflow can add height and weight using presets before the prompt is 
   expect(state.errors).toEqual([]);
 });
 
+
+
+test('saved trend cannot reopen a stale draft while the manager refresh is delayed', async ({ page }) => {
+  let releaseRefresh;
+  const waitAfterWriteList = new Promise(resolve => { releaseRefresh = resolve; });
+  const payload = v2Payload();
+  const state = await setup(page, {
+    items: [{ id: 'slow-refresh-trend', title: 'Скорпион', is_active: true, payload }],
+    waitAfterWriteList,
+  });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await form.locator('label').filter({ hasText: 'Описание' }).locator('textarea').fill('Новая версия тренда');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  try {
+    await expect.poll(() => state.refreshAfterWrite).toBeGreaterThan(0);
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: 'Сохраняю…' })).toBeDisabled();
+  } finally {
+    releaseRefresh();
+  }
+  await expect(form).not.toBeVisible();
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  await expect(form.locator('label').filter({ hasText: 'Описание' }).locator('textarea')).toHaveValue('Новая версия тренда');
+  expect(state.writes).toHaveLength(1);
+  expect(state.errors).toEqual([]);
+});

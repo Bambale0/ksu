@@ -64,6 +64,20 @@ export function TelegramBrowserLogin() {
   const widgetRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [botUsername, setBotUsername] = useState("");
+  const [publicQuery, setPublicQuery] = useState("");
+  const publicSiteHref = (path: string) => path + publicQuery;
+
+  useEffect(() => {
+    // These are marketing-page links, not in-app hash routes or auth data.
+    const current = new URLSearchParams(window.location.search);
+    const allowed = new URLSearchParams();
+    for (const name of ["startapp", "start_payload", "ref"]) {
+      const value = current.get(name);
+      if (value && value.length <= 256) allowed.set(name, value);
+    }
+    const query = allowed.toString();
+    setPublicQuery(query ? `?${query}` : "");
+  }, []);
   const [status, setStatus] = useState<"loading" | "ready" | "signing-in" | "error">("loading");
 
   useEffect(() => {
@@ -137,22 +151,24 @@ export function TelegramBrowserLogin() {
   return (
     <main className="roxy-browser-landing" aria-labelledby="roxy-landing-title">
       <header className="roxy-landing-nav">
-        <a className="roxy-landing-logo" href="#top" aria-label="ROXY — начало страницы">
+        <a className="roxy-landing-logo" href={publicSiteHref("/")} aria-label="ROXY — главная страница">
           <span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong>
         </a>
         <nav className="roxy-landing-links" aria-label="Разделы лендинга">
-          <a href="#features">Возможности</a>
-          <a href="#how">Процесс</a>
-          <a href="#examples">Галерея</a>
+          <a href={publicSiteHref("/features")}>Возможности</a>
+          <a href={publicSiteHref("/process")}>Процесс</a>
+          <a href={publicSiteHref("/gallery")}>Галерея</a>
+          <a href={publicSiteHref("/faq")}>Вопросы</a>
           <a href="#telegram-login">Вход</a>
         </nav>
         <a className="roxy-landing-button roxy-landing-button-small" href="#telegram-login">Начать <span aria-hidden="true">↗</span></a>
         <details ref={mobileMenuRef} className="roxy-landing-mobile-menu">
           <summary aria-label="Открыть меню"><span aria-hidden="true">☰</span></summary>
           <nav aria-label="Мобильное меню" onClick={() => { if (mobileMenuRef.current) mobileMenuRef.current.open = false; }}>
-            <a href="#features">Возможности</a>
-            <a href="#how">Процесс</a>
-            <a href="#examples">Галерея</a>
+            <a href={publicSiteHref("/features")}>Возможности</a>
+            <a href={publicSiteHref("/process")}>Процесс</a>
+            <a href={publicSiteHref("/gallery")}>Галерея</a>
+            <a href={publicSiteHref("/faq")}>Вопросы</a>
             <a href="#telegram-login">Войти</a>
           </nav>
         </details>
@@ -176,7 +192,7 @@ export function TelegramBrowserLogin() {
             <a className="roxy-landing-button roxy-landing-button-ghost" href={launchHref} target={launchTarget} rel={launchRel}><TelegramGlyph /> Запустить в Telegram</a>
           </div>
         </div>
-        <a className="roxy-film-scroll" href="#features" aria-label="Перейти к возможностям">↓</a>
+        <a className="roxy-film-scroll" href={publicSiteHref("/features")} aria-label="Перейти к возможностям">↓</a>
       </section>
 
       <section className="roxy-landing-section roxy-feature-section" id="features">
@@ -273,8 +289,8 @@ export function TelegramBrowserLogin() {
       </section>
 
       <footer className="roxy-landing-footer">
-        <div><a className="roxy-landing-logo" href="#top"><span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></a><p>Пространство для тех, кто создаёт свой визуальный мир.</p></div>
-        <nav aria-label="Ссылки в подвале"><a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#examples">Галерея</a><a href="#telegram-login">Войти</a></nav>
+        <div><a className="roxy-landing-logo" href={publicSiteHref("/")}><span className="roxy-landing-symbol" aria-hidden="true">✦</span><strong>ROXY</strong></a><p>Пространство для тех, кто создаёт свой визуальный мир.</p></div>
+        <nav aria-label="Ссылки в подвале"><a href={publicSiteHref("/features")}>Возможности</a><a href={publicSiteHref("/process")}>Как работает</a><a href={publicSiteHref("/gallery")}>Галерея</a><a href={publicSiteHref("/faq")}>Вопросы</a><a href="#telegram-login">Войти</a></nav>
         <small>© 2026 ROXY</small>
       </footer>
     </main>
