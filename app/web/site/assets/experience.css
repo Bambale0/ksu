@@ -479,3 +479,43 @@ main > .promo-feature h2 em{font:inherit;font-style:italic;font-weight:550;color
 @media(max-width:1000px){.promo-feature,.final-section{grid-template-columns:minmax(0,1fr);gap:22px}.promo-feature .promo-copy{grid-row:1}.promo-feature .promo-copy p,.final-section .promo-copy p{max-width:62ch}.promo-art{max-width:900px}}
 @media(max-width:700px){.final-section{padding:24px 16px}main > .promo-feature h2,.final-section .promo-copy h2{font-size:clamp(32px,8vw,44px)}.promo-copy p,.final-section .promo-copy p{font-size:15px;margin:14px 0 20px}.promo-copy .button{width:100%;justify-content:center}.promo-art{border-radius:10px}}
 @media(prefers-reduced-motion:reduce){.promo-art{transition:none;transform:none!important}}
+
+/* Live catalogue and editorial detail sections. */
+main > .pricing-section,main > .editorial-detail{padding-top:clamp(48px,6vw,96px)}
+.pricing-section .editorial-intro{margin-bottom:28px}
+.price-explanation{color:var(--campaign-muted);line-height:1.65;max-width:76ch;margin:18px 0 24px}
+.price-summary-grid,.model-price-grid,.package-price-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.price-summary,.model-price-card,.package-price-card{min-width:0;background:var(--campaign-glass);border:1px solid var(--campaign-edge);border-radius:12px;padding:clamp(17px,2.1vw,30px);display:flex;flex-direction:column;align-items:flex-start;gap:9px;overflow-wrap:anywhere}
+.price-kicker{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#dba9fa;font-weight:650}
+.price-summary strong,.model-price-card strong,.package-price-card strong{font-size:clamp(19px,2.1vw,30px);line-height:1.2;color:#e8b5ff;font-weight:650;font-variant-numeric:tabular-nums}
+.price-summary p,.model-price-card p,.package-price-card p{color:var(--campaign-muted);font-size:14px;line-height:1.5;margin:0}
+.model-price-card h3,.package-price-card h3{margin:0;font-size:clamp(17px,1.6vw,23px);line-height:1.2;font-weight:650}
+.model-price-card small{font-size:12px;line-height:1.6;color:var(--campaign-muted)}
+.model-price-card strong{margin-top:auto;padding-top:5px}
+.price-status,.price-empty{color:var(--campaign-muted);line-height:1.6;padding:18px 0;margin:0}
+.price-retry{min-height:44px}
+.pricing-page .price-subhead{margin-top:42px;font-size:clamp(24px,3vw,42px)}
+.pricing-page .price-actions{margin-top:26px;display:flex;flex-wrap:wrap;gap:12px}
+.pricing-page .price-actions .button{min-height:48px}
+.editorial-detail .detail-panel h2{font-size:clamp(23px,2.3vw,34px)}
+.editorial-detail .page-details{margin-top:22px}
+.editorial-detail .price-summary-grid{margin-top:18px}
+@media(max-width:1100px){.model-price-grid,.package-price-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.price-summary-grid,.model-price-grid,.package-price-grid{grid-template-columns:minmax(0,1fr);gap:10px}.price-summary,.model-price-card,.package-price-card{padding:18px}.price-explanation{font-size:14px}.pricing-page .price-actions a{width:100%}}
+
+.price-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.price-filter{font:inherit;font-size:14px;font-weight:600;color:var(--campaign-muted);background:transparent;border:1px solid var(--campaign-edge);border-radius:999px;padding:10px 16px;min-height:44px;cursor:pointer}
+.price-filter[aria-pressed="true"]{color:#f8e7ff;background:#52326b;border-color:#c18de8}
+.price-filter:focus-visible{outline:2px solid #dfb3ff;outline-offset:3px}
+.model-price-card[hidden]{display:none}
+.pricing-page .price-summary-grid{margin-bottom:24px}
+.pricing-page .price-subhead{scroll-margin-top:110px}
+.editorial-detail .price-subhead{margin-top:35px}
+.live-trend-placeholder{position:absolute;inset:0;display:grid;place-items:center;padding:14px;color:#d8c2e8;font-size:13px;line-height:1.4;text-align:center;background:radial-gradient(ellipse at 50% 40%,#49325455,transparent 80%);pointer-events:none}
+.live-trend-placeholder[hidden]{display:none}
+.live-trend-media[hidden]{display:none}
+
+.live-trend-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;max-width:100%}
+.live-trend-tile figcaption .live-trend-price{color:#f5d1ff;font-weight:750}
+.live-trend-placeholder{z-index:1}
+@media(max-width:700px){.live-trend-meta{flex-direction:column;align-items:flex-start;gap:3px}.live-trend-tile figcaption{padding:40px 10px 10px}.live-trend-tile figcaption strong{-webkit-line-clamp:2}}

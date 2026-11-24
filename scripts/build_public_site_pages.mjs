@@ -2,6 +2,7 @@
 // Run: node scripts/build_public_site_pages.mjs [--check]
 import {readFileSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {withEditorial} from './public_site_editorial.mjs';
 const dir=fileURLToPath(new URL('../app/web/site/',import.meta.url));
 const pageData={
   "features": {
@@ -278,7 +279,7 @@ const toolsData=[
     ]
   }
 ];
-const loginVersion="e7dc50d3cb36";
+const loginVersion="2b74c0ebefce";
 function buildPages(home,pageData,toolsData,loginVersion){
  const result={};
  const shell=home.match(/^(.*?)<main id="content">/s)?.[1],suffix=home.match(/<\/main>([\s\S]*)$/)?.[1];
@@ -363,8 +364,10 @@ function buildPages(home,pageData,toolsData,loginVersion){
  result.login=clean(loginShell+`<main id="content">\n    ${login}\n  </main>`+end().replace("</body>",`<script src="/site-assets/site-login.js?v=${loginVersion}" defer></script>\n</body>`));
  return result;
 }
+pageData.pricing={label:"Цены",title:"Понятные цены ROXY.",accent:"цены ROXY.",description:"Актуальная стоимость моделей фото, видео и музыки и рублёвые пакеты ROX.",heading:"pricing-title",next:["/features","Выбрать инструмент"],details:[]};
 const pages=buildPages(readFileSync(dir+'index.html','utf8'),pageData,toolsData,loginVersion);
-for(const [name,html] of Object.entries(pages)){
+for(const [name,raw] of Object.entries(pages)){
+ const html=withEditorial(name,raw);
  const path=dir+name+'.html';
  if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==html)throw new Error('Stale generated page: '+name);}
  else writeFileSync(path,html,'utf8');

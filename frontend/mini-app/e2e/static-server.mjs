@@ -26,7 +26,7 @@ const types = new Map([
 
 function safeFile(urlPath) {
   let pathname = decodeURIComponent(urlPath.split('?')[0] || '/');
-  const publicPages = new Map([['/', 'index.html'], ['/features', 'features.html'], ['/gallery', 'gallery.html'], ['/process', 'process.html'], ['/faq', 'faq.html'], ['/features/photo', 'feature-photo.html'], ['/features/video', 'feature-video.html'], ['/features/text', 'feature-text.html'], ['/features/own-photo', 'feature-own-photo.html'], ['/features/reference', 'feature-reference.html'], ['/login', 'login.html']]);
+  const publicPages = new Map([['/', 'index.html'], ['/features', 'features.html'], ['/gallery', 'gallery.html'], ['/process', 'process.html'], ['/faq', 'faq.html'], ['/features/photo', 'feature-photo.html'], ['/features/video', 'feature-video.html'], ['/features/text', 'feature-text.html'], ['/features/own-photo', 'feature-own-photo.html'], ['/features/reference', 'feature-reference.html'], ['/login', 'login.html'], ['/pricing', 'pricing.html']]);
   const publicPage = publicPages.get(pathname.replace(/\/$/, '') || '/');
   if (publicPage) {
     const file = join(publicSite, publicPage);
