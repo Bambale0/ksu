@@ -46,7 +46,7 @@
   position: relative; z-index: 1; padding: 10px 11px; border-radius: 999px; color: #cbbfd3;
   white-space: nowrap; font-size: 13px; font-weight: 600;
 }
-.desktop-nav a:hover, .desktop-nav a:focus-visible, .desktop-nav a[aria-current="location"] { color: #fff; text-shadow: 0 0 12px #c878fa88; }
+.desktop-nav a:hover, .desktop-nav a:focus-visible, .desktop-nav a[aria-current="page"] { color: #fff; text-shadow: 0 0 12px #c878fa88; }
 .nav-slider {
   position: absolute; z-index: 0; left: 0; top: 3px; height: calc(100% - 6px);
   width: var(--pill-width,0px); transform: translateX(var(--pill-x,0px));
@@ -100,3 +100,5 @@ html { scroll-padding-top: 114px; }
 /* The floating island occupies 76px + 16px top space, not the old 9vh strip. */
 @media(min-width:661px){.hero{min-height:calc(100svh - 92px)}}
 @media(max-width:390px){.site-header .logo .brand-monogram{width:34px;height:32px}.site-header .logo{gap:5px}.site-header .logo-wordmark{font-size:9px}.site-header .top-action{padding:8px 10px}}
+
+.mobile-nav nav a[aria-current="page"]{color:#f4d5ff;background:rgba(168,100,255,.13);border-radius:8px}

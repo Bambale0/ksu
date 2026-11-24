@@ -6,7 +6,8 @@
   const status = document.getElementById("popular-trends-status");
   if (!gallery || !status) return;
 
-  const endpoint = "/api/v1/public-site/popular-trends?limit=6";
+  const limit = gallery.dataset.limit === "12" ? 12 : 6;
+  const endpoint = limit === 12 ? "/api/v1/public-site/popular-trends?limit=12" : "/api/v1/public-site/popular-trends?limit=6";
   const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const saveData = navigator.connection?.saveData === true;
@@ -173,7 +174,7 @@
         if (!item || !uuid.test(String(item.id)) || unique.has(item.id)) return false;
         unique.add(item.id);
         return true;
-      }).slice(0, 6);
+      }).slice(0, limit);
       activeVideos.clear();
       createObserver();
       const tiles = items.map(buildTile).filter(Boolean);

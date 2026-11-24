@@ -26,7 +26,12 @@ const types = new Map([
 
 function safeFile(urlPath) {
   let pathname = decodeURIComponent(urlPath.split('?')[0] || '/');
-  if (pathname === '/' && existsSync(join(publicSite, 'index.html'))) return join(publicSite, 'index.html');
+  const publicPages = new Map([['/', 'index.html'], ['/features', 'features.html'], ['/gallery', 'gallery.html'], ['/process', 'process.html'], ['/faq', 'faq.html']]);
+  const publicPage = publicPages.get(pathname.replace(/\/$/, '') || '/');
+  if (publicPage) {
+    const file = join(publicSite, publicPage);
+    return existsSync(file) ? file : null;
+  }
   if (pathname.startsWith('/site-assets/')) {
     const assetRoot = join(publicSite, 'assets');
     const file = normalize(join(assetRoot, pathname.slice('/site-assets/'.length)));

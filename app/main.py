@@ -148,6 +148,27 @@ async def product_landing() -> FileResponse:
     )
 
 
+# Explicit public marketing routes; never turn unknown paths into a SPA fallback.
+_PUBLIC_PAGE_FILES = {
+    "/features": "features.html",
+    "/gallery": "gallery.html",
+    "/process": "process.html",
+    "/faq": "faq.html",
+}
+
+
+@app.api_route("/features", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/gallery", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/process", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/faq", methods=["GET", "HEAD"], include_in_schema=False)
+async def public_product_page(request: Request) -> FileResponse:
+    return FileResponse(
+        site_dir / _PUBLIC_PAGE_FILES[request.url.path],
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(webhook_router)

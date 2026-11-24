@@ -380,3 +380,60 @@ main > .section .eyebrow:before,.final-section .eyebrow:before{
   .final-section h2 em{color:CanvasText;background:none}
   .capability,.process-list,.faq-list details,.final-section{border:1px solid CanvasText}
 }
+
+
+/* Independent public documents share the campaign shell, with purpose-built
+   content blocks and ordinary HTML links (including without JavaScript). */
+.section-more{
+  display:inline-flex;align-items:center;gap:12px;min-height:44px;margin-top:18px;
+  color:#e2b4ff;font-weight:600;text-decoration:none;
+}
+.section-more:hover{color:#ffd0eb}
+.faq-section > .section-more{grid-column:1/-1;justify-self:start}
+.subpage main > .section{padding-top:clamp(50px,6vw,92px)}
+.subpage main > .section h1{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:clamp(38px,5.1vw,76px);font-weight:450;line-height:1.05;
+  letter-spacing:-.055em;color:var(--campaign-ink);margin:12px 0 0;text-wrap:balance;
+}
+.subpage .page-intro{max-width:24ch}
+.subpage .page-intro em{
+  font-family:inherit;font-style:italic;font-weight:550;color:#e3a5ff;
+}
+@supports ((background-clip:text) or (-webkit-background-clip:text)){
+  .subpage .page-intro em{background:linear-gradient(105deg,#b382ff,#ff8ac9);background-clip:text;-webkit-background-clip:text;color:transparent}
+}
+.subpage .page-breadcrumb{
+  display:flex;align-items:center;gap:9px;margin:0 0 25px;color:var(--campaign-muted);font-size:13px
+}
+.subpage .page-breadcrumb a{min-height:44px;display:inline-flex;align-items:center;color:#dba9fa}
+.subpage .page-details{margin-top:clamp(38px,5vw,72px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.subpage .detail-panel{min-width:0;padding:clamp(22px,3vw,40px);background:var(--campaign-glass);border:1px solid var(--campaign-edge);border-radius:12px}
+.subpage .detail-panel h2{font-size:clamp(23px,2.4vw,35px);font-weight:600;margin:0 0 14px}
+.subpage .detail-panel p{font-size:15px;margin:0;color:var(--campaign-muted);line-height:1.65}
+.subpage .detail-panel .section-more{margin-top:18px}
+.subpage .faq-section{display:block}
+.subpage .faq-section .section-intro{margin-bottom:clamp(28px,4vw,55px)}
+.subpage .faq-list{max-width:100%}
+.subpage .gallery-grid{grid-auto-rows:clamp(120px,12vw,190px)}
+.subpage .gallery-grid .gallery-item:nth-child(7),
+.subpage .gallery-grid .gallery-item:nth-child(12){grid-column:span 6;grid-row:span 2}
+.subpage .page-next{
+  width:calc(100% - var(--campaign-gutter) * 2);max-width:1600px;margin:clamp(40px,6vw,82px) auto 0;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;
+  border-top:1px solid var(--campaign-edge);padding-top:22px
+}
+.subpage .page-next a{margin:0}
+@media(max-width:1000px){
+  .subpage .gallery-grid .gallery-item:nth-child(7),
+  .subpage .gallery-grid .gallery-item:nth-child(12){grid-column:span 2;grid-row:span 1}
+  .subpage .gallery-grid{grid-auto-rows:clamp(155px,30vw,230px)}
+}
+@media(max-width:700px){
+  .subpage main > .section{padding-top:34px}
+  .subpage main > .section h1{font-size:clamp(32px,8.4vw,48px)}
+  .subpage .page-details{grid-template-columns:minmax(0,1fr);gap:10px}
+  .subpage .gallery-grid{grid-auto-rows:clamp(155px,43vw,185px)}
+  .subpage .page-breadcrumb{margin-bottom:16px}
+  .subpage .page-next{justify-content:flex-start}
+}
