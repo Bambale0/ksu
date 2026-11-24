@@ -172,3 +172,14 @@
  .format-card{min-height:72px}
 }
 @media(prefers-reduced-motion:reduce){.hero-art-photo,.hero-art-outline,.hero-art-ribbon,.format-card,.format-icon,.gallery-item,.capability,.live-trend-media{transform:none!important;transition:none!important;animation:none!important}.format-card:before,.gallery-item:before,.capability:before{display:none}}
+
+/* Header must fit the 320px minimum even with the full official wordmark. */
+@media(max-width:390px){
+ .site-header{grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding-inline:12px}
+ .site-header .logo{gap:5px;min-width:0}
+ .site-header .logo .brand-monogram{width:35px;height:32px}
+ .site-header .logo-wordmark{font-size:10px;letter-spacing:.02em}
+ .site-header .logo-wordmark small{display:block;margin-left:0;font-size:8px}
+ .site-header .top-action{min-width:0;min-height:40px;padding:9px 12px;font-size:11px;white-space:nowrap}
+ .site-header .mobile-nav nav{width:min(290px,calc(100vw - 24px))}
+}
