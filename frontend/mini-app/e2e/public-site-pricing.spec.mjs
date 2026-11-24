@@ -24,7 +24,7 @@ for(const width of [390,1440]){
    expect(response.status()).toBe(200);
    await expect(page.locator('h1')).toHaveCount(1);
    for(const block of await page.locator('[data-catalog],[data-packages]').all())await expect(block).toHaveAttribute('aria-busy','false');
-   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),path).toBeLessThanOrEqual(1);
   }
   expect(errors).toEqual([]);
  });

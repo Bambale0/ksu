@@ -13,7 +13,7 @@
       // directional entrance; nothing is permanently hidden on script failure.
       const kind = node.dataset.commercialMotion;
       const frames = kind === "partner" || kind === "creator"
-        ? [{opacity:.65, transform:"translateX("+(kind==="partner"?12:-12)+"px)"},{opacity:1,transform:"translateX(0)"}]
+        ? [{opacity:.65, transform:"scale(.985)"},{opacity:1,transform:"scale(1)"}]
         : [{opacity:.72,transform:"translateY(10px)"},{opacity:1,transform:"translateY(0)"}];
       const a = node.animate(frames,{duration:kind==="pricing"?380:460,easing:"cubic-bezier(.2,.8,.2,1)"});
       running.add(a);
