@@ -9,6 +9,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Query, Response
@@ -22,7 +23,7 @@ from app.services.trends import TrendService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public-site", tags=["public-site"])
-CACHE_KEY = "roxy:public-site:popular-trends:v1"
+CACHE_KEY = "roxy:public-site:popular-trends:v2"
 CACHE_SECONDS = 90
 VIDEO_SUFFIXES = (".mp4", ".webm", ".m4v", ".mov")
 
@@ -103,7 +104,18 @@ async def popular_trends_payload(session: AsyncSession, *, limit: int = 12) -> d
         # Thumbnail routes are relative and intentionally public.
         if isinstance(thumb, str) and thumb.startswith(f"/api/v1/trends/{row.id}/preview-thumbnail"):
             thumbnail = thumb
+        # Public catalogue estimates are already calculated by the same recipe
+        # service. Sequential workflows expose the FIRST step, not the total.
+        cost = None
+        try:
+            value = Decimal(str(view.get("cost_credits")))
+            if value.is_finite() and 0 < value <= Decimal("1000000000"):
+                cost = format(value, ".2f")
+        except (InvalidOperation, ValueError, TypeError):
+            pass
         items.append({
+            "catalog_cost_rox": cost,
+            "catalog_cost_kind": ("first_step" if view.get("workflow_type") else "estimate") if cost else None,
             "id": str(row.id),
             "title": str(view["title"])[:80],
             "media_type": view.get("media_type", "image"),

@@ -152,7 +152,18 @@
     heading.textContent = title;
     const usage = document.createElement("span");
     usage.textContent = metric(item.usage_count);
-    caption.append(heading, usage);
+    const meta = document.createElement("div");
+    meta.className = "live-trend-meta";
+    const rawCost = item.catalog_cost_rox;
+    const cost = typeof rawCost === "string" && /^\d+(?:\.\d{1,2})?$/.test(rawCost) ? Number(rawCost) : NaN;
+    if (Number.isFinite(cost) && cost > 0) {
+      const label = document.createElement("span");
+      label.className = "live-trend-price";
+      label.textContent = (item.catalog_cost_kind === "first_step" ? "1-й этап: " : "Ориентир: ") + new Intl.NumberFormat("ru-RU", { maximumFractionDigits:2 }).format(cost) + " ROX";
+      meta.append(label);
+    }
+    meta.append(usage);
+    caption.append(heading, meta);
     figure.append(link, caption);
     return figure;
   };
