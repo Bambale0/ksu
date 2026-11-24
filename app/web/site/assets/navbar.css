@@ -96,3 +96,7 @@ html { scroll-padding-top: 114px; }
  .brand-monogram::after,.logo:hover .brand-monogram::after,.logo:focus-visible .brand-monogram::after,.site-header .top-action::before { animation:none!important;opacity:0; }
  .site-header .top-action,.site-header .top-action:hover span { transform:none!important; }
 }
+
+/* The floating island occupies 76px + 16px top space, not the old 9vh strip. */
+@media(min-width:661px){.hero{min-height:calc(100svh - 92px)}}
+@media(max-width:390px){.site-header .logo .brand-monogram{width:34px;height:32px}.site-header .logo{gap:5px}.site-header .logo-wordmark{font-size:9px}.site-header .top-action{padding:8px 10px}}
