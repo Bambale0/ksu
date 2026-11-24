@@ -13,7 +13,9 @@
   if (validTrend) target.searchParams.set("id", trend);
   else {
     const tool = query.get("tool") || "";
-    if (["photo","video","text","own-photo","reference"].includes(tool)) {
+    if (query.get("section") === "partners") {
+      target.searchParams.set("route","partners");
+    } else if (["photo","video","text","own-photo","reference"].includes(tool)) {
       target.searchParams.set("route","create");
       if (tool === "video") target.searchParams.set("create_media","video");
       else if (tool === "photo" || tool === "own-photo") target.searchParams.set("create_media","image");

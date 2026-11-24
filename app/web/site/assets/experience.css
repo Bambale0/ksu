@@ -317,12 +317,7 @@ main > .section .eyebrow:before,.final-section .eyebrow:before{
   content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
   background:linear-gradient(95deg,rgba(16,14,23,.95) 5%,rgba(16,14,23,.55) 48%,transparent 82%);
 }
-.final-section:after{
-  content:"";position:absolute;inset:5% 3% 5% 51%;z-index:-1;pointer-events:none;
-  background-image:url("/site-assets/roxy-rx-transparent.png?v=127b63fc234c");
-  background-repeat:no-repeat;background-position:center right;background-size:contain;
-  opacity:.44;filter:drop-shadow(0 0 30px rgba(190,96,255,.28));
-}
+.final-section:after{content:none;background-image:none}
 .final-section h2{font-size:clamp(40px,5.4vw,83px);max-width:15ch}
 .final-section h2 em{
   font-family:inherit;font-weight:550;font-style:italic;line-height:1.08;letter-spacing:-.06em;color:#dda6fa;
@@ -367,7 +362,6 @@ main > .section .eyebrow:before,.final-section .eyebrow:before{
   .faq-list summary{font-size:16px}
   .faq-list details p{font-size:14px}
   .final-section{min-height:0;padding:32px 22px;margin-top:74px}
-  .final-section:after{inset:6% 2% 35% 57%;opacity:.15;background-position:top right}
   .final-section h2{font-size:clamp(40px,10vw,62px)}
   .final-section p{font-size:15px}
   .site-footer{grid-template-columns:minmax(0,1fr);gap:16px;padding:30px 0 40px}
@@ -464,3 +458,24 @@ main > .section .eyebrow:before,.final-section .eyebrow:before{
 .login-page .login-target{color:#e4b9ff}
 @media(max-width:900px){.login-page .login-layout{grid-template-columns:minmax(0,1fr);min-height:0;gap:28px;padding-bottom:0}.login-page .login-panel{max-width:520px;width:100%}}
 @media(max-width:700px){.login-page .login-layout .page-intro{font-size:clamp(38px,10vw,58px)}.login-page .login-panel{padding:24px 18px}.tool-page .tool-example{padding:18px}.tool-page .tool-actions a{width:100%}}
+
+/* Original Mini App promo artworks; their text stays inside the full 16:9 frame. */
+.promo-feature{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.85fr);align-items:center;gap:clamp(24px,4vw,64px)}
+.promo-copy{min-width:0}
+.promo-copy p,.final-section .promo-copy p{max-width:42ch;line-height:1.65;color:var(--campaign-muted);margin:20px 0 26px}
+main > .promo-feature h2,.final-section .promo-copy h2{font-size:clamp(34px,4.2vw,68px);line-height:1.08;max-width:17ch;letter-spacing:-.052em;font-weight:450;margin:12px 0 0}
+main > .promo-feature h2 em{font:inherit;font-style:italic;font-weight:550;color:#e3a5ff}
+@supports ((background-clip:text) or (-webkit-background-clip:text)){
+ main > .promo-feature h2 em{background:linear-gradient(105deg,#b382ff,#ff8ac9);background-clip:text;-webkit-background-clip:text;color:transparent}
+}
+.promo-art{display:block;position:relative;min-width:0;width:100%;aspect-ratio:16/9;border:1px solid var(--campaign-edge);border-radius:14px;overflow:hidden;background:#08060d;box-shadow:0 18px 55px rgba(13,7,25,.38);text-decoration:none;transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+.promo-art img{display:block;width:100%;height:100%;object-fit:contain}
+.promo-art:focus-visible{outline:2px solid #e4b9ff;outline-offset:4px}
+.promo-copy .button{min-height:48px}
+.final-section{display:grid;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr);align-items:center;gap:clamp(24px,3.5vw,55px);min-height:0;padding:clamp(24px,4vw,64px);overflow:visible}
+.final-section:before{border-radius:inherit}
+.final-section .promo-art{align-self:center}
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.promo-art:hover{transform:translateY(-4px);border-color:#c480e5;box-shadow:0 24px 65px rgba(139,64,213,.17)}}
+@media(max-width:1000px){.promo-feature,.final-section{grid-template-columns:minmax(0,1fr);gap:22px}.promo-feature .promo-copy{grid-row:1}.promo-feature .promo-copy p,.final-section .promo-copy p{max-width:62ch}.promo-art{max-width:900px}}
+@media(max-width:700px){.final-section{padding:24px 16px}main > .promo-feature h2,.final-section .promo-copy h2{font-size:clamp(32px,8vw,44px)}.promo-copy p,.final-section .promo-copy p{font-size:15px;margin:14px 0 20px}.promo-copy .button{width:100%;justify-content:center}.promo-art{border-radius:10px}}
+@media(prefers-reduced-motion:reduce){.promo-art{transition:none;transform:none!important}}

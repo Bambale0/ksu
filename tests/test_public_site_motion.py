@@ -117,3 +117,22 @@ def test_hero_cutout_has_real_transparency_and_soft_edges():
         assert histogram[0] > image.width * image.height * 0.1
         assert sum(histogram[1:250]) > image.width * image.height * 0.05
         assert sum(histogram[250:]) > image.width * image.height * 0.2
+
+
+def test_public_promos_are_exact_original_mini_app_assets():
+    import re
+    from PIL import Image
+
+    source = ROOT.parents[2] / "frontend/mini-app/public/promo"
+    html = HTML.read_text(encoding="utf-8")
+    for name in ("roxy-promo-1.webp", "roxy-promo-2.webp"):
+        data = (ROOT / "assets" / name).read_bytes()
+        assert data == (source / name).read_bytes()
+        fingerprint = sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()[:12]
+        assert f"/site-assets/{name}?v={fingerprint}" in html
+        with Image.open(ROOT / "assets" / name) as image:
+            assert image.size == (1440, 810)
+    assert html.count('href="/login?section=partners" data-app-link') == 4
+    final = re.search(r'<section class="final-section"[\s\S]*?</section>', html).group()
+    assert "roxy-promo-1.webp" in final
+    assert "roxy-rx-transparent.png" not in final
