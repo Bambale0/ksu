@@ -15,13 +15,16 @@ PAGES = ("features", "gallery", "process", "faq")
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("page", PAGES)
-async def test_public_page_has_real_get_head_and_unique_metadata(page):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get(f"/{page}?ref=QA", follow_redirects=False)
-        head = await client.head(f"/{page}", follow_redirects=False)
+@pytest.mark.parametrize("suffix", ("", "/"))
+async def test_public_page_has_real_get_head_and_unique_metadata(page, suffix):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
+        response = await client.get(f"/{page}{suffix}?ref=QA", follow_redirects=False)
+        head = await client.head(f"/{page}{suffix}", follow_redirects=False)
     assert response.status_code == head.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "no-store" in response.headers["cache-control"]
+    assert "location" not in response.headers
+    assert "location" not in head.headers
     assert not head.content
     assert f'data-page="{page}"' in response.text
     assert f'href="/{page}" data-site-link aria-current="page"' in response.text
