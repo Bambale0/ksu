@@ -52,3 +52,37 @@ test('public campaign pointer motion and scroll progress remain functional', asy
   await page.emulateMedia({reducedMotion:'reduce'});
   expect(await page.locator('.hero-art-photo').evaluate(node=>getComputedStyle(node).transform)).toBe('none');
 });
+
+
+test('floating navigation stays usable and RX shines only with motion enabled', async ({page},info) => {
+  await page.setViewportSize({width:1440,height:900});
+  await openSite(page);
+  const header=page.locator('.site-header');
+  const mark=header.locator('.brand-monogram');
+  await expect(mark.locator('img')).toHaveAttribute('src',/roxy-rx-transparent\.png/);
+  expect(await mark.evaluate(n=>getComputedStyle(n,'::after').animationName)).toContain('rx-contour-shine');
+  const box=await header.boundingBox();
+  expect(box.x).toBeGreaterThan(0);
+  expect(box.width).toBeLessThan(1440);
+  expect(await header.evaluate(n=>getComputedStyle(n,'::before').borderRadius)).toBe('999px');
+  await page.evaluate(()=>window.scrollTo(0,500));
+  await expect(header).toHaveClass(/is-compact/);
+  await expect.poll(async()=>Number(await header.locator('#reading-progress').getAttribute('aria-valuenow'))).toBeGreaterThan(0);
+  if(info.project.name==='chromium') {
+    const link=header.getByRole('link',{name:'Галерея',exact:true});
+    await link.hover();
+    await expect.poll(()=>header.locator('.desktop-nav').evaluate(n=>n.style.getPropertyValue('--pill-x'))).toBe(await link.evaluate(n=>n.offsetLeft+'px'));
+    const action=header.locator('.top-action');
+    await action.hover({position:{x:5,y:5}});
+    await expect.poll(()=>action.evaluate(n=>n.style.getPropertyValue('--magnet-x'))).not.toBe('');
+  }
+  await page.emulateMedia({reducedMotion:'reduce'});
+  expect(await mark.evaluate(n=>getComputedStyle(n,'::after').animationName)).toBe('none');
+  await page.setViewportSize({width:320,height:740});
+  await expect(header.locator('.top-action')).toBeVisible();
+  await header.locator('.mobile-nav summary').click();
+  await expect(header.locator('.mobile-nav nav')).toBeVisible();
+  await header.locator('.mobile-nav nav').getByRole('link',{name:'Возможности'}).click();
+  await expect(header.locator('.mobile-nav')).not.toHaveAttribute('open','');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+});
