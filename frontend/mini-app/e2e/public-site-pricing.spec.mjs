@@ -4,7 +4,7 @@ const photo = {title:'QA Photo',media_type:'image',operation:'text_to_image',pri
 const video = {title:'QA Video',media_type:'video',operation:'image_to_video',price_mode:'per_second',price_rox:'8.00',ui_schema:{fields:[{name:'image_url',group:'references',control:'file',accept:'image/*',required:true},{name:'duration',min:5,max:10}]}};
 const music = {title:'QA Music',media_type:'audio',operation:'text_to_music',price_mode:'flat',price_rox:'25.00',ui_schema:{fields:[]}};
 const packages = {configured:true,packages:{a:{credits:'300',bonus_credits:'30',total_credits:'330',prices:{RUB:'326.10'}}}};
-const paths=['/','/features','/features/photo','/features/video','/features/text','/features/own-photo','/features/reference','/gallery','/process','/pricing','/faq','/login'];
+const paths=['/','/features','/features/photo','/features/video','/features/text','/features/own-photo','/features/reference','/gallery','/process','/pricing','/partners','/faq','/login'];
 
 async function setup(page){
  await page.route('**/api/v1/generations/models',route=>route.fulfill({json:{models:[photo,video,music]}}));
@@ -15,7 +15,7 @@ async function setup(page){
 }
 
 for(const width of [390,1440]){
- test(`all twelve public documents render without overflow at ${width}px`,async({page})=>{
+ test(`all thirteen public documents render without overflow at ${width}px`,async({page})=>{
   await setup(page);
   await page.setViewportSize({width,height:900});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -24,7 +24,7 @@ for(const width of [390,1440]){
    expect(response.status()).toBe(200);
    await expect(page.locator('h1')).toHaveCount(1);
    for(const block of await page.locator('[data-catalog],[data-packages]').all())await expect(block).toHaveAttribute('aria-busy','false');
-   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),path).toBeLessThanOrEqual(1);
   }
   expect(errors).toEqual([]);
  });
@@ -91,4 +91,20 @@ test('catalogue retains priced models with unfamiliar operation names',async({pa
  await page.goto('/features/text');
  await expect(page.locator('.model-price-card')).toHaveCount(1);
  await expect(page.locator('.model-price-card')).toContainText('QA Photo');
+});
+
+
+test('pricing and partners animate independently, with reduced motion respected',async({page})=>{
+ await setup(page);
+ await page.setViewportSize({width:1440,height:900});
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ await page.goto('/pricing');
+ await expect(page.locator('.pricing-section')).toHaveAttribute('data-motion-played','true');
+ await page.goto('/partners');
+ await expect(page.locator('.partner-intro')).toHaveAttribute('data-motion-played','true');
+ await expect(page.locator('.partner-story')).toHaveCount(2);
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.reload();
+ await expect(page.locator('.partner-intro')).not.toHaveAttribute('data-motion-played','true');
+ await expect(page.locator('.partner-story').first()).toBeVisible();
 });
