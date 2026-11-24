@@ -57,6 +57,17 @@ def _onboarding_gate_applies(request: Request) -> bool:
     return path.startswith("/api/v1/")
 
 
+async def _require_current_onboarding(request: Request, session: AsyncSession, user: User) -> None:
+    """Use the same mutation gate for native Telegram and first-party web sessions."""
+    if _onboarding_gate_applies(request) and not await OnboardingService.is_complete(session, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "code": "onboarding_required",
+                "version": OnboardingService.current_version(),
+            },
+        )
+
 async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
@@ -166,11 +177,7 @@ async def get_current_user(
         user = await session.get(User, web_user_id)
         if user is None or not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account unavailable")
-        if _onboarding_gate_applies(request) and not await OnboardingService.is_complete(session, user.id):
-            raise HTTPException(
-                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
-                detail={"code": "onboarding_required", "version": OnboardingService.current_version()},
-            )
+        await _require_current_onboarding(request, session, user)
         session.info["current_user_id"] = user.id
         return user
 
@@ -226,14 +233,7 @@ async def get_current_user(
     await session.commit()
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is restricted")
-    if _onboarding_gate_applies(request) and not await OnboardingService.is_complete(session, user.id):
-        raise HTTPException(
-            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
-            detail={
-                "code": "onboarding_required",
-                "version": OnboardingService.current_version(),
-            },
-        )
+    await _require_current_onboarding(request, session, user)
     # Carry the authenticated principal on this SQLAlchemy session so shared
     # quote/model preflight code can read only this user's trusted reference
     # metadata without changing every service method signature.
