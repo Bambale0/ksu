@@ -38,5 +38,12 @@ def test_customer_ui_exposes_cryptobot_but_keeps_2328_hidden() -> None:
     assert "ЮKassa остаётся основным способом" in wallet_source
     assert '"/api/v1/payments/crypto/packages"' in wallet_source
     assert '"/api/v1/payments/crypto/2328/packages"' not in wallet_source
-    assert "/mini-app/payments/?provider=cryptobot" in wallet_source
-    assert "/mini-app/payments/?provider=2328" not in wallet_source
+    assert 'openWebPayments("cryptobot")' in wallet_source
+    assert 'openWebPayments("2328")' not in wallet_source
+    telegram_source = Path("frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
+    assert 'provider?: "card" | "cryptobot"' in telegram_source
+    assert 'native ? "/login?section=payments" : "/mini-app/payments/"' in telegram_source
+    assert 'url.searchParams.set("provider", provider)' in telegram_source
+    login_source = Path("app/web/site/assets/site-login.js").read_text(encoding="utf-8")
+    assert '["card","cryptobot"].includes(query.get("provider"))' in login_source
+    assert 'target.searchParams.set("provider",query.get("provider"))' in login_source

@@ -150,8 +150,8 @@ test('Telegram chat approval resumes after reload and opens the browser topup pa
     claims++;
     return route.fulfill({json:{ok:true,init_data:'query_id=browser-approval&hash=fixture',expires_in:86400,purpose:'payments'}});
   });
-  await page.route('**/mini-app/payments/',route=>route.fulfill({contentType:'text/html',body:'<h1>Пополнение ROX</h1>'}));
-  await page.goto('/login?section=payments');
+  await page.route('**/mini-app/payments/?provider=cryptobot',route=>route.fulfill({contentType:'text/html',body:'<h1>Пополнение ROX</h1>'}));
+  await page.goto('/login?section=payments&provider=cryptobot');
   await page.getByRole('button',{name:'Войти через Telegram'}).click();
   await expect(page.locator('.approval-code')).toHaveText('123456');
   await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('href',ticket.url);
@@ -161,7 +161,7 @@ test('Telegram chat approval resumes after reload and opens the browser topup pa
   await expect(page.locator('.approval-code')).toHaveText('123456');
   expect(starts).toBe(1);
   current={...ticket,status:'approved'};
-  await expect(page).toHaveURL(/\/mini-app\/payments\/$/);
+  await expect(page).toHaveURL(/\/mini-app\/payments\/\?provider=cryptobot$/);
   expect(claims).toBe(1);
   expect(widgetLoads).toBe(0);
   expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('__roxy_browser_init_data_v1')).initData)).toBe('query_id=browser-approval&hash=fixture');
