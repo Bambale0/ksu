@@ -1029,7 +1029,7 @@ export function InlineTrendAdmin() {
   return <>
     {host ? createPortal(
       <button className="inline-trend-add-button" type="button" onClick={() => setOpen(true)} aria-label="Управлять трендами">
-        <span>⚙</span> Управление
+        <span>＋</span> Добавить
       </button>,
       host,
     ) : null}
