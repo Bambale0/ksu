@@ -132,7 +132,7 @@
     const grid=element("div",null,"package-price-grid");
     for(const p of rows){
       const card=element("article",null,"package-price-card");
-      card.append(element("span","Пакет ROX","price-kicker"),element("h3",fmt.format(p.total)+" ROX"),element("p",fmt.format(p.base)+" основных"+(p.bonus?" + "+fmt.format(p.bonus)+" бонусных":"")),element("strong",fmt.format(p.amount)+" ₽"));
+      card.append(element("span","Пакет ROX","price-kicker"),element("h3",fmt.format(p.base)+" ROX"),element("p",p.bonus?fmt.format(p.total)+" ROX с промокодом (+"+fmt.format(p.bonus)+" ROX после оплаты)":"Без дополнительного бонуса"),element("strong",fmt.format(p.amount)+" ₽"));
       grid.append(card);
     }
     block.append(grid);

@@ -259,13 +259,14 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
     stats = await ReferralService.stats(session, user.id)
     partner = await PartnerWalletTransferService.accounting(session, user.id)
     promo_program = await PartnerPromoProgramService.get_config(session)
+    referral_terms = await PartnerPromoProgramService.referral_terms(session, user.id)
     referral_link = PartnerService.referral_link(user.telegram_id) or "недоступна"
     await callback.answer()
     if callback.message:
         await callback.message.answer(
             "👥 Партнёры ROXY\n\n"
             f"🎁 +{promo_program.welcome_rox:g} ROX — пользователю сразу после регистрации\n"
-            f"💰 {promo_program.first_line_percent:g}% — партнёру с успешных пополнений 1-й линии\n"
+            f"💰 {referral_terms.first_line_percent:g}% — партнёру с успешных пополнений 1-й линии\n"
             f"💎 +{promo_program.topup_partner_rox:g} ROX — партнёру за каждое успешное пополнение реферала\n"
             "👤 За само приглашение начислений нет\n"
             "2-я линия — только статистика, финансовых начислений нет\n\n"

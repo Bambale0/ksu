@@ -38,7 +38,10 @@ test('pricing uses retail data, true package total, shared request and filters',
  await expect(models.locator('.model-price-card')).toHaveCount(3);
  await expect(models).toContainText('14,5 ROX / запуск');
  await expect(models).toContainText('8 ROX / с');
- await expect(page.locator('[data-packages]')).toContainText('330 ROX');
+ await expect(page.locator('[data-packages] .package-price-card h3')).toHaveText('300 ROX');
+ await expect(page.locator('[data-packages]')).toContainText('330 ROX с промокодом');
+ await expect(page.locator('[data-packages]')).toContainText('+30 ROX после оплаты');
+ await expect(page.locator('#packages-title + p')).toContainText('только при применении действующего промокода');
  await expect(page.locator('[data-packages]')).toContainText('326,1 ₽');
  expect(requests).toBe(1);
  await models.getByRole('button',{name:'Видео',exact:true}).click();
