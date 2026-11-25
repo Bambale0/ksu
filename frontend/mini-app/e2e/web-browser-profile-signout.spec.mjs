@@ -17,7 +17,7 @@ const WEB_OVERVIEW = {
   preferences: { ui_language: 'auto', notifications_enabled: true, marketing_notifications: false, profile_discoverable: false },
 };
 
-async function openWebProfile(page, { native = false, account = false, malformedOverview = false } = {}) {
+async function openWebProfile(page, { native = false, account = false, malformedOverview = false, botUsername = 'RoxyTestBot' } = {}) {
   await page.addInitScript(({ browserToken, nativeToken, storageKey, nativeLaunch }) => {
     // The login fixture must not re-authenticate after the logout navigation.
     if (!sessionStorage.getItem('__roxy_logout_fixture_installed')) {
@@ -62,7 +62,7 @@ async function openWebProfile(page, { native = false, account = false, malformed
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"models":[],"families":[]}' });
     }
     if (pathname === '/api/v1/browser-auth/config') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"bot_username":"RoxyTestBot"}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({bot_username:botUsername}) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"items":[],"active":false}' });
   });
@@ -74,7 +74,7 @@ test('signed-in website profile offers logout and clears browser credentials', a
   await openWebProfile(page);
   const logout = page.getByRole('button', { name: 'Выйти из аккаунта' });
   await expect(logout).toBeVisible();
-  await expect(page.getByRole('link', {name:'Вход в веб-версию'})).toHaveAttribute('href','/login?section=profile');
+  await expect(page.getByRole('link', {name:'Открыть Telegram'})).toHaveAttribute('href','https://t.me/RoxyTestBot');
   await logout.click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator('body')).toHaveAttribute('data-page','login');
@@ -110,10 +110,23 @@ test('native profile heading opens the real website externally without exposing 
   expect(await page.evaluate(key=>sessionStorage.getItem(key),STORAGE_KEY)).not.toBeNull();
 });
 
-test('browser heading reaches public login and keeps the profile session', async ({page})=>{
+test('browser profile opens the configured bot chat and preserves the session', async ({page})=>{
+  await page.context().route('https://t.me/RoxyTestBot', route=>route.fulfill({contentType:'text/html',body:'<h1>Bot chat fixture</h1>'}));
   await openWebProfile(page);
-  await page.getByRole('link',{name:'Вход в веб-версию'}).click();
-  await expect(page).toHaveURL(/login\?section=profile$/);
-  await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=profile');
+  const link=page.getByRole('link',{name:'Открыть Telegram'});
+  await expect(link).toHaveAttribute('href','https://t.me/RoxyTestBot');
+  await expect(link).toHaveAttribute('rel','noopener noreferrer');
+  const [popup]=await Promise.all([page.waitForEvent('popup'),link.click()]);
+  await popup.waitForLoadState('domcontentloaded');
+  expect(popup.url()).toBe('https://t.me/RoxyTestBot');
+  await popup.close();
+  await expect(page).toHaveURL(/\/mini-app\/\?route=profile$/);
   expect(await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).initData,STORAGE_KEY)).toBe(BROWSER_TOKEN);
+});
+
+test('invalid bot configuration cannot create an unsafe link or hide logout',async({page})=>{
+  await openWebProfile(page,{botUsername:'https://example.invalid'});
+  await expect(page.getByText('Не удалось загрузить ссылку на бота.')).toBeVisible();
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Выйти из аккаунта'})).toBeVisible();
 });
