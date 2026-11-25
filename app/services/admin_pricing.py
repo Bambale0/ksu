@@ -94,7 +94,7 @@ def _validate_generation_pricing(value: Any) -> None:
             _positive_price(override, path=path)
             continue
 
-        allowed = {"flat", "per_second", "by_mode", "by_resolution"}
+        allowed = {"flat", "per_second", "by_mode", "by_resolution", "by_quality"}
         unknown = sorted(set(override) - allowed)
         if unknown:
             raise TariffValidationError(
@@ -109,7 +109,7 @@ def _validate_generation_pricing(value: Any) -> None:
         if wrong_key in override:
             raise TariffValidationError(f"{path} uses {price_key}, not {wrong_key}")
 
-        for tier_key, parameter_key in (("by_mode", "mode"), ("by_resolution", "resolution")):
+        for tier_key, parameter_key in (("by_mode", "mode"), ("by_quality", "quality"), ("by_resolution", "resolution")):
             tiers = override.get(tier_key)
             if tiers is None:
                 continue

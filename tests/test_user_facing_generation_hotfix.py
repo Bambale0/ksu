@@ -14,14 +14,14 @@ from app.services.generations import GenerationService
 
 def test_generation_pricing_env_cannot_erase_canonical_roxy_defaults() -> None:
     empty = json.loads(_generation_pricing_with_defaults("{}"))
-    assert empty["nano-banana-2"]["flat"] == 25
+    assert empty["nano-banana-2"]["flat"] == 20
     assert empty["gpt-image-2-t2i"]["flat"] == 20
 
     partial = json.loads(
         _generation_pricing_with_defaults('{"gpt-image-2-i2i":{"flat":31}}')
     )
     assert partial["gpt-image-2-i2i"]["flat"] == 31
-    assert partial["nano-banana-2"]["flat"] == 25
+    assert partial["nano-banana-2"]["flat"] == 20
 
 
 @pytest.mark.asyncio
