@@ -119,7 +119,13 @@ def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
     app = _read(FRONTEND / "components" / "roxy-app.tsx")
     css = _read(FRONTEND / "app" / "globals.css")
     assert "if (booting) return <Splash />" in app
-    assert 'className="splash"' in app
+    assert "return <RoxyLoadingVideo />" in app
+    # The splash is shared by the customer and auth boundaries. Inspect the
+    # actual rendered component rather than an obsolete inline class in roxy-app.
+    loader = _read(FRONTEND / "components" / "roxy-loading-video.tsx")
+    assert "splash splash-video" in loader
+    assert 'role="status"' in loader
+    assert "autoPlay" in loader and "muted" in loader and "playsInline" in loader
     assert ".splash" in css
     for legacy in (
         "CREATOR ECONOMY",

@@ -1,5 +1,6 @@
 "use client";
 
+import { RoxyLoadingVideo } from "./roxy-loading-video";
 import { KlingReferenceFields } from "./kling-reference-fields";
 
 import { assertUploadFileType } from "@/lib/upload-file-types";
@@ -12,6 +13,7 @@ import { generationFailureMessage } from "@/lib/generation-delivery";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type { Draft, FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote, Route, UiField } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { WebProfileLogout } from "./web-profile-logout";
 
 const ROUTES: Route[] = ["home", "catalog", "create", "history", "profile"];
 const DRAFTS_KEY = "roxy.next.generation-drafts.v1";
@@ -401,13 +403,7 @@ export function RoxyApp() {
 }
 
 function Splash() {
-  return (
-    <div className="splash" role="status" aria-label="ROXY загружается">
-      <div className="splash-orbit"><span/><RoxyMark large /></div>
-      <strong>ROXY</strong><small>Студия творчества</small>
-      <div className="splash-progress"><i /></div>
-    </div>
-  );
+  return <RoxyLoadingVideo />;
 }
 
 function RoxyMark({ large = false }: { large?: boolean }) {
@@ -707,7 +703,7 @@ function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generatio
 
 function ProfileScreen({ me, avatar, tab, setTab, works, publications, onPreview, onWallet }: { me: Me | null; avatar: string; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: FeedCard[]; onPreview: (item: Generation | FeedCard, surface: "private" | "feed") => void; onWallet: () => void }) {
   const likes = publications.reduce((sum, item) => sum + Number(item.likes_count || 0), 0);
-  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет." onClick={(item) => onPreview(item, "feed")} reactions/>}</section>;
+  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><WebProfileLogout /><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет." onClick={(item) => onPreview(item, "feed")} reactions/>}</section>;
 }
 
 function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, reactions = false }: { items: T[]; empty: string; onClick: (item: T) => void; reactions?: boolean }) {

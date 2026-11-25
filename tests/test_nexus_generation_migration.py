@@ -287,3 +287,76 @@ def test_generation_worker_preserves_existing_provider_and_polls_nexus_durably()
     for generation in (pre_migration_kie, new_nexus, retry_nexus):
         provider = GenerationWorkerService._provider_name(generation)
         assert GenerationWorkerService._protection_provider(generation, provider) == provider
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model,resolution,attempts,expected_hint",
+    [
+        (
+            "seedance-2.0", "1080p",
+            [{"provider": "neironych", "reason": "Neironych API HTTP 409: capability_mismatch"}],
+            True,
+        ),
+        (
+            "seedance-2.0", "720p",
+            [{"provider": "neironych", "reason": "Neironych API HTTP 409: capability_mismatch"}],
+            False,
+        ),
+        (
+            "seedance-2.5", "1080p",
+            [{"provider": "neironych", "reason": "Neironych API HTTP 409: capability_mismatch"}],
+            False,
+        ),
+        ("seedance-2.0", "1080p", [], False),
+    ],
+)
+async def test_nexus_exhausted_402_explains_seedance20_1080p_capability_failure(
+    monkeypatch, model, resolution, attempts, expected_hint,
+):
+    from app.services.generation_provider import GenerationProviderService
+
+    generation = SimpleNamespace(
+        provider="nexus", status="submitting", external_id=None, error=None,
+        parameters={
+            "_model_id": model,
+            "resolution": resolution,
+            "_provider_route": ["neironych", "nexus"],
+            "_provider_route_index": 1,
+            "_provider_attempts": attempts,
+        },
+    )
+    messages = []
+
+    class StubSession:
+        async def scalar(self, _statement):
+            return generation
+
+    async def terminal(_session, _generation_id, message):
+        messages.append(message)
+        generation.error = message
+        generation.status = "failed"
+
+    async def no_more_fallback(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(GenerationProviderService, "fail_and_refund", terminal)
+    monkeypatch.setattr(
+        "app.services.nexus_generation_provider.switch_to_fallback", no_more_fallback
+    )
+    request = httpx.Request("POST", "https://nexusapi.dev/generate")
+    response = httpx.Response(402, request=request)
+    error = httpx.HTTPStatusError("Nexus HTTP 402 Payment Required", request=request, response=response)
+
+    await NexusGenerationProviderService._record_submission_error(
+        StubSession(), uuid.uuid4(), error,
+    )
+
+    assert generation.status == "failed"
+    assert len(messages) == 1
+    if expected_hint:
+        assert "1080p" in messages[0] and "720p" in messages[0]
+        assert "nexus" not in messages[0].lower()
+        assert "Neironych" not in messages[0]
+    else:
+        assert messages[0] == str(error)

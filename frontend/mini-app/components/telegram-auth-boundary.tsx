@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
 import { getInitDataFallback, initTelegram, type TelegramWebApp } from "@/lib/telegram";
+import { RoxyLoadingVideo } from "./roxy-loading-video";
 import { TelegramBrowserLogin } from "./telegram-browser-login";
 
 async function validateInitData(initData: string): Promise<boolean> {
@@ -103,7 +104,7 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   }, []);
 
   if (!ready) {
-    return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ROXY…</small></div>;
+    return <RoxyLoadingVideo message="Открываю ROXY…" />;
   }
   if (!authenticated) return <TelegramBrowserLogin />;
   return <>{children}</>;

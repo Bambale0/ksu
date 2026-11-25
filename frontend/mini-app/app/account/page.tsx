@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
+import { WebProfileLogout } from "@/components/web-profile-logout";
 import { compactNumber, customerRequest } from "@/lib/customer-api";
 
 type Overview = {
@@ -17,6 +18,23 @@ type Overview = {
   preferences: { ui_language: string; notifications_enabled: boolean; marketing_notifications: boolean; profile_discoverable: boolean };
 };
 
+function isAccountOverview(value: unknown): value is Overview {
+  if (!value || typeof value !== "object") return false;
+  const overview = value as Partial<Overview>;
+  return Boolean(
+    overview.account && typeof overview.account === "object"
+    && typeof overview.balance?.bonus_rox === "string"
+    && typeof overview.generations?.total === "number"
+    && overview.generations?.statuses && typeof overview.generations.statuses === "object"
+    && typeof overview.payments?.total === "number"
+    && overview.support?.statuses && typeof overview.support.statuses === "object"
+    && typeof overview.partner?.available_rub === "string"
+    && typeof overview.social?.following === "number"
+    && typeof overview.social?.followers === "number"
+    && typeof overview.notifications?.unread === "number"
+  );
+}
+
 type HubItem = { title: string; copy: string; href: string; badge?: string };
 
 export default function AccountPage() {
@@ -25,8 +43,15 @@ export default function AccountPage() {
 
   const load = async () => {
     setError("");
-    try { setOverview(await customerRequest<Overview>("/api/v1/me/overview")); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить профиль"); }
+    try {
+      const payload = await customerRequest<unknown>("/api/v1/me/overview");
+      if (!isAccountOverview(payload)) {
+        throw new Error("Не удалось загрузить профиль: неполный ответ сервера. Повторите попытку.");
+      }
+      setOverview(payload);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось загрузить профиль");
+    }
   };
 
   useEffect(() => { void load(); }, []);
@@ -70,6 +95,7 @@ export default function AccountPage() {
           </button>)}
         </div>
       </div>
+      <WebProfileLogout />
     </StandaloneShell>
   );
 }

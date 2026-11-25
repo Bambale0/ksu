@@ -1,0 +1,104 @@
+/* RX glass island. Keep a constant header slot to avoid layout shifts. */
+.site-header {
+  --nav-glass: rgba(16, 12, 25, .78);
+  position: sticky; top: 16px; z-index: 60;
+  width: min(1320px, calc(100% - 48px));
+  margin: 16px auto 0;
+  min-height: 76px; height: 76px;
+  padding: 10px 24px; gap: 22px;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  background: transparent; border: 0; backdrop-filter: none;
+  isolation: isolate;
+}
+.site-header::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: 999px; border: 1px solid rgba(221,174,255,.24);
+  background: var(--nav-glass);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: 0 12px 42px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.07);
+  transition: inset .26s ease, background .26s ease, box-shadow .26s ease;
+}
+.site-header.is-compact { --nav-glass: rgba(15,11,23,.89); }
+.site-header.is-compact::before { inset: 7px 12px; box-shadow: 0 8px 30px rgba(0,0,0,.38); }
+.site-header .logo { gap: 9px; position: relative; min-width: 0; }
+.site-header .logo .brand-monogram { width: 58px; height: 42px; }
+.brand-monogram {
+  position: relative; isolation: isolate;
+  background: transparent; border: 0;
+  filter: drop-shadow(0 0 7px rgba(190,96,255,.45));
+  transition: filter .3s ease;
+}
+.brand-monogram img { mix-blend-mode: normal; object-fit: contain; }
+.brand-monogram::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 39%, rgba(255,255,255,.94) 49%, transparent 59%) -150% center / 240% 100% no-repeat;
+  -webkit-mask: url("/site-assets/roxy-rx-transparent.png?v=127b63fc234c") center / contain no-repeat;
+  mask: url("/site-assets/roxy-rx-transparent.png?v=127b63fc234c") center / contain no-repeat;
+  animation: rx-contour-shine 4.8s ease-in-out infinite;
+}
+.logo:hover .brand-monogram, .logo:focus-visible .brand-monogram { filter: drop-shadow(0 0 10px rgba(241,114,255,.8)); }
+.logo:hover .brand-monogram::after, .logo:focus-visible .brand-monogram::after { animation: rx-contour-shine 1.4s ease-out infinite; }
+@keyframes rx-contour-shine { 0%,62% { background-position: -150% center; } 90%,100% { background-position: 250% center; } }
+.site-header .logo-wordmark { font-size: clamp(10px,1.05vw,16px); letter-spacing: .075em; font-weight: 650; }
+.desktop-nav { position: relative; isolation: isolate; gap: 2px; padding: 3px; }
+.desktop-nav a, .desktop-nav a:first-child {
+  position: relative; z-index: 1; padding: 10px 11px; border-radius: 999px; color: #cbbfd3;
+  white-space: nowrap; font-size: 13px; font-weight: 600;
+}
+.desktop-nav a:hover, .desktop-nav a:focus-visible, .desktop-nav a[aria-current="page"] { color: #fff; text-shadow: 0 0 12px #c878fa88; }
+.nav-slider {
+  position: absolute; z-index: 0; left: 0; top: 3px; height: calc(100% - 6px);
+  width: var(--pill-width,0px); transform: translateX(var(--pill-x,0px));
+  border-radius: 999px; opacity: var(--pill-opacity,0); pointer-events: none;
+  background: linear-gradient(145deg,rgba(207,152,255,.18),rgba(250,128,211,.07));
+  box-shadow: inset 0 0 0 1px rgba(213,161,255,.23);
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), width .3s cubic-bezier(.2,.8,.2,1), opacity .18s;
+}
+.site-header .top-action {
+  position: relative; isolation: isolate; overflow: hidden; min-height: 43px;
+  color: #f9eaff; border: 1px solid transparent; border-radius: 999px;
+  background: linear-gradient(#1b1027,#1b1027) padding-box,linear-gradient(120deg,#9c5cff,#ff89ca) border-box;
+  transform: translate3d(var(--magnet-x,0px),var(--magnet-y,0px),0);
+  transition: transform .22s ease,box-shadow .22s ease;
+}
+.site-header .top-action::before {
+  content: ""; position: absolute; inset: 1px; z-index: -1; border-radius: inherit;
+  background: linear-gradient(110deg,transparent 35%,rgba(255,224,252,.24) 49%,transparent 62%) -160% 0/250% 100% no-repeat;
+  animation: rx-contour-shine 5.2s ease-in-out infinite;
+}
+.site-header .top-action:hover { box-shadow: 0 0 24px #bb5af94a; filter:none; }
+.site-header .top-action span { display:inline-block; transition:transform .22s ease; }
+.site-header .top-action:hover span { transform:translate(3px,-3px); }
+.site-header .reading-progress {
+  position: absolute; top:auto; bottom:5px; left:26px; right:26px; height:2px;
+  border-radius:99px; overflow:hidden; z-index:2; background:rgba(130,85,165,.16);
+  transition: left .26s ease,right .26s ease,bottom .26s ease;
+}
+.site-header.is-compact .reading-progress { bottom:11px;left:38px;right:38px; }
+.site-header .reading-progress span { border-radius:99px; }
+html { scroll-padding-top: 114px; }
+@media(max-width:1000px) {
+ .site-header { width:calc(100% - 32px); grid-template-columns:minmax(0,1fr) auto auto; gap:12px;padding:10px 18px; }
+ .site-header.is-compact::before { inset:3px 0; }
+ .site-header .reading-progress,.site-header.is-compact .reading-progress { left:24px;right:24px;bottom:5px; }
+}
+@media(max-width:660px) {
+ .site-header { top:8px; width:calc(100% - 20px); margin-top:8px; min-height:64px;height:64px; padding:7px 12px;gap:8px; }
+ .site-header .logo .brand-monogram { width:38px;height:34px; }
+ .site-header .logo-wordmark { font-size:10px;letter-spacing:.04em; }
+ .site-header .top-action { padding:8px 11px;min-height:40px; }
+ .site-header .mobile-nav nav { width:min(285px,calc(100vw - 32px)); }
+ html {scroll-padding-top:88px;}
+}
+@media(prefers-reduced-motion:reduce) {
+ .site-header::before,.nav-slider,.brand-monogram,.site-header .top-action,.site-header .top-action span,.site-header .reading-progress { transition:none!important; }
+ .brand-monogram::after,.logo:hover .brand-monogram::after,.logo:focus-visible .brand-monogram::after,.site-header .top-action::before { animation:none!important;opacity:0; }
+ .site-header .top-action,.site-header .top-action:hover span { transform:none!important; }
+}
+
+/* The floating island occupies 76px + 16px top space, not the old 9vh strip. */
+@media(min-width:661px){.hero{min-height:calc(100svh - 92px)}}
+@media(max-width:390px){.site-header .logo .brand-monogram{width:34px;height:32px}.site-header .logo{gap:5px}.site-header .logo-wordmark{font-size:9px}.site-header .top-action{padding:8px 10px}}
+
+.mobile-nav nav a[aria-current="page"]{color:#f4d5ff;background:rgba(168,100,255,.13);border-radius:8px}

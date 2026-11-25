@@ -5,6 +5,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 const root = resolve(process.argv[2] || 'out');
 const port = Number(process.argv[3] || process.env.PORT || 3017);
 const host = '127.0.0.1';
+const publicSite = resolve('../../app/web/site');
 
 const types = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -17,12 +18,25 @@ const types = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  ['.mp4', 'video/mp4'],
+  ['.webm', 'video/webm'],
   ['.ico', 'image/x-icon'],
   ['.woff2', 'font/woff2'],
 ]);
 
 function safeFile(urlPath) {
   let pathname = decodeURIComponent(urlPath.split('?')[0] || '/');
+  const publicPages = new Map([['/', 'index.html'], ['/features', 'features.html'], ['/gallery', 'gallery.html'], ['/process', 'process.html'], ['/faq', 'faq.html'], ['/features/photo', 'feature-photo.html'], ['/features/video', 'feature-video.html'], ['/features/text', 'feature-text.html'], ['/features/own-photo', 'feature-own-photo.html'], ['/features/reference', 'feature-reference.html'], ['/login', 'login.html'], ['/pricing', 'pricing.html'], ['/partners', 'partners.html']]);
+  const publicPage = publicPages.get(pathname.replace(/\/$/, '') || '/');
+  if (publicPage) {
+    const file = join(publicSite, publicPage);
+    return existsSync(file) ? file : null;
+  }
+  if (pathname.startsWith('/site-assets/')) {
+    const assetRoot = join(publicSite, 'assets');
+    const file = normalize(join(assetRoot, pathname.slice('/site-assets/'.length)));
+    return file.startsWith(assetRoot + sep) && existsSync(file) && statSync(file).isFile() ? file : null;
+  }
   if (pathname === '/' || pathname === '/mini-app' || pathname === '/mini-app/') pathname = '/index.html';
   if (pathname.startsWith('/mini-app/')) pathname = pathname.slice('/mini-app'.length);
   if (pathname === '/') pathname = '/index.html';

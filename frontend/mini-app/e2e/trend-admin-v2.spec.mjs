@@ -107,8 +107,8 @@ function v2Payload(videoModelId = videoModel.id) {
   };
 }
 
-async function setup(page, { items = [], models = [photoModel, videoModel], touch = false } = {}) {
-  const state = { items, models, writes: [], errors: [], unexpectedWrites: [] };
+async function setup(page, { items = [], models = [photoModel, videoModel], touch = false, waitAfterWriteList } = {}) {
+  const state = { items, models, writes: [], errors: [], unexpectedWrites: [], refreshAfterWrite: 0 };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.addInitScript(() => {
     window.Telegram = { WebApp: {
@@ -125,7 +125,13 @@ async function setup(page, { items = [], models = [photoModel, videoModel], touc
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/v1/me') return json({ id: 'admin', telegram_id: 777, first_name: 'Admin', is_admin: true, balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-    if (path === '/api/v1/trends/manage' && request.method() === 'GET') return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    if (path === '/api/v1/trends/manage' && request.method() === 'GET') {
+      if (waitAfterWriteList && state.writes.length) {
+        state.refreshAfterWrite += 1;
+        await waitAfterWriteList;
+      }
+      return json({ items: state.items, models: state.models, limits: { max_references: 16, max_tags: 20 } });
+    }
     if (path === '/api/v1/trends/manage' && request.method() === 'POST') {
       const body = request.postDataJSON();
       state.writes.push(body);
@@ -565,5 +571,112 @@ test('workflow admin saves 17 text placeholders alongside a photo without an arb
   expect(state.writes[0].payload.steps[0].inputs).toHaveLength(18);
   expect(state.writes[0].payload.steps[0].inputs.at(-1).id).toBe('field_17');
   expect(state.writes[0].payload.steps[0].inputs[0]).toMatchObject({ type: 'image', required: true });
+  expect(state.errors).toEqual([]);
+});
+
+
+test('admin repairs a mistyped photo slot and configures numeric height and weight without duplicates', async ({ page }) => {
+  const payload = v2Payload();
+  payload.steps[0].inputs = [{
+    id: 'person_photo', label: 'Рост', help: 'Рост', type: 'number', required: true, order: 0,
+  }];
+  const state = await setup(page, { items: [{ id: 'broken-person-photo', title: 'Скорпион', is_active: true, payload }] });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  const presets = form.getByRole('group', { name: 'Готовые поля пользователя' });
+  const fields = form.locator('.inline-trend-workflow-input');
+  const photo = fields.filter({ has: page.locator('input[value="person_photo"]') });
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('Исправить фото');
+  expect(state.writes).toEqual([]);
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true })
+    .fill('Сохрани внешность с @Image1. Рост {{height}} см. Вес {{weight}} кг.');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await expect(fields).toHaveCount(3); // Must not synthesize an extra photo slot before repair.
+  await presets.getByRole('button', { name: 'Исправить фото' }).click();
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('image');
+  await expect(photo.getByRole('combobox', { name: 'Содержимое поля' })).toBeDisabled();
+  await expect(photo.getByLabel('Метка', { exact: true })).toHaveValue('Ваше фото');
+
+
+  await presets.getByRole('button', { name: 'Настроить рост' }).click();
+  await presets.getByRole('button', { name: 'Настроить вес' }).click();
+  const height = fields.filter({ has: page.locator('input[value="height"]') });
+  const weight = fields.filter({ has: page.locator('input[value="weight"]') });
+  await expect(height.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await expect(weight.getByRole('combobox', { name: 'Содержимое поля' })).toHaveValue('number');
+  await expect(height.getByLabel('Метка', { exact: true })).toHaveValue('Рост (см)');
+  await expect(weight.getByLabel('Метка', { exact: true })).toHaveValue('Вес (кг)');
+  await expect(presets.getByRole('button', { name: 'Рост настроен' })).toBeDisabled();
+  await expect(presets.getByRole('button', { name: 'Вес настроен' })).toBeDisabled();
+  await height.getByLabel('Метка', { exact: true }).fill('Ваш рост, см');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs).toMatchObject([
+    { id: 'person_photo', label: 'Ваше фото', type: 'image', required: true, order: 0 },
+    { id: 'height', label: 'Ваш рост, см', type: 'number', required: true, order: 1 },
+    { id: 'weight', label: 'Вес (кг)', type: 'number', required: true, order: 2 },
+  ]);
+  expect(state.writes[0].payload.steps[0].prompt).toContain('{{weight}}');
+  expect(state.writes[0].payload.steps[0].prompt).toContain('@Image1');
+  expect(state.errors).toEqual([]);
+
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const reopened = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await expect(reopened.locator('.inline-trend-workflow-input')).toHaveCount(3);
+  await expect(reopened.locator('.inline-trend-workflow-input').filter({ has: page.locator('input[value="height"]') })
+    .getByLabel('Метка', { exact: true })).toHaveValue('Ваш рост, см');
+});
+
+test('new workflow can add height and weight using presets before the prompt is written', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  const presets = form.getByRole('group', { name: 'Готовые поля пользователя' });
+  await expect(presets.getByRole('button', { name: 'Фото настроено' })).toBeDisabled();
+  await presets.getByRole('button', { name: 'Добавить рост' }).click();
+  await presets.getByRole('button', { name: 'Добавить вес' }).click();
+  await expect(form.locator('.inline-trend-workflow-input')).toHaveCount(3);
+  await form.getByLabel('Название', { exact: true }).fill('Портрет с параметрами');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/preset.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true })
+    .fill('Человек с @Image1, рост {{height}} см, вес {{weight}} кг');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs.map(({ id, type }) => [id, type])).toEqual([
+    ['person_photo', 'image'], ['height', 'number'], ['weight', 'number'],
+  ]);
+  expect(state.errors).toEqual([]);
+});
+
+
+
+test('saved trend cannot reopen a stale draft while the manager refresh is delayed', async ({ page }) => {
+  let releaseRefresh;
+  const waitAfterWriteList = new Promise(resolve => { releaseRefresh = resolve; });
+  const payload = v2Payload();
+  const state = await setup(page, {
+    items: [{ id: 'slow-refresh-trend', title: 'Скорпион', is_active: true, payload }],
+    waitAfterWriteList,
+  });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await form.locator('label').filter({ hasText: 'Описание' }).locator('textarea').fill('Новая версия тренда');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  try {
+    await expect.poll(() => state.refreshAfterWrite).toBeGreaterThan(0);
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: 'Сохраняю…' })).toBeDisabled();
+  } finally {
+    releaseRefresh();
+  }
+  await expect(form).not.toBeVisible();
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  await expect(form.locator('label').filter({ hasText: 'Описание' }).locator('textarea')).toHaveValue('Новая версия тренда');
+  expect(state.writes).toHaveLength(1);
   expect(state.errors).toEqual([]);
 });

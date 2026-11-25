@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.models import Generation
 from app.db.session import SessionFactory
+from app.providers.neironych_submission import SNAPSHOT_KEY
 from app.services.abuse_protection import (
     AbuseProtectionService,
     ProviderCircuitOpen,
@@ -241,7 +242,50 @@ class GenerationWorkerService:
                     await session.commit()
 
             if generation.status == "submitting" and generation.external_id is None:
-                age = utcnow() - generation.updated_at
+                params = dict(generation.parameters or {})
+                # Keep the first uncertain timestamp across worker restarts and
+                # idempotent replay attempts. updated_at is changed by recovery.
+                first_unknown = generation.updated_at
+                raw_start = params.get("_submission_uncertain_at")
+                if isinstance(raw_start, str):
+                    try:
+                        candidate = datetime.fromisoformat(raw_start)
+                        if candidate.tzinfo is not None:
+                            first_unknown = candidate
+                    except ValueError:
+                        pass
+                now = utcnow()
+                age = now - first_unknown
+                image_replay = (
+                    provider == "neironych"
+                    and params.get("_model_id") in NeironychGenerationProviderService.IMAGE_MODEL_IDS
+                    and isinstance(params.get(SNAPSHOT_KEY), dict)
+                )
+                if image_replay and age.total_seconds() < settings.generation_submission_unknown_timeout_seconds:
+                    # Neironych associates this immutable body and key with a
+                    # single upstream attempt. A completed result is replayed,
+                    # an in-flight submission is rejected as 409; neither starts
+                    # a second paid generation. No fallback on this path.
+                    raw_next = params.get("_neironych_image_recovery_next_at")
+                    next_at = None
+                    if isinstance(raw_next, str):
+                        try:
+                            next_at = datetime.fromisoformat(raw_next)
+                            if next_at.tzinfo is None:
+                                next_at = None
+                        except ValueError:
+                            pass
+                    if next_at is None or next_at <= now:
+                        params["_submission_uncertain"] = True
+                        params.setdefault("_submission_uncertain_at", first_unknown.isoformat())
+                        params["_neironych_image_recovery_next_at"] = (
+                            now + timedelta(seconds=max(30, settings.neironych_poll_seconds))
+                        ).isoformat()
+                        generation.parameters = params
+                        generation.status = "retry"
+                        await session.commit()
+
+            if generation.status == "submitting" and generation.external_id is None:
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
                     message = cls._unknown_submission_failure_reason(generation, provider)
                     await GenerationProviderService.fail_and_refund(session, generation.id, message)
@@ -271,6 +315,15 @@ class GenerationWorkerService:
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
             except ProviderCircuitOpen as exc:
+                # An accepted paid Neironych request may still finish during an
+                # outage. Never spend on Nexus/Kie when replaying its frozen key.
+                if provider == "neironych" and (generation.parameters or {}).get("_submission_uncertain"):
+                    await GenerationOutboxService.release(
+                        session, claim.outbox_id,
+                        error="Waiting for original Neironych image request reconciliation",
+                        delay_seconds=exc.retry_after,
+                    )
+                    return True
                 if provider in {"neironych", "nexus", "kie"}:
                     fallback = await switch_to_fallback(
                         session,
