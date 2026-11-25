@@ -465,6 +465,13 @@ export function InlineTrendAdmin() {
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [items, setItems] = useState<TrendAdminItem[]>([]);
+  const [trendSearch, setTrendSearch] = useState("");
+  const [trendVisibility, setTrendVisibility] = useState("all");
+  const visibleItems = useMemo(() => {
+    const query = trendSearch.trim().normalize("NFKC").toLocaleLowerCase("ru");
+    return items.filter(item => (!query || item.title.normalize("NFKC").toLocaleLowerCase("ru").includes(query))
+      && (trendVisibility === "all" || item.is_active === (trendVisibility === "active")));
+  }, [items, trendSearch, trendVisibility]);
   const [models, setModels] = useState<TrendAdminModel[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
@@ -1022,7 +1029,7 @@ export function InlineTrendAdmin() {
   return <>
     {host ? createPortal(
       <button className="inline-trend-add-button" type="button" onClick={() => setOpen(true)} aria-label="Управлять трендами">
-        <span>＋</span> Добавить
+        <span>⚙</span> Управление
       </button>,
       host,
     ) : null}
@@ -1039,12 +1046,18 @@ export function InlineTrendAdmin() {
           <button className="inline-trend-secondary" type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 
+        <div className="inline-trend-form" style={{padding: 12, margin: 0}}>
+          <label><span>Поиск по названию</span><input type="search" value={trendSearch} onChange={event => setTrendSearch(event.target.value)} placeholder="Название тренда" /></label>
+          <label><span>Видимость</span><select value={trendVisibility} onChange={event => setTrendVisibility(event.target.value)}><option value="all">Все тренды</option><option value="active">Активные</option><option value="hidden">Скрытые</option></select></label>
+          {!loading && !loadError ? <small role="status">Найдено: {visibleItems.length} из {items.length}</small> : null}
+        </div>
         {!formOpen && (error || loadError) ? <div className="inline-trend-error" role="alert">{error || loadError}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
         {!loading && !loadError && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
 
+        {!loading && !loadError && items.length > 0 && visibleItems.length === 0 ? <div className="inline-trend-empty">Тренды не найдены. Измените поиск или фильтр.</div> : null}
         <div className="inline-trend-admin-list">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const payload = item.payload || ({} as TrendAdminPayload);
             const video = !isWorkflowPayload(payload) && previewIsVideo(String(payload.preview_url || ""));
             const modelId = isWorkflowPayload(payload) ? payload.steps[0].model_id : payload.model_id;
