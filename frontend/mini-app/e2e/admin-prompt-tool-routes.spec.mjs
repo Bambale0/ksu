@@ -31,6 +31,7 @@ async function openRuntime(page, { expireFirstWrite = true } = {}) {
     });
     if (path === '/admin-app/control.js') return route.fulfill({ contentType: 'application/javascript', body: readFileSync(new URL('control.js', adminRoot), 'utf8') });
     if (path.endsWith('.css')) return route.fulfill({ contentType: 'text/css', body: readFileSync(new URL(path.split('/').pop(), adminRoot), 'utf8') });
+    if (path === '/api/v1/admin/auth/login' && request.postDataJSON()?.auto) return json({ detail: 'Additional admin verification required' }, 428);
     if (path === '/api/v1/admin/auth/login') return json({ token: 'synthetic-admin-token', mfa_verified: true });
     if (path === '/api/v1/admin/auth/me') return json({ role: 'owner', is_active: true, telegram_id: 123, permissions: ['*'] });
     if (path === '/api/v1/admin/dashboard') return json({});
@@ -56,6 +57,7 @@ async function openRuntime(page, { expireFirstWrite = true } = {}) {
     return json({ detail: `Unexpected request: ${path}` }, 404);
   });
   await page.goto(`${origin}/admin-app/control.html`);
+  await expect(page.getByText('Для обычного входа введите код подтверждения.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Анализ фото и видео', exact: true }).click();

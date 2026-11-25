@@ -363,6 +363,7 @@ async def generation_models(
 ) -> dict[str, object]:
     admin_free = bool(user and await BillingAccessService.is_active_admin(session, user.id))
     models: list[dict[str, Any]] = []
+    overrides = ModelCatalog._pricing_overrides()
     for item in ModelCatalog.list():
         enriched = dict(item)
         model_id = str(enriched["id"])
@@ -374,6 +375,13 @@ async def generation_models(
             retail_unit = _public_catalog_unit_price(model_id, unit_credits)
             effective_unit = Decimal("0") if admin_free else retail_unit
             enriched["retail_price_rox"] = _amount(retail_unit)
+            override = overrides.get(model_id)
+            if isinstance(override, dict):
+                enriched["retail_price_tiers"] = {
+                    key: {str(value): _amount(Decimal(str(price))) for value, price in tiers.items()}
+                    for key in ("by_mode", "by_quality", "by_resolution")
+                    if isinstance(tiers := override.get(key), dict)
+                }
             enriched["effective_price_rox"] = _amount(effective_unit)
             enriched["effective_price_credits"] = _amount(effective_unit)
             enriched["effective_price_rub"] = _amount(InternalCreditService.rubles_for(effective_unit))

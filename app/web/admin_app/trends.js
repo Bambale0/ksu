@@ -11,6 +11,7 @@
     models: [],
     trends: [],
     editing: null,
+    workflow: null,
   };
 
   const ids = [
@@ -20,6 +21,7 @@
     "trendModelInfo", "trendPrompt", "trendInputMode", "trendReferenceFields",
     "trendMinReferences", "trendMaxReferences", "trendBillingSeconds", "trendSortOrder",
     "trendTags", "trendParameters", "trendKnownFields", "trendActiveRow", "trendActive",
+    "trendTemplateVideo", "trendUserFields", "trendWorkflowSteps",
     "trendPreview", "trendFormMessage", "trendSubmit", "trendReset", "trendFormKicker",
     "trendFormTitle", "trendSearch", "trendStatusFilter", "trendList", "trendPagination", "trendToast",
   ];
@@ -60,7 +62,11 @@
       headers,
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(detailMessage(payload, `HTTP ${response.status}`));
+    if (!response.ok) {
+      const error = new Error(detailMessage(payload, `HTTP ${response.status}`));
+      error.status = response.status;
+      throw error;
+    }
     return payload;
   }
 
@@ -218,7 +224,87 @@
     return parameters;
   }
 
+  function parseJsonField(raw, label, array = false) {
+    let value;
+    try { value = JSON.parse(raw); } catch { throw new Error(label + ": некорректный JSON."); }
+    if (array ? !Array.isArray(value) : !value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(label + ": ожидается " + (array ? "массив." : "объект."));
+    }
+    return value;
+  }
+
+  function setWorkflowMode(payload) {
+    state.workflow = payload || null;
+    const active = Boolean(payload);
+    dom.trendWorkflowSteps.hidden = !active;
+    dom.trendWorkflowSteps.replaceChildren();
+    for (const section of dom.trendForm.querySelectorAll("[data-legacy-trend-field]")) {
+      section.hidden = active;
+      for (const control of section.querySelectorAll("input, select, textarea")) control.disabled = active;
+    }
+    if (!active) return;
+    for (const [index, step] of (payload.steps || []).entries()) {
+      const panel = el("fieldset", "stack");
+      const label = index === 0 ? "Шаг 1 · Фото" : "Шаг 2 · Видео";
+      panel.append(el("legend", "", label));
+      for (const [key, title, kind] of [
+        ["title", "Название шага", "input"], ["model_id", "Модель", "select"],
+        ["prompt", "Промпт", "textarea"], ["instructions", "Инструкции", "textarea"],
+        ["preview_url", "URL превью", "input"], ["parameters", "Параметры модели (JSON)", "textarea"],
+        ["inputs", "Поля пользователя (JSON)", "textarea"],
+        ...(index === 1 ? [["bindings", "Связи шагов (JSON)", "textarea"]] : []),
+      ]) {
+        const field = el("label", "field");
+        field.append(el("span", "", title));
+        const control = document.createElement(kind);
+        control.dataset.stepField = key;
+        control.setAttribute("aria-label", label + " — " + title);
+        if (kind === "select") {
+          const available = state.models.filter(model => model.media_type === step.kind);
+          if (!available.some(model => model.id === step.model_id)) {
+            const option = el("option", "", step.model_id);
+            option.value = step.model_id;
+            control.append(option);
+          }
+          for (const model of available) {
+            const option = el("option", "", model.title || model.id);
+            option.value = model.id;
+            control.append(option);
+          }
+        }
+        const json = ["parameters", "inputs", "bindings"].includes(key);
+        control.value = json ? JSON.stringify(step[key] ?? (key === "parameters" ? {} : []), null, 2) : step[key] || "";
+        if (kind === "textarea") control.rows = json ? 6 : 4;
+        if (key === "preview_url") control.type = "url";
+        if (["title", "model_id", "prompt"].includes(key)) control.required = true;
+        field.append(control);
+        panel.append(field);
+      }
+      dom.trendWorkflowSteps.append(panel);
+    }
+  }
+
   function buildRecipe() {
+    if (state.workflow) {
+      const steps = Array.from(dom.trendWorkflowSteps.querySelectorAll("fieldset")).map((panel, index) => {
+        const step = {...state.workflow.steps[index]};
+        for (const control of panel.querySelectorAll("[data-step-field]")) {
+          const key = control.dataset.stepField;
+          step[key] = ["parameters", "inputs", "bindings"].includes(key)
+            ? parseJsonField(control.value, key, key !== "parameters")
+            : control.value.trim();
+        }
+        if (!step.preview_url) delete step.preview_url;
+        return step;
+      });
+      return {
+        ...state.workflow, steps,
+        description: dom.trendDescription.value.trim(),
+        preview_url: dom.trendPreviewUrl.value.trim(),
+        tags: dom.trendTags.value.split(",").map(item => item.trim().toLowerCase()).filter(Boolean).slice(0, 20),
+        sort_order: Number(dom.trendSortOrder.value || 0),
+      };
+    }
     const model = currentModel();
     if (!model) throw new Error("Выберите модель тренда.");
     const parameters = parseParameters();
@@ -237,6 +323,8 @@
       tags,
       sort_order: Number(dom.trendSortOrder.value || 0),
       usage_count: Number(state.editing?.payload?.usage_count || 0),
+      template_video_url: dom.trendTemplateVideo.value.trim() || null,
+      user_fields: parseJsonField(dom.trendUserFields.value || "[]", "Поля пользователя", true),
     };
     if (billingRaw) recipe.billing_seconds = Number(billingRaw);
     return recipe;
@@ -245,6 +333,7 @@
   function resetForm() {
     dom.trendSubmit.disabled = false;
     state.editing = null;
+    setWorkflowMode(null);
     dom.trendForm.reset();
     dom.trendId.value = "";
     dom.trendParameters.value = "{}";
@@ -264,12 +353,8 @@
 
   function fillForm(item, duplicate = false) {
     const payload = item.payload || {};
-    if (payload.schema_version === 2 || payload.workflow_type === "sequential_photo_video") {
-      resetForm();
-      dom.trendSubmit.disabled = true;
-      setMessage(dom.trendFormMessage, "Двухэтапный шаблон сохранён без изменений. Редактирование и копирование доступны в редакторе шаблонов Mini App.", true);
-      return;
-    }
+    const workflow = payload.schema_version === 2 || payload.workflow_type === "sequential_photo_video";
+    setWorkflowMode(workflow ? payload : null);
     dom.trendSubmit.disabled = false;
     state.editing = duplicate ? null : item;
     dom.trendId.value = duplicate ? "" : item.id;
@@ -285,14 +370,15 @@
     dom.trendSortOrder.value = String(payload.sort_order ?? 0);
     dom.trendTags.value = Array.isArray(payload.tags) ? payload.tags.join(", ") : "";
     dom.trendParameters.value = JSON.stringify(payload.parameters || {}, null, 2);
+    dom.trendTemplateVideo.value = payload.template_video_url || "";
+    dom.trendUserFields.value = JSON.stringify(payload.user_fields || [], null, 2);
     dom.trendActive.checked = item.is_active !== false;
     dom.trendActiveRow.hidden = duplicate;
     dom.trendFormKicker.textContent = duplicate ? "Копия тренда" : "Редактирование";
     dom.trendFormTitle.textContent = duplicate ? "Создать на основе существующего" : item.title;
     dom.trendSubmit.textContent = duplicate ? "Опубликовать копию" : "Сохранить изменения";
     setMessage(dom.trendFormMessage, "");
-    renderModelInfo();
-    syncReferenceFields();
+    if (!workflow) { renderModelInfo(); syncReferenceFields(); }
     renderPreview();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -344,7 +430,7 @@
       const main = el("div", "trend-card-main");
       const head = el("div", "trend-card-head");
       const title = el("div", "trend-card-title");
-      title.append(el("strong", "", item.title), el("small", "", payload.model_id || "Модель не указана"));
+      title.append(el("strong", "", item.title), el("small", "", payload.schema_version === 2 ? "Фото → Видео" : payload.model_id || "Модель не указана"));
       head.append(title, el("span", `badge ${item.is_active ? "ok" : "warn"}`, item.is_active ? "Активен" : "Скрыт"));
       main.append(head);
 
@@ -386,12 +472,8 @@
     state.models = Array.isArray(options.models) ? options.models : [];
     state.trends = Array.isArray(trends.items) ? trends.items : [];
     populateModels();
-    if (state.editing) {
-      const fresh = state.trends.find((item) => item.id === state.editing.id);
-      if (fresh) fillForm(fresh);
-    } else {
-      renderModelInfo();
-    }
+    // Refresh/search must not discard an in-progress editor draft.
+    if (!state.editing && !state.workflow) renderModelInfo();
     renderTrends();
   }
 
@@ -404,7 +486,7 @@
       if (!title) throw new Error("Укажите название тренда.");
       const recipe = buildRecipe();
       if (!recipe.preview_url) throw new Error("Добавьте URL превью.");
-      if (!recipe.prompt) throw new Error("Добавьте скрытый prompt.");
+      if (!state.workflow && !recipe.prompt) throw new Error("Добавьте скрытый prompt.");
       if (state.editing) {
         await api(`/api/v1/admin/trends/${state.editing.id}`, {
           method: "PATCH",
@@ -453,13 +535,13 @@
     }
   }
 
-  async function login(event) {
-    event.preventDefault();
+  async function login(event = null, auto = false) {
+    event?.preventDefault?.();
     setMessage(dom.trendLoginMessage, "Проверяю доступ…");
     try {
-      const otp = dom.trendOtp.value.trim();
-      const recovery = dom.trendRecovery.value.trim();
-      const body = {};
+      const otp = auto ? "" : dom.trendOtp.value.trim();
+      const recovery = auto ? "" : dom.trendRecovery.value.trim();
+      const body = auto ? { auto: true } : {};
       if (otp) body.otp = otp;
       if (recovery) body.recovery_code = recovery;
       const result = await api("/api/v1/admin/auth/login", {
@@ -489,6 +571,10 @@
       await loadAll();
       resetForm();
     } catch (error) {
+      if (auto && error.status === 428) {
+        setMessage(dom.trendLoginMessage, "Для обычного входа введите код подтверждения.");
+        return;
+      }
       setMessage(dom.trendLoginMessage, error.message || "Не удалось войти.", "error");
     }
   }
@@ -500,6 +586,7 @@
     state.models = [];
     state.trends = [];
     state.editing = null;
+    setWorkflowMode(null);
     pagination.reset();
     ++loadSequence;
     dom.trendShell.hidden = true;
@@ -533,4 +620,5 @@
     tg?.expand?.();
   } catch (_error) { /* optional */ }
   resetForm();
+  if (tg?.initData) void login(null, true);
 })();

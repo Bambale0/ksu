@@ -171,7 +171,7 @@ function enrichPage(name,html,editorial){
     .replace('Актуальные базовые тарифы из каталога ROXY. Стоимость зависит от выбранной модели и параметров.','Базовые тарифы действующего каталога и реальные рублёвые пакеты пополнения. Сумма покупки пакета и стоимость генерации показаны отдельно.')
     .replace('<div data-catalog="overview" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>',`<div data-catalog="overview" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>
       <h2 class="price-subhead" id="packages-title">Пополнение баланса в рублях</h2>
-      <p class="price-explanation">Рублёвые пакеты доступного способа оплаты. Бонусы пакета уже включены в итоговое количество ROX. Дополнительные акции и способы оплаты проверяй в профиле перед оплатой.</p>
+      <p class="price-explanation">Рублёвые пакеты доступного способа оплаты. Основное количество ROX начисляется после оплаты. Дополнительный бонус доступен только при применении действующего промокода к конкретному платежу. Итог проверь в профиле перед оплатой.</p>
       <div data-packages aria-live="polite"><p class="price-status">Загружаем пакеты…</p></div>
       <div class="price-actions"><a class="button button-primary" href="/login?section=profile" data-app-link>Войти и открыть профиль ↗</a><a class="button button-outline" href="/faq" data-site-link>Вопросы об оплате</a></div>
       <h2 class="price-subhead" id="models-title">Стоимость генераций по моделям</h2>

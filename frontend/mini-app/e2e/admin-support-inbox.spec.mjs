@@ -81,6 +81,7 @@ async function fixture(page, mode, options = {}) {
       const contentType = filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'application/javascript' : 'text/html';
       return route.fulfill({ contentType, body: readFileSync(new URL(filename, adminRoot), 'utf8') });
     }
+    if (path === '/api/v1/admin/auth/login' && request.postDataJSON()?.auto) return json({ detail: 'Additional admin verification required' }, 428);
     if (path === '/api/v1/admin/auth/login') return json({ token: 'test-token', mfa_verified: true });
     if (path === '/api/v1/admin/auth/me') return json({
       role: options.role || (options.readonly ? 'auditor' : 'owner'), is_active: true, telegram_id: 123, username: 'operator',
@@ -179,6 +180,7 @@ async function fixture(page, mode, options = {}) {
     return json({ detail: 'Unexpected request: ' + path }, 404);
   });
   await page.goto('http://127.0.0.1:3018' + url + (options.deepLink ? '?support_ticket=' + ticketId : ''));
+  await expect(page.getByText('Для обычного входа введите код подтверждения.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await expect(page.locator(mode === 'main' ? '#authView' : '#controlAuth')).not.toBeVisible();
   if (!options.deepLink && mode === 'main' && await page.locator('#sidebarToggle').isVisible()) await page.locator('#sidebarToggle').click();

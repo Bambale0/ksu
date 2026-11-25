@@ -87,3 +87,17 @@ def test_admin_trend_backend_exposes_dynamic_model_options_and_editing() -> None
     assert '@router.get("/trends")' in capabilities
     assert '@router.post("/trends", status_code=status.HTTP_201_CREATED)' in capabilities
     assert '@router.delete("/trends/{trend_id}")' in capabilities
+
+
+def test_web_trend_editor_exposes_complete_workflow_and_legacy_reference_fields() -> None:
+    html = _read(ADMIN / "trends.html")
+    js = _read(ADMIN / "trends.js")
+    assert 'id="trendWorkflowSteps"' in html
+    assert 'id="trendTemplateVideo"' in html
+    assert 'id="trendUserFields"' in html
+    assert 'setWorkflowMode(workflow ? payload : null)' in js
+    assert '...state.workflow, steps' in js
+    assert '["bindings", "Связи шагов (JSON)", "textarea"]' in js
+    assert '["prompt", "Промпт", "textarea"]' in js
+    assert '["inputs", "Поля пользователя (JSON)", "textarea"]' in js
+    assert "Редактирование и копирование доступны в редакторе шаблонов Mini App" not in js

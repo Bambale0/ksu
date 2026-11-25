@@ -44,6 +44,7 @@ Required for production admin access:
 ```dotenv
 ADMIN_SECURITY_KEY=<dedicated random secret, at least 32 chars>
 ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary initial owner Telegram ID>
+ADMIN_AUTO_LOGIN_TELEGRAM_IDS=<optional comma-separated established admin Telegram IDs>
 ADMIN_REQUIRE_MFA=true
 ADMIN_SESSION_TTL_MINUTES=480
 ADMIN_IDLE_TIMEOUT_MINUTES=30
@@ -147,6 +148,32 @@ An existing assignment may remain configured after deactivation or removal of su
 
 Recipient removal and account privilege changes are serialized with in-flight support notification authorization. Pending delivery and private inbox access recheck the current assignment and permissions.
 
+
+## 4a. One-tap signed Telegram login for selected existing admins
+
+`ADMIN_AUTO_LOGIN_TELEGRAM_IDS` is an **independent explicit operator allowlist** for existing,
+active admin accounts. It defaults to empty. Do not treat `ADMIN_BOOTSTRAP_TELEGRAM_IDS`,
+ordinary Telegram ID headers, browser query params or usernames as authorization.
+
+When an allowlisted, MFA-enrolled administrator opens `/admin-app/` from the bot,
+the frontend issues `POST /api/v1/admin/auth/login` with `{"auto": true}` and
+fresh signed `X-Telegram-Init-Data`. All four admin pages attempt this once.
+The backend validates the Telegram signature and freshness (10-minute maximum
+via the shared admin HTTP guard), checks active account and exact Telegram ID,
+and issues the ordinary revocable, audited, memory-only admin bearer session.
+
+Non-allowlisted users receive HTTP 428 without consuming the normal login
+MFA failure budget; manual TOTP/recovery login still works. Initial MFA
+enrollment is never bypassed. Direct website access without signed Telegram
+initData cannot auto-login. Fresh TOTP/recovery **step-up remains mandatory**
+for privileged operations marked `step_up_required`.
+
+**Risk:** This is a deliberate, narrowly scoped reduction from mandatory login
+MFA to signed Telegram identity for explicitly allowlisted accounts. A stolen
+fresh Telegram initData can be replayed within its validity window. Prefer
+support-role accounts, restrict allowed IDs, use HTTPS, and remove IDs from
+the auto-login list when no longer needed; never use a public browser or proxy
+that logs initData. Admin sessions remain revocable independently.
 
 ## 5. Login behavior
 

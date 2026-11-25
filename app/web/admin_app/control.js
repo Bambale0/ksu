@@ -1141,15 +1141,15 @@
     dom.controlView.replaceChildren(content);
   }
 
-  async function login(event) {
-    event.preventDefault();
+  async function login(event = null, auto = false) {
+    event?.preventDefault?.();
     if (!tg?.initData) {
       setMessage(dom.controlLoginMessage, "Откройте рабочий контур внутри Telegram.", "error");
       return;
     }
-    const payload = {};
-    const otp = dom.controlOtp.value.trim();
-    const recovery = dom.controlRecovery.value.trim();
+    const payload = auto ? { auto: true } : {};
+    const otp = auto ? "" : dom.controlOtp.value.trim();
+    const recovery = auto ? "" : dom.controlRecovery.value.trim();
     if (otp) payload.otp = otp;
     if (recovery) payload.recovery_code = recovery;
     setMessage(dom.controlLoginMessage, "Проверяем доступ…");
@@ -1190,6 +1190,10 @@
     } catch (error) {
       state.token = null;
       state.me = null;
+      if (auto && error.status === 428) {
+        setMessage(dom.controlLoginMessage, "Для обычного входа введите код подтверждения.");
+        return;
+      }
       setMessage(dom.controlLoginMessage, error.message || "Вход не выполнен", "error");
     }
   }
@@ -1221,5 +1225,7 @@
   tg?.expand?.();
   if (!tg?.initData) {
     setMessage(dom.controlLoginMessage, "Откройте рабочий контур внутри Telegram.", "error");
+  } else {
+    void login(null, true);
   }
 })();
