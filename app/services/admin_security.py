@@ -156,6 +156,19 @@ def consume_recovery_code(admin: AdminAccount, code: str) -> bool:
     return False
 
 
+def parse_admin_auto_login_ids() -> set[int]:
+    """Explicit login convenience allowlist; bootstrap IDs never grant this privilege."""
+    result: set[int] = set()
+    for raw in settings.admin_auto_login_telegram_ids.split(","):
+        candidate = raw.strip()
+        if not candidate.isdecimal():
+            continue
+        telegram_id = int(candidate)
+        if telegram_id > 0:
+            result.add(telegram_id)
+    return result
+
+
 def parse_bootstrap_ids() -> set[int]:
     result: set[int] = set()
     for raw in settings.admin_bootstrap_telegram_ids.split(","):
