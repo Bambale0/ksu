@@ -21,7 +21,9 @@
     return node;
   }
   function price(m) {
-    return fmt.format(m.amount) + " ROX" + (m.mode === "per_second" ? " / с" : " / запуск");
+    const amounts = m.tiers.map(t=>t.amount).concat(m.amount);
+    const suffix = m.mode === "per_second" ? " / с" : " / запуск";
+    return (m.tiers.length && Math.min(...amounts) !== Math.max(...amounts) ? "от " : "") + fmt.format(Math.min(...amounts)) + " ROX" + suffix;
   }
   function imageFields(m) {
     return m.fields.some(f=>["file","files"].includes(f.control) && typeof f.accept==="string" && f.accept.includes("image/"));
@@ -49,7 +51,17 @@
     return data.models.flatMap(m=>{
       const amount = number(m?.retail_price_rox ?? m?.price_rox);
       if (!m || !Object.hasOwn(media,m.media_type) || !["flat","per_second"].includes(m.price_mode) || !Number.isFinite(amount) || amount<=0 || typeof m.title!=="string" || !m.title.trim()) return [];
-      return [{title:m.title.slice(0,160),media:m.media_type,operation:m.operation,mode:m.price_mode,amount,fields:Array.isArray(m.ui_schema?.fields)?m.ui_schema.fields.filter(f=>f && typeof f==="object"):[]}];
+      const tiers=[];
+      for(const [key,field] of [["by_mode","mode"],["by_quality","quality"],["by_resolution","resolution"]]){
+        const prices=m.retail_price_tiers?.[key];
+        if(!prices || typeof prices!=="object" || Array.isArray(prices))continue;
+        const options=m.ui_schema?.fields?.find(f=>f?.name===field)?.suggestions;
+        for(const [label,raw] of Object.entries(prices)){
+          const value=number(raw);
+          if(Number.isFinite(value)&&value>0&&label.length<=32&&(!Array.isArray(options)||options.includes(label)))tiers.push({label:field==="quality"?label.toUpperCase():label,amount:value});
+        }
+      }
+      return [{title:m.title.slice(0,160),media:m.media_type,operation:m.operation,mode:m.price_mode,amount,tiers,fields:Array.isArray(m.ui_schema?.fields)?m.ui_schema.fields.filter(f=>f && typeof f==="object"):[]}];
     });
   }
   function details(m) {
@@ -85,7 +97,7 @@
         const card=element("article",null,"price-summary");
         card.append(element("span",label,"price-kicker"));
         for(const mode of ["flat","per_second"]){
-          const prices=list.filter(m=>m.mode===mode).map(m=>m.amount);
+          const prices=list.filter(m=>m.mode===mode).flatMap(m=>[m.amount,...m.tiers.map(t=>t.amount)]);
           if(prices.length)card.append(element("strong","от "+fmt.format(Math.min(...prices))+" ROX"+(mode==="per_second"?" / с":" / запуск")));
         }
         const plural = new Intl.PluralRules("ru-RU").select(list.length);
@@ -98,6 +110,7 @@
         const card=element("article",null,"model-price-card");
         card.dataset.media=m.media;
         card.append(element("span",media[m.media],"price-kicker"),element("h3",m.title),element("p",Object.hasOwn(operations,m.operation)?operations[m.operation]:"Параметры в студии"),element("strong",price(m)));
+        if(m.tiers.length)card.append(element("small",m.tiers.map(t=>t.label+" — "+fmt.format(t.amount)+" ROX"+(m.mode==="per_second"?" / с":"")).join(" · "),"model-price-tiers"));
         const spec=details(m);
         if(spec)card.append(element("small",spec));
         grid.append(card);

@@ -7,9 +7,9 @@ _INSTALLED = False
 
 
 def install_model_spec_pricing_audit() -> None:
-    """Apply published mode/resolution pricing tiers to every billing path.
+    """Apply published mode/quality/resolution pricing tiers to every billing path.
 
-    Admin tariffs support ``by_mode`` and ``by_resolution``. Resolve tiers only
+    Admin tariffs support ``by_mode``, ``by_quality`` and ``by_resolution``. Resolve tiers only
     after model validation so pricing sees normalized provider values. Resolution
     is the final override when both dimensions are configured, and both the raw
     ModelCatalog path and GenerationService quote/create path use that same rule.
@@ -29,7 +29,7 @@ def install_model_spec_pricing_audit() -> None:
             return None
 
         tier_price: Decimal | None = None
-        for section, field in (("by_mode", "mode"), ("by_resolution", "resolution")):
+        for section, field in (("by_mode", "mode"), ("by_quality", "quality"), ("by_resolution", "resolution")):
             tiers = override.get(section)
             value = parameters.get(field)
             if not isinstance(tiers, dict) or value in (None, ""):

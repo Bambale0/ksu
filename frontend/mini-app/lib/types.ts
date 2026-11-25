@@ -108,6 +108,7 @@ export type GenerationModel = {
   };
   admin_free?: boolean;
   retail_price_rox?: string;
+  retail_price_tiers?: Partial<Record<"by_mode" | "by_quality" | "by_resolution", Record<string, string>>>;
 };
 
 export type GenerationModelVariant = Pick<GenerationModel, "id" | "title" | "operation" | "media_type" | "price_rox" | "price_credits" | "price_rub" | "retail_price_rox" | "ui_schema"> & {

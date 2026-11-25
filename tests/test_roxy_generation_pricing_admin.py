@@ -17,15 +17,15 @@ from app.services.model_catalog import ModelCatalog
 
 
 REQUESTED_BASE_PRICES = {
-    "nano-banana-pro": ("flat", Decimal("25")),
+    "nano-banana-pro": ("flat", Decimal("20")),
     "wan-2.7-image-pro": ("flat", Decimal("20")),
     "gpt-image-2-t2i": ("flat", Decimal("20")),
     "gpt-image-2-i2i": ("flat", Decimal("20")),
-    "nano-banana-2": ("flat", Decimal("25")),
-    "nano-banana-2-lite": ("flat", Decimal("25")),
+    "nano-banana-2": ("flat", Decimal("20")),
+    "nano-banana-2-lite": ("flat", Decimal("10")),
     "seedream-4.5-edit": ("flat", Decimal("20")),
-    "seedream-5-pro-t2i": ("flat", Decimal("20")),
-    "seedream-5-pro-i2i": ("flat", Decimal("20")),
+    "seedream-5-pro-t2i": ("flat", Decimal("25")),
+    "seedream-5-pro-i2i": ("flat", Decimal("25")),
     "seedance-2.0": ("per_second", Decimal("40")),
     "seedance-2.5": ("per_second", Decimal("60")),
     "kling-2.5-turbo-pro-t2v": ("per_second", Decimal("8")),
@@ -351,3 +351,52 @@ async def test_admin_published_tariff_changes_real_quote_prices_and_survives_hyd
             )
 
         await session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("model_id", "field", "value", "expected"),
+    [
+        ("nano-banana-pro", "resolution", "1K", "20"),
+        ("nano-banana-pro", "resolution", "2K", "25"),
+        ("nano-banana-pro", "resolution", "4K", "30"),
+        ("nano-banana-2", "resolution", "1K", "20"),
+        ("nano-banana-2", "resolution", "2K", "20"),
+        ("nano-banana-2", "resolution", "4K", "25"),
+        ("nano-banana-2-lite", None, None, "10"),
+        ("seedream-5-pro-t2i", "quality", "basic", "25"),
+        ("seedream-5-pro-t2i", "quality", "high", "30"),
+        ("seedream-5-pro-i2i", "quality", "basic", "25"),
+        ("seedream-5-pro-i2i", "quality", "high", "30"),
+    ],
+)
+def test_requested_image_tiers_match_catalog_and_generation_billing(
+    monkeypatch, model_id, field, value, expected
+):
+    from app.services.admin_pricing import validate_tariff_payload
+
+    monkeypatch.setattr(settings, "generation_pricing_json", DEFAULT_GENERATION_PRICING_JSON)
+    overrides = ModelCatalog._pricing_overrides()
+    validate_tariff_payload({"generation_pricing": {model_id: overrides[model_id]}})
+    params = {"prompt": "A red rose", "aspect_ratio": "1:1"}
+    if field:
+        params[field] = value
+    if model_id == "seedream-5-pro-i2i":
+        params["image_urls"] = ["https://example.com/reference.png"]
+    spec, clean, cost, seconds, unit = ModelCatalog.prepare(model_id, params)
+    assert spec.id == model_id
+    assert seconds is None
+    assert cost == unit == Decimal(expected)
+    assert GenerationService._effective_unit_price(model_id=model_id, parameters=clean) == Decimal(expected)
+
+
+def test_admin_quality_tiers_reject_impossible_values():
+    from app.services.admin_pricing import validate_tariff_payload
+
+    with pytest.raises(TariffValidationError, match="unsupported quality"):
+        validate_tariff_payload({"generation_pricing": {
+            "seedream-5-pro-t2i": {"flat": 25, "by_quality": {"ultra": 30}}
+        }})
+    with pytest.raises(TariffValidationError, match="has no quality parameter"):
+        validate_tariff_payload({"generation_pricing": {
+            "nano-banana-2-lite": {"flat": 10, "by_quality": {"high": 30}}
+        }})
