@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from typing import NamedTuple
 import re
 import secrets
 
@@ -15,8 +15,7 @@ ROOT = "/api/v1/browser-auth/approval"
 logger = logging.getLogger("ksu.browser_approval")
 
 
-@dataclass(frozen=True)
-class ApprovalLimits:
+class ApprovalLimits(NamedTuple):
     browser_limit: int = 5
     network_limit: int = 300
     window_seconds: int = 600
