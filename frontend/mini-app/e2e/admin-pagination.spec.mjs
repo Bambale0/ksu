@@ -30,7 +30,7 @@ function row(index, old) {
     created_at: '2026-11-06T00:00:00Z', updated_at: '2026-11-06T00:00:00Z' };
 }
 async function setup(page, mode, options = {}) {
-  const requests = [], errors = [], unexpected = [], readPaths = [];
+  const requests = [], errors = [], unexpected = [], readPaths = [], writes = [];
   await page.addInitScript(() => { window.Telegram = { WebApp: { initData: 'test-admin-init' } }; });
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('https://telegram.org/**', (route) => route.fulfill({ body: '' }));
@@ -46,12 +46,19 @@ async function setup(page, mode, options = {}) {
     if (path === '/api/v1/admin/auth/login') return json({ token: 'fixture-token', mfa_verified: true, permissions: options.permissions || ['*'] });
     if (path === '/api/v1/admin/auth/me') return json({ is_active: true, role: 'owner', telegram_id: 1, permissions: options.permissions || ['*'] });
     if (path === '/api/v1/admin/dashboard' || path.endsWith('/promocodes/program') || path === '/api/v1/admin/security/overview' || path === '/api/v1/admin/partners/analytics') return json({});
-    if (path === '/api/v1/admin/trends/options') return json({ models: [] });
+    if (path === '/api/v1/admin/trends/options') return json({ models: options.trendModels || [] });
+    if (options.trendItems && path.startsWith('/api/v1/admin/trends/') && req.method() === 'PATCH') {
+      const body = req.postDataJSON(); writes.push(body);
+      const index = options.trendItems.findIndex(item => item.id === path.split('/').at(-1));
+      options.trendItems[index] = {...options.trendItems[index], ...body};
+      return json(options.trendItems[index]);
+    }
     if (path === '/api/v1/admin/control/tickets' || path === '/api/v1/admin/support/tickets') return json({ items: [], total: 0, limit: 50, offset: 0, has_more: false });
     if (allEndpoints.has(path)) {
       const query = Object.fromEntries(parsed.searchParams);
       requests.push({ path, query });
       const limit = Number(query.limit || 50), offset = Number(query.offset || 0);
+      if (options.trendItems && path === "/api/v1/admin/trends") return json({items:options.trendItems,total:options.trendItems.length,limit,offset});
       if (options.usersPii !== undefined && ['/api/v1/admin/users', '/api/v1/admin/control/users'].includes(path)) {
         const user = {
           ...row(0, false), id: '66666666-6666-4666-8666-666666666666',
@@ -70,7 +77,7 @@ async function setup(page, mode, options = {}) {
   });
   await page.goto('http://127.0.0.1:3018/admin-app/' + ({ control: 'control.html', creator: 'creator-partnership.html', trends: 'trends.html' }[mode] || '') + '?launch=preserved');
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
-  return { requests, errors, unexpected, readPaths };
+  return { requests, errors, unexpected, readPaths, writes };
 }
 for (const entry of cases) {
   test(entry.mode + ' ' + entry.endpoint + ' reaches old records and retains filters on next, refresh and back', async ({ page }) => {
@@ -207,3 +214,27 @@ for (const mode of ['main', 'control']) {
     });
   }
 }
+
+
+test('dedicated web editor updates both workflow prompts and preserves the recipe', async ({page}) => {
+  const steps = [
+    {id:'photo',kind:'image',title:'Фото',model_id:'photo',prompt:'Исходный фото',instructions:'Фото',parameters:{aspect_ratio:'1:1'},inputs:[]},
+    {id:'video',kind:'video',title:'Видео',model_id:'video',prompt:'Исходный видео',instructions:'Видео',parameters:{duration:5},inputs:[],bindings:[{from:'photo.output_image',to:'first_frame_url'}]}
+  ];
+  const original = {id:'workflow',title:'Старое название',is_active:true,payload:{schema_version:2,workflow_type:'sequential_photo_video',preview_url:'https://example.invalid/preview.png',description:'Описание',tags:['trend'],sort_order:5,usage_count:12,steps}};
+  const ctx = await setup(page,'trends',{trendItems:[original],trendModels:[{id:'photo',title:'Photo',media_type:'image'},{id:'video',title:'Video',media_type:'video'}]});
+  await page.locator('#trendList').getByRole('button',{name:'Редактировать'}).click();
+  await expect(page.locator('#trendWorkflowSteps')).toBeVisible();
+  await page.locator('#trendTitle').fill('Новое название');
+  await page.getByLabel('Шаг 1 · Фото — Промпт',{exact:true}).fill('Новый фото');
+  await page.getByLabel('Шаг 2 · Видео — Промпт',{exact:true}).fill('Новый видео');
+  await page.locator('#trendRefresh').click();
+  await expect(page.locator('#trendTitle')).toHaveValue('Новое название');
+  await page.getByRole('button',{name:'Сохранить изменения',exact:true}).click();
+  await expect.poll(()=>ctx.writes.length).toBe(1);
+  expect(ctx.writes[0].title).toBe('Новое название');
+  expect(ctx.writes[0].payload.steps.map(step=>step.prompt)).toEqual(['Новый фото','Новый видео']);
+  expect(ctx.writes[0].payload.steps[1].bindings).toEqual(steps[1].bindings);
+  expect(ctx.writes[0].payload.usage_count).toBe(12);
+  expect(ctx.errors).toEqual([]);
+});

@@ -680,3 +680,29 @@ test('saved trend cannot reopen a stale draft while the manager refresh is delay
   expect(state.writes).toHaveLength(1);
   expect(state.errors).toEqual([]);
 });
+
+
+test('admin searches active and hidden trends by title and edits the matching workflow', async ({ page }) => {
+  const first = { id: 'search-1', title: 'Киношный портрет', is_active: true, payload: v2Payload() };
+  const second = { id: 'search-2', title: 'Летний портрет', is_active: false, payload: v2Payload() };
+  const state = await setup(page, { items: [first, second] });
+  const manager = page.getByRole('dialog', { name: 'Управление трендами' });
+  const search = manager.getByLabel('Поиск по названию');
+  await search.fill('  ЛЕТНИЙ ');
+  await expect(manager.locator('.inline-trend-admin-card')).toHaveCount(1);
+  await expect(manager.locator('.inline-trend-admin-card')).toContainText(second.title);
+  await manager.getByLabel('Видимость').selectOption('active');
+  await expect(manager.getByText('Тренды не найдены.')).toBeVisible();
+  await manager.getByLabel('Видимость').selectOption('all');
+  await manager.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await editor.getByLabel('Название', { exact: true }).fill('Летний новый');
+  await editor.getByLabel('Промпт фото', { exact: true }).fill('Новый портрет @Image1');
+  await editor.getByLabel('Промпт видео', { exact: true }).fill('Новое движение @Image1');
+  await editor.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].title).toBe('Летний новый');
+  expect(state.writes[0].payload.steps.map(step => step.prompt)).toEqual(['Новый портрет @Image1','Новое движение @Image1']);
+  expect(state.writes[0].is_active).toBe(false);
+  expect(state.writes[0].payload.steps[1].bindings).toEqual(second.payload.steps[1].bindings);
+});
