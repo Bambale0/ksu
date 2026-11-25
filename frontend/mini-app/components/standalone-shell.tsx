@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
+import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea , openWebPayments } from "@/lib/telegram";
 
 const STANDALONE_RETURN_KEY = "__roxy_standalone_return_v1";
 const STANDALONE_RETURNING_TO_KEY = "__roxy_standalone_returning_to_v1";
@@ -89,7 +89,7 @@ function openMainRoute(route: "home"): void {
 }
 
 function openPayments(): void {
-  window.location.assign("/mini-app/payments/");
+  openWebPayments();
 }
 
 export function StandaloneShell({

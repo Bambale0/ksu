@@ -46,7 +46,7 @@ test('pricing uses retail data, true package total, shared request and filters',
  await expect(models.locator('.model-price-card:visible')).toContainText('QA Video');
  await models.getByRole('button',{name:'Все',exact:true}).click();
  await expect(models.locator('.model-price-card:visible')).toHaveCount(3);
- await expect(page.locator('.price-actions .button-primary')).toHaveAttribute('href','/login?section=profile&ref=QA');
+ await expect(page.locator('.price-actions .button-primary')).toHaveAttribute('href','/login?section=payments&ref=QA');
 });
 test('prices recover after API failure without inventing amounts',async({page})=>{
  await setup(page);

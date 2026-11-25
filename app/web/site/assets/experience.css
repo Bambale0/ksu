@@ -538,3 +538,7 @@ main > .pricing-section,main > .editorial-detail{padding-top:clamp(48px,6vw,96px
 @media(max-width:1100px) and (min-width:1001px){.desktop-nav a,.desktop-nav a:first-child{padding-inline:8px;font-size:12px}}
 @media(max-width:700px){.partner-spread{grid-template-columns:minmax(0,1fr)}.partner-story .button{width:100%;justify-content:center}}
 @media(prefers-reduced-motion:reduce){.partner-story,.pricing-page .price-summary,.pricing-page .model-price-card,.pricing-page .package-price-card{animation:none!important;transition:none!important;transform:none!important}}
+
+.login-widget .approval-panel{display:grid;gap:12px;width:100%}
+.approval-panel .approval-code{display:block;text-align:center;letter-spacing:.18em;font-variant-numeric:tabular-nums;font-size:clamp(28px,5vw,42px);color:#e5b5ff;padding:14px;border:1px solid var(--campaign-edge);border-radius:12px}
+.login-widget .button{width:100%;justify-content:center}

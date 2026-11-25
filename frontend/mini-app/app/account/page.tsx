@@ -1,5 +1,7 @@
 "use client";
 
+import { openWebPayments } from "@/lib/telegram";
+
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
@@ -89,7 +91,7 @@ export default function AccountPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Возможности</span><h2>Аккаунт и сервисы</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
         <div className="tool-grid">
-          {items.map((item) => <button className="tool-result-card" type="button" key={item.href} onClick={() => window.location.assign(item.href)} style={{ textAlign: "left", width: "100%" }}>
+          {items.map((item) => <button className="tool-result-card" type="button" key={item.href} onClick={() => item.href === "/mini-app/payments/" ? openWebPayments() : window.location.assign(item.href)} style={{ textAlign: "left", width: "100%" }}>
             <div className="section-title"><div><span className="kicker">ROXY</span><h2>{item.title}</h2></div>{item.badge ? <span className="status succeeded">{item.badge}</span> : null}</div>
             <p className="muted">{item.copy}</p>
           </button>)}

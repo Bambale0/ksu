@@ -9,7 +9,9 @@
   }
   const trend = query.get("trend") || "";
   const validTrend = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(trend);
-  const target = new URL(validTrend ? "/mini-app/trend/" : "/mini-app/", location.origin);
+  const payment = query.get("section") === "payments" && !validTrend;
+  const target = new URL(validTrend ? "/mini-app/trend/" : payment ? "/mini-app/payments/" : "/mini-app/", location.origin);
+  if (payment && ["card","cryptobot"].includes(query.get("provider"))) target.searchParams.set("provider",query.get("provider"));
   if (validTrend) target.searchParams.set("id", trend);
   else {
     const tool = query.get("tool") || "";
@@ -30,7 +32,8 @@
   const hint = document.getElementById("login-target");
   let busy = false;
   let loading = false;
-  if (validTrend) hint.hidden = false;
+  if (validTrend || payment) hint.hidden = false;
+  if (payment) { hint.textContent = "После подтверждения откроется пополнение ROX."; proceed.textContent = "Открыть пополнение ↗"; }
 
   function message(text, error = false) {
     status.textContent = text;
@@ -60,6 +63,106 @@
     } catch {}
     return false;
   }
+  const approvalRoot = "/api/v1/browser-auth/approval";
+  let pollTimer;
+  let deadline = 0;
+  let generation = 0;
+
+  async function requestApproval(path, payload) {
+    const response = await fetch(approvalRoot + path, {
+      credentials: "same-origin", cache: "no-store",
+      ...(payload !== undefined ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)} : {}),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error("approval unavailable");
+    return response.json();
+  }
+  function stopPolling() { generation++; clearTimeout(pollTimer); }
+  function showStart() {
+    stopPolling();
+    widget.replaceChildren();
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button button-primary";
+    button.textContent = "Войти через Telegram";
+    button.onclick = async () => {
+      if (busy) return;
+      busy = true;
+      button.disabled = true;
+      try {
+        const ticket = await requestApproval("/start", {purpose:payment ? "payments" : "studio"});
+        showTicket(ticket);
+      } catch { message("Не удалось создать запрос. Попробуй снова.",true); }
+      finally { busy=false; button.disabled=false; }
+    };
+    widget.append(button);
+    message("Подтверди вход через Telegram в чате бота.");
+  }
+  function showTicket(ticket) {
+    if (!ticket || !["pending","approved"].includes(ticket.status) || !/^\d{6}$/.test(ticket.code) ||
+        !/^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=auth_[A-Za-z0-9_-]{43}$/.test(ticket.url) ||
+        !Number.isFinite(ticket.expires_in) || ticket.expires_in <= 0 || ticket.expires_in > 300) throw new Error("invalid ticket");
+    stopPolling();
+    const version = generation;
+    deadline = Date.now() + ticket.expires_in*1000;
+    widget.replaceChildren();
+    const panel = document.createElement("div");
+    panel.className = "approval-panel";
+    const label = document.createElement("p");
+    label.textContent = "Сверь код на сайте и в Telegram:";
+    const code = document.createElement("strong");
+    code.className = "approval-code";
+    code.textContent = ticket.code;
+    const link = document.createElement("a");
+    link.className = "button button-primary";
+    link.href = ticket.url;
+    // Direct user-initiated link, no async about:blank popup. Keep the polling tab.
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Открыть Telegram ↗";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "button button-outline";
+    cancel.textContent = "Отменить вход";
+    cancel.onclick = async () => {
+      if (busy) return;
+      stopPolling();
+      cancel.disabled = true;
+      try { await requestApproval("/cancel", {}); showStart(); message("Вход отменён."); }
+      catch { showStart(); message("Не подтверждай старый запрос. Попробуй заново.",true); }
+    };
+    panel.append(label,code,link,cancel);
+    widget.append(panel);
+    message("Подтверди запрос в личном чате ROXY и вернись сюда. Код действует 5 минут.");
+    async function poll() {
+      if (version !== generation) return;
+      if (Date.now() >= deadline) { showStart(); message("Запрос истёк. Создай новый.",true); return; }
+      try {
+        const result = await requestApproval("/status");
+        if (version !== generation) return;
+        if (result?.status === "approved") {
+          busy = true;
+          cancel.disabled = true;
+          message("Вход подтверждён. Открываем ROXY…");
+          const claimed = await requestApproval("/claim", {});
+          if (version !== generation) return;
+          if (!claimed?.ok || typeof claimed.init_data !== "string" || !claimed.init_data ||
+              !Number.isFinite(claimed.expires_in) || claimed.expires_in <= 0) throw new Error("claim failed");
+          sessionStorage.setItem(key, JSON.stringify({initData:claimed.init_data,expiresAt:Date.now()+claimed.expires_in*1000}));
+          stopPolling();
+          location.replace(claimed.purpose === "payments" && !payment ? "/mini-app/payments/" : destination);
+          return;
+        }
+        if (result?.status !== "pending") { showStart(); message("Запрос отклонён или уже использован.",true); return; }
+      } catch {
+        if (version === generation) message("Проверяем соединение. Вернись сюда после подтверждения.");
+      } finally { busy = false; cancel.disabled = false; }
+      if (version === generation) pollTimer = setTimeout(poll,1500);
+    }
+    void poll();
+  }
+
   window.onRoxyTelegramAuth = async (user) => {
     if (busy) return;
     busy = true;
@@ -87,7 +190,15 @@
     widget.replaceChildren();
     message("Подключаем безопасный вход…");
     try {
+      stopPolling();
       if (await existingSession()) return;
+      const ticket = await requestApproval("/status");
+      if (ticket !== null) {
+        if (["pending","approved"].includes(ticket.status)) showTicket(ticket);
+        else showStart();
+        return;
+      }
+      // During rolling upgrade only, an older server has no approval endpoint.
       const response = await fetch("/api/v1/browser-auth/config",{credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
       const config = await response.json();
       const bot = String(config.bot_username || "").replace(/^@/,"");

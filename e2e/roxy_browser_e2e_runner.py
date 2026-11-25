@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import re
+from urllib.parse import parse_qs, urlsplit
+
+from redis.asyncio import Redis
+
+from app.core.config import settings
+from app.services import browser_approval
 
 from playwright.async_api import Page, expect
 
@@ -61,12 +67,51 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     report.ok("boot + canonical navigation + Back")
 
 
-async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
-    await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
-    balance = page.locator("#balance")
+async def open_web_wallet(native_page: Page) -> Page:
+    """Real backend/Redis exchange; only the Telegram device update is simulated."""
+    await native_page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
+    balance = native_page.locator("#balance")
     await expect(balance).to_be_visible(timeout=10000)
     await balance.click()
+    entry = await native_page.evaluate("window.__roxyE2E.opened.at(-1)")
+    expected = f"{suite.legacy.BASE_URL}/login?section=payments"
+    assert entry == expected, f"Unexpected native web entry: {entry}"
+    # Separate browser context: no native Telegram SDK shim or copied initData.
+    context = await native_page.context.browser.new_context(viewport={"width": 430, "height": 932})
+    web = await context.new_page()
+    try:
+        await context.route(re.compile(r"https://telegram\\.org/js/telegram-web-app\\.js.*"), lambda route: route.fulfill(status=200, content_type="application/javascript", body=""))
+        await web.goto(entry, wait_until="domcontentloaded")
+        await web.get_by_role("button", name="Войти через Telegram").click()
+        code = web.locator(".approval-code")
+        await expect(code).to_be_visible(timeout=8000)
+        link = await web.get_by_role("link", name=re.compile("Открыть Telegram")).get_attribute("href")
+        ticket = parse_qs(urlsplit(link or "").query)["start"][0].removeprefix("auth_")
+        _, user = suite.legacy.telegram_init_data()
+        redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            bound = await browser_approval.transition(redis, ticket, "bind", owner=int(user["id"]))
+            assert bound == ["pending", await code.inner_text(), "payments"]
+            assert await browser_approval.transition(redis, ticket, "approve", owner=int(user["id"]), user=user) == ["approved", "payments"]
+        finally:
+            await redis.aclose()
+        await expect(web).to_have_url(re.compile(r"/mini-app/payments/?$"), timeout=10000)
+        await expect(web.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
+        return web
+    except BaseException:
+        await context.close()
+        raise
 
+
+async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
+    web = await open_web_wallet(page)
+    try:
+        await _checkout_web_wallet(web, report)
+    finally:
+        await web.context.close()
+
+
+async def _checkout_web_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(page).to_have_url(re.compile(r"/mini-app/payments/?"), timeout=8000)
     await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
     yookassa_tab = page.get_by_role("button", name="ЮKassa").first
@@ -98,7 +143,7 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     checkout_response = await checkout_pending.value
     assert checkout_response.ok, f"yookassa checkout: {checkout_response.status} {await checkout_response.text()}"
     report.controls_seen.add("wallet:yookassa:checkout")
-    report.ok("payments page + YooKassa checkout")
+    report.ok("Telegram handoff + browser approval + YooKassa checkout")
 
 
 async def scenario_profile_support_partner(page: Page, report: suite.legacy.Report) -> None:
@@ -163,12 +208,12 @@ async def inventory_visible_controls(page: Page, report: suite.legacy.Report) ->
             if signature:
                 report.controls_seen.add(f"inventory:{route}:{signature}")
 
-    await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
-    await expect(page.locator("#balance")).to_be_visible(timeout=10000)
-    await page.locator("#balance").click()
-    await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
-    assert await page.locator("button:visible").count() > 0
-    report.controls_seen.add("inventory:payments-page")
+    web = await open_web_wallet(page)
+    try:
+        assert await web.locator("button:visible").count() > 0
+        report.controls_seen.add("inventory:payments-page")
+    finally:
+        await web.context.close()
     report.ok("visible control inventory", f"{len(report.controls_seen)} unique control signatures")
 
 

@@ -4,6 +4,7 @@ const tools = ['photo','video','text','own-photo','reference'];
 const trend = '11111111-1111-4111-8111-111111111111';
 
 async function widget(page, options={}) {
+  await page.route("**/api/v1/browser-auth/approval/status",route=>route.fulfill({status:404,json:{detail:"legacy deployment"}}));
   await page.route('**/api/v1/browser-auth/config',route=>route.fulfill({
     status:options.configStatus || 200,
     json:{bot_username:'RoxyTestBot'}
@@ -131,4 +132,51 @@ test('video tool entry continues to the real create screen with the video catego
   await page.locator('#login-continue').click();
   await expect(page.locator('.family-tabs .active')).toHaveText('Видео');
   expect(paidWrites).toBe(0);
+});
+
+
+test('Telegram chat approval resumes after reload and opens the browser topup page', async ({page}) => {
+  const ticket={status:'pending',url:'https://t.me/RoxyTestBot?start=auth_'+ 'a'.repeat(43),code:'123456',expires_in:300,purpose:'payments'};
+  let current={status:'idle'}, starts=0, claims=0, widgetLoads=0;
+  await page.route('https://telegram.org/js/telegram-widget.js**', route=>{widgetLoads++;return route.abort();});
+  await page.route('**/api/v1/browser-auth/approval/status',route=>route.fulfill({json:current}));
+  await page.route('**/api/v1/browser-auth/approval/start',route=>{
+    starts++;
+    expect(route.request().postDataJSON()).toEqual({purpose:'payments'});
+    current=ticket;
+    return route.fulfill({json:ticket});
+  });
+  await page.route('**/api/v1/browser-auth/approval/claim',route=>{
+    claims++;
+    return route.fulfill({json:{ok:true,init_data:'query_id=browser-approval&hash=fixture',expires_in:86400,purpose:'payments'}});
+  });
+  await page.route('**/mini-app/payments/?provider=cryptobot',route=>route.fulfill({contentType:'text/html',body:'<h1>Пополнение ROX</h1>'}));
+  await page.goto('/login?section=payments&provider=cryptobot');
+  await page.getByRole('button',{name:'Войти через Telegram'}).click();
+  await expect(page.locator('.approval-code')).toHaveText('123456');
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('href',ticket.url);
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('target','_blank');
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('rel','noopener noreferrer');
+  await page.reload();
+  await expect(page.locator('.approval-code')).toHaveText('123456');
+  expect(starts).toBe(1);
+  current={...ticket,status:'approved'};
+  await expect(page).toHaveURL(/\/mini-app\/payments\/\?provider=cryptobot$/);
+  expect(claims).toBe(1);
+  expect(widgetLoads).toBe(0);
+  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('__roxy_browser_init_data_v1')).initData)).toBe('query_id=browser-approval&hash=fixture');
+});
+
+test('Telegram chat rejection never creates a session',async({page})=>{
+  const ticket={status:'pending',url:'https://t.me/RoxyTestBot?start=auth_'+ 'b'.repeat(43),code:'654321',expires_in:300,purpose:'studio'};
+  let current={status:'idle'};
+  await page.route('**/api/v1/browser-auth/approval/status',route=>route.fulfill({json:current}));
+  await page.route('**/api/v1/browser-auth/approval/start',route=>{current=ticket;return route.fulfill({json:ticket});});
+  await page.goto('/login');
+  await page.getByRole('button',{name:'Войти через Telegram'}).click();
+  await expect(page.locator('.approval-code')).toHaveText('654321');
+  current={status:'denied'};
+  await expect(page.getByRole('button',{name:'Войти через Telegram'})).toBeVisible({timeout:6000});
+  expect(await page.evaluate(()=>sessionStorage.getItem('__roxy_browser_init_data_v1'))).toBeNull();
+  await expect(page).toHaveURL(/\/login$/);
 });

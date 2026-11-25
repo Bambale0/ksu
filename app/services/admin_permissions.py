@@ -197,6 +197,9 @@ ACTION_POLICIES: dict[str, AdminActionPolicy] = {
     "prompts.moderate": AdminActionPolicy("prompts.manage", confirmation_required=True),
     "social.moderate": AdminActionPolicy("social.moderate", confirmation_required=True),
     "runtime.reload": AdminActionPolicy("runtime.manage", confirmation_required=True),
+    "runtime.browser_approval_limits": AdminActionPolicy(
+        "runtime.manage", confirmation_required=True, step_up_required=True
+    ),
     "runtime.prompt_tool_routes": AdminActionPolicy(
         "runtime.manage", confirmation_required=True, step_up_required=True
     ),

@@ -13,6 +13,9 @@ from app.core.config import settings
 from app.db.admin_models import AdminRuntimeSetting, TariffVersion
 from app.db.models import AdminAccount, User
 from app.services.admin_commands import AdminCommandLedger
+from app.services.browser_approval_policy import (
+    SETTING_KEY as BROWSER_APPROVAL_SETTING_KEY, BrowserApprovalPolicy, configured_browser_approval,
+)
 from app.services.admin_policy import AdminPolicy
 from app.services.generation_provider_routing import (
     ROUTES_SETTING_KEY, configured_routes, route_options, validate_routes, validate_user_routes,
@@ -48,9 +51,44 @@ class AdminRuntimeService:
         return {
             **{item.key: item.value for item in rows},
             BALANCE_ALERT_SETTING_KEY: balance_alert.payload(),
+            BROWSER_APPROVAL_SETTING_KEY: (await configured_browser_approval(session)).model_dump(),
             ROUTES_SETTING_KEY: {**config, "options": route_options()},
             PROMPT_TOOL_ROUTES_SETTING_KEY: {**prompt_tool_routes, "options": prompt_tool_route_options()},
         }
+
+    @staticmethod
+    async def set_browser_approval_limits(
+        session: AsyncSession, *, admin: AdminAccount, requested: BrowserApprovalPolicy,
+        idempotency_key: str, request_id: str, confirmed: bool, step_up_valid: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(
+            admin, "runtime.browser_approval_limits",
+            confirmed=confirmed, step_up_valid=step_up_valid,
+        )
+
+        async def operation() -> dict[str, Any]:
+            initial = await configured_browser_approval(session)
+            await session.execute(insert(AdminRuntimeSetting).values(
+                key=BROWSER_APPROVAL_SETTING_KEY, value=initial.model_dump(),
+                updated_by_admin_id=admin.id,
+            ).on_conflict_do_nothing(index_elements=[AdminRuntimeSetting.key]))
+            row = await session.scalar(select(AdminRuntimeSetting).where(
+                AdminRuntimeSetting.key == BROWSER_APPROVAL_SETTING_KEY,
+            ).with_for_update().execution_options(populate_existing=True))
+            if row is None or row.value.get("revision") != requested.revision:
+                raise ValueError("Browser approval limits changed; reload before saving")
+            updated = requested.model_copy(update={"revision": requested.revision + 1}).model_dump()
+            row.value = updated
+            row.updated_by_admin_id = admin.id
+            await session.flush()
+            return updated
+
+        return await AdminCommandLedger.execute(
+            session, idempotency_key=idempotency_key, admin_user_id=admin.id,
+            request_id=request_id, action="runtime.browser_approval_limits",
+            target_id=BROWSER_APPROVAL_SETTING_KEY,
+            request_payload=requested.model_dump(), operation=operation,
+        )
 
     @staticmethod
     async def set_neironych_balance_alert(

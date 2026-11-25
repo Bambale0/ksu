@@ -2,13 +2,13 @@ from aiogram import F, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
-from app.bot.handlers import admin, admin_extensions, launcher, nexus_test, seedance_test
+from app.bot.handlers import admin, admin_extensions, browser_approval, launcher, nexus_test, seedance_test
 from app.bot.middlewares import DatabaseSessionMiddleware
 
 
 def create_dispatcher(redis: Redis) -> Dispatcher:
     """Customer UX is Mini-App-only; Telegram admin routes remain operator-only."""
-    dispatcher = Dispatcher(storage=RedisStorage(redis=redis))
+    dispatcher = Dispatcher(storage=RedisStorage(redis=redis), redis=redis)
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware())
 
     # Consent must precede every stateful router, including admin input states.
@@ -16,6 +16,7 @@ def create_dispatcher(redis: Redis) -> Dispatcher:
 
     # Keep trusted operator commands reachable without exposing the retired
     # customer text menus. Register them before the customer catch-all launcher.
+    dispatcher.include_router(browser_approval.router)
     dispatcher.include_router(admin.router)
     dispatcher.include_router(admin_extensions.router)
     dispatcher.include_router(seedance_test.router)

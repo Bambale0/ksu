@@ -173,7 +173,7 @@ function enrichPage(name,html,editorial){
       <h2 class="price-subhead" id="packages-title">Пополнение баланса в рублях</h2>
       <p class="price-explanation">Рублёвые пакеты доступного способа оплаты. Бонусы пакета уже включены в итоговое количество ROX. Дополнительные акции и способы оплаты проверяй в профиле перед оплатой.</p>
       <div data-packages aria-live="polite"><p class="price-status">Загружаем пакеты…</p></div>
-      <div class="price-actions"><a class="button button-primary" href="/login?section=profile" data-app-link>Войти и открыть профиль ↗</a><a class="button button-outline" href="/faq" data-site-link>Вопросы об оплате</a></div>
+      <div class="price-actions"><a class="button button-primary" href="/login?section=payments" data-app-link>Войти и пополнить баланс ↗</a><a class="button button-outline" href="/faq" data-site-link>Вопросы об оплате</a></div>
       <h2 class="price-subhead" id="models-title">Стоимость генераций по моделям</h2>
       <p class="price-explanation">Выбери фото, видео или музыку. Здесь базовые тарифы, а не окончательный расчёт конкретной работы.</p>
       <div data-catalog="all" aria-live="polite"><p class="price-status">Загружаем актуальные цены…</p></div>`)

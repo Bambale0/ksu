@@ -1,5 +1,7 @@
 "use client";
 
+import { openWebPayments } from "@/lib/telegram";
+
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
@@ -25,7 +27,8 @@ function ensureHost(parent: HTMLElement, kind: HostKind): HTMLElement {
 }
 
 function open(path: string) {
-  window.location.assign(path);
+  if (path === "/mini-app/payments/") openWebPayments();
+  else window.location.assign(path);
 }
 
 export function CustomerParityHub() {
