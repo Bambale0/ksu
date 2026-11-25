@@ -1,5 +1,7 @@
 "use client";
 
+import { openWebPayments } from "@/lib/telegram";
+
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
@@ -66,8 +68,8 @@ export function WalletParity() {
   return createPortal(
     <div className="wallet-parity-link">
       <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/promocodes/")}>Есть промокод?</button>
-      {lavaAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button> : null}
-      {cryptoBotAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить криптой · CryptoBot</button> : null}
+      {lavaAvailable ? <button className="secondary wide" type="button" onClick={() => openWebPayments("card")}>Резервная оплата · Lava Top</button> : null}
+      {cryptoBotAvailable ? <button className="secondary wide" type="button" onClick={() => openWebPayments("cryptobot")}>Оплатить криптой · CryptoBot</button> : null}
       <small>ЮKassa остаётся основным способом. Пакет начисляет ровно указанное количество ROX. Lava Top — резерв для карты, CryptoBot — для криптовалюты. Бонусные ROX доступны только по промокоду и только после успешной оплаты.</small>
     </div>,
     host,

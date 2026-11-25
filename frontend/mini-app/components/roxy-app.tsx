@@ -10,7 +10,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage } from "@/lib/generation-delivery";
-import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
+import { haptic, initTelegram, notify, syncSafeArea, telegram , openWebPayments } from "@/lib/telegram";
 import type { Draft, FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote, Route, UiField } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 import { WebProfileLogout } from "./web-profile-logout";
@@ -370,7 +370,7 @@ export function RoxyApp() {
 
   const tgUser = telegram()?.initDataUnsafe?.user;
   const avatar = tgUser?.photo_url || "";
-  const openPayments = () => window.location.assign("/mini-app/payments/");
+  const openPayments = () => openWebPayments();
 
   return (
     <div className="roxy-app">

@@ -131,7 +131,7 @@ def balance_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=PRIMARY_PAYMENT_TEXT,
-                    web_app=WebAppInfo(url=_mini_app_url("wallet")),
+                    url=f"{settings.public_base_url.rstrip('/')}/login?section=payments",
                 )
             ]
         )

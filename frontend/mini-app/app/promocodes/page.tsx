@@ -1,5 +1,7 @@
 "use client";
 
+import { openWebPayments } from "@/lib/telegram";
+
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
@@ -92,7 +94,7 @@ export default function PromocodesPage() {
           <button
             className="primary wide"
             type="button"
-            onClick={() => window.location.assign("/mini-app/payments/")}
+            onClick={() => openWebPayments()}
           >
             Перейти к пополнению
           </button>

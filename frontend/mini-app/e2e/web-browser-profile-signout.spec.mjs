@@ -117,3 +117,11 @@ test('browser heading reaches public login and keeps the profile session', async
   await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=profile');
   expect(await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).initData,STORAGE_KEY)).toBe(BROWSER_TOKEN);
 });
+
+
+test('native balance opens website login for topup, not embedded checkout',async({page})=>{
+  await openWebProfile(page,{native:true});
+  await page.locator('.balance-button').first().click();
+  expect(await page.evaluate(()=>window.__qaOpenedWebUrl)).toBe(new URL('/login?section=payments',page.url()).href);
+  await expect(page).toHaveURL(/\/mini-app\/\?route=profile/);
+});

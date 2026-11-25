@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage, isGenerationMediaReady, isTerminalGeneration, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { SavedReferencePicker } from "@/lib/reference-memory";
-import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
+import { haptic, initTelegram, notify, syncSafeArea, telegram , openWebPayments } from "@/lib/telegram";
 import type {
   ActivePromo,
   Draft,
@@ -715,7 +715,7 @@ export function RoxySocialApp() {
 
   const tgUser = telegram()?.initDataUnsafe?.user;
   const avatar = tgUser?.photo_url || "";
-  const openPayments = () => window.location.assign("/mini-app/payments/");
+  const openPayments = () => openWebPayments();
 
   return (
     <div className="roxy-app">

@@ -1,4 +1,5 @@
 import type { TelegramUser } from "./types";
+import { getBrowserInitData } from "./browser-auth-session";
 
 type BackButton = {
   show?: () => void;
@@ -497,4 +498,14 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** A native Telegram launch must hand off to a browser before ruble checkout. */
+export function openWebPayments(provider?: "card" | "cryptobot"): void {
+  const credential = getInitDataFallback();
+  const native = Boolean(telegram()?.initDataUnsafe?.user) || Boolean(credential && credential !== getBrowserInitData());
+  const url = new URL(native ? "/login?section=payments" : "/mini-app/payments/", window.location.origin);
+  if (provider) url.searchParams.set("provider", provider);
+  if (native) openExternalLink(url.href);
+  else window.location.assign(url.pathname + url.search);
 }
