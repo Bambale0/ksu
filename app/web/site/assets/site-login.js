@@ -117,6 +117,8 @@
     const link = document.createElement("a");
     link.className = "button button-primary";
     link.href = ticket.url;
+    // Direct user-initiated link, no async about:blank popup. Keep the polling tab.
+    link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = "Открыть Telegram ↗";
     const cancel = document.createElement("button");

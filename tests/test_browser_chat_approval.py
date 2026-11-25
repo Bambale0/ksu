@@ -61,6 +61,11 @@ async def test_atomic_chat_approval():
             t2, p2, _ = await approval.issue(redis, (t,p), "payments", "qa")
             assert (await approval.transition(redis, t, "status", proof=p))[0] == "denied"
             assert (await approval.transition(redis, t2, "cancel", proof=p2))[0] == "denied"
+            limits = approval.ApprovalLimits(browser_limit=1, network_limit=2, window_seconds=60, revision=2)
+            limited = await approval.issue(redis, None, "studio", "limited", limits=limits)
+            assert limited is not None
+            assert await approval.issue(redis, limited[:2], "studio", "limited", limits=limits) is None
+            assert await approval.issue(redis, None, "studio", "limited", limits=limits) is None
         finally:
             server.terminate()
             server.wait(timeout=5)

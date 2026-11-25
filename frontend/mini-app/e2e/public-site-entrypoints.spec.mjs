@@ -155,6 +155,8 @@ test('Telegram chat approval resumes after reload and opens the browser topup pa
   await page.getByRole('button',{name:'Войти через Telegram'}).click();
   await expect(page.locator('.approval-code')).toHaveText('123456');
   await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('href',ticket.url);
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('target','_blank');
+  await expect(page.getByRole('link',{name:'Открыть Telegram'})).toHaveAttribute('rel','noopener noreferrer');
   await page.reload();
   await expect(page.locator('.approval-code')).toHaveText('123456');
   expect(starts).toBe(1);

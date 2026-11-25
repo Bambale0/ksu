@@ -18,6 +18,7 @@ from app.services.admin_policy import AdminPolicyError
 from app.services.admin_pricing import AdminPricingService
 from app.services.admin_promos import AdminPromoService
 from app.services.admin_runtime import AdminRuntimeService
+from app.services.browser_approval_policy import BrowserApprovalPolicy
 from app.services.admin_security import AdminAuthService
 from app.services.admin_support import AdminSupportService
 
@@ -943,6 +944,24 @@ async def web_admin_runtime_reload(
             idempotency_key=_require_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirmed(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/runtime/browser-approval-limits")
+async def web_admin_browser_approval_limits(
+    payload: BrowserApprovalPolicy, request: Request,
+    context: AdminRuntimeWriteDep, session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session, AdminRuntimeService.set_browser_approval_limits(
+            session, admin=context.account, requested=payload,
+            idempotency_key=_require_idempotency(idempotency_key),
+            request_id=_request_id(request), confirmed=_confirmed(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
         ),
     )
     return {**result, "idempotency_replayed": replayed}

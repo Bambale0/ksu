@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+from dataclasses import dataclass
 import re
 import secrets
 
@@ -10,6 +12,25 @@ TTL = 300
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}\Z")
 COOKIE = "roxy_telegram_approval"
 ROOT = "/api/v1/browser-auth/approval"
+logger = logging.getLogger("ksu.browser_approval")
+
+
+@dataclass(frozen=True)
+class ApprovalLimits:
+    browser_limit: int = 5
+    network_limit: int = 300
+    window_seconds: int = 600
+    revision: int = 1
+
+
+def audit(ticket: str, action: str, outcome: str, owner: int) -> None:
+    """Correlate decisions/claims without logging the challenge or credentials."""
+    logger.info(
+        "browser_approval action=%s outcome=%s telegram_id=%s approval_id=%s",
+        action, outcome, owner, digest(ticket)[:24],
+        extra={"approval_action": action, "approval_outcome": outcome,
+               "telegram_id": owner, "approval_id": digest(ticket)[:24]},
+    )
 
 
 def digest(value: str) -> str:
@@ -63,8 +84,8 @@ return {'unavailable'}
 
 ISSUE = """
 local n = redis.call('INCR',KEYS[2])
-if n == 1 then redis.call('EXPIRE',KEYS[2],600) end
-if n > 5 then return 0 end
+if n == 1 then redis.call('EXPIRE',KEYS[2],tonumber(ARGV[4])) end
+if n > tonumber(ARGV[5]) then return 0 end
 if KEYS[3] ~= KEYS[1] and redis.call('HGET',KEYS[3],'proof') == ARGV[1] then
   local old=redis.call('HGET',KEYS[3],'state')
   if old == 'pending' or old == 'approved' then redis.call('HSET',KEYS[3],'state','denied') end
@@ -75,21 +96,22 @@ return 1
 """
 
 
-async def issue(redis, prior: tuple[str, str] | None, purpose: str, client: str):
+async def issue(redis, prior: tuple[str, str] | None, purpose: str, client: str,
+                *, limits: ApprovalLimits = ApprovalLimits()):
     ticket = secrets.token_urlsafe(32)
     proof = prior[1] if prior else secrets.token_urlsafe(32)
     code = f"{secrets.randbelow(1_000_000):06d}"
-    rate = "roxy:browser-approval:rate:" + digest(proof)
+    rate = f"roxy:browser-approval:rate:{limits.revision}:" + digest(proof)
     # Bound anonymous issuance too. Reverse proxy rate limits remain useful.
-    ip_rate = "roxy:browser-approval:network:" + hashlib.sha256(client.encode()).hexdigest()
+    ip_rate = f"roxy:browser-approval:network:{limits.revision}:" + hashlib.sha256(client.encode()).hexdigest()
     n = await redis.eval(
-        "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],600) end; return n",
-        1, ip_rate,
+        "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],tonumber(ARGV[1])) end; return n",
+        1, ip_rate, limits.window_seconds,
     )
-    if int(n) > 300:
+    if int(n) > limits.network_limit:
         return None
     ok = await redis.eval(ISSUE, 3, key(ticket), rate, key(prior[0]) if prior else key(ticket),
-                          digest(proof), code, purpose)
+                          digest(proof), code, purpose, limits.window_seconds, limits.browser_limit)
     if not ok:
         return None
     return ticket, proof, code
@@ -100,4 +122,7 @@ async def transition(redis, ticket: str, action: str, *, proof: str = "", owner:
         return ["expired"]
     result = await redis.eval(TRANSITION, 1, key(ticket), action, digest(proof) if proof else "",
                               str(owner), json.dumps(user or {}, ensure_ascii=False))
-    return [item.decode() if isinstance(item, bytes) else item for item in result]
+    decoded = [item.decode() if isinstance(item, bytes) else item for item in result]
+    if action in {"approve", "deny"}:
+        audit(ticket, action, decoded[0], owner)
+    return decoded

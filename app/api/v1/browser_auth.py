@@ -6,8 +6,9 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import RedisDep
+from app.api.deps import RedisDep, SessionDep
 from app.services import browser_approval as approval
+from app.services.browser_approval_policy import configured_browser_approval
 from app.core.config import settings
 from app.core.telegram_browser_auth import (
     build_browser_init_data,
@@ -104,11 +105,12 @@ def _approval_url(ticket: str) -> str:
 
 
 @router.post("/approval/start")
-async def approval_start(payload: ApprovalStart, request: Request, response: Response, redis: RedisDep):
+async def approval_start(payload: ApprovalStart, request: Request, response: Response, redis: RedisDep, session: SessionDep):
     _approval_origin(request)
     _approval_url("placeholder")
+    policy = await configured_browser_approval(session)
     result = await approval.issue(redis, _approval_cookie(request), payload.purpose,
-                                  request.client.host if request.client else "unknown")
+                                  request.client.host if request.client else "unknown", limits=policy.limits())
     if result is None:
         raise HTTPException(429, "Too many login requests")
     ticket, proof, code = result
@@ -143,7 +145,9 @@ async def approval_claim(request: Request, response: Response, redis: RedisDep):
     result = await approval.transition(redis, pair[0], "claim", proof=pair[1])
     if result[0] != "consumed" or len(result) != 3:
         raise HTTPException(409, "Login request unavailable")
-    init_data = build_browser_init_data(json.loads(result[1]), settings.bot_token)
+    user = json.loads(result[1])
+    init_data = build_browser_init_data(user, settings.bot_token)
+    approval.audit(pair[0], "credential_issued", "success", int(user["id"]))
     response.delete_cookie(approval.COOKIE, path=approval.ROOT, secure=True,
                            httponly=True, samesite="lax")
     _approval_no_store(response)

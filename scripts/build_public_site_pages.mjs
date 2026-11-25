@@ -279,7 +279,7 @@ const toolsData=[
     ]
   }
 ];
-const loginVersion="2c30e435bbb4";
+const loginVersion="15042dc1c225";
 function buildPages(home,pageData,toolsData,loginVersion){
  const result={};
  const shell=home.match(/^(.*?)<main id="content">/s)?.[1],suffix=home.match(/<\/main>([\s\S]*)$/)?.[1];
