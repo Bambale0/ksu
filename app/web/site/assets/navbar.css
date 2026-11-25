@@ -84,15 +84,16 @@ html { scroll-padding-top: 114px; }
  .site-header .reading-progress,.site-header.is-compact .reading-progress { left:24px;right:24px;bottom:5px; }
 }
 @media(max-width:660px) {
- .site-header { top:8px; width:calc(100% - 20px); margin-top:8px; min-height:64px;height:64px; padding:7px 12px;gap:8px; }
+ .site-header { top:max(8px, env(safe-area-inset-top)); width:calc(100% - 20px); margin-top:max(8px, env(safe-area-inset-top)); min-height:64px;height:64px; padding:7px 12px;gap:8px; transition:transform .22s ease; }
+ .site-header.is-scroll-hidden { transform:translateY(calc(-100% - max(8px, env(safe-area-inset-top)) - 48px)); pointer-events:none; }
  .site-header .logo .brand-monogram { width:38px;height:34px; }
  .site-header .logo-wordmark { font-size:10px;letter-spacing:.04em; }
  .site-header .top-action { padding:8px 11px;min-height:40px; }
  .site-header .mobile-nav nav { width:min(285px,calc(100vw - 32px)); }
- html {scroll-padding-top:88px;}
+ html {scroll-padding-top:calc(88px + env(safe-area-inset-top));}
 }
 @media(prefers-reduced-motion:reduce) {
- .site-header::before,.nav-slider,.brand-monogram,.site-header .top-action,.site-header .top-action span,.site-header .reading-progress { transition:none!important; }
+ .site-header,.site-header::before,.nav-slider,.brand-monogram,.site-header .top-action,.site-header .top-action span,.site-header .reading-progress { transition:none!important; }
  .brand-monogram::after,.logo:hover .brand-monogram::after,.logo:focus-visible .brand-monogram::after,.site-header .top-action::before { animation:none!important;opacity:0; }
  .site-header .top-action,.site-header .top-action:hover span { transform:none!important; }
 }
