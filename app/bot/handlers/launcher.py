@@ -123,7 +123,7 @@ async def _send_launcher(
         promo_copy = (
             "<b>Бонусы:</b>\n"
             f"🎁 +{welcome_rox} ROX — сразу после регистрации\n"
-            f"💎 +{topup_partner_rox} ROX — партнёру после успешного пополнения реферала\n\n"
+            f"💎 +{topup_partner_rox} ROX — после успешного пополнения реферала\n\n"
         )
         await message.answer(
             "Меню и поддержка закреплены снизу.",
