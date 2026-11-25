@@ -8,9 +8,17 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher() -> None:
+def test_production_dispatcher_exposes_only_operator_admin_browser_approval_and_mini_app_launcher() -> None:
     dispatcher = _read("app/bot/dispatcher.py")
-    assert "admin, admin_extensions, launcher, nexus_test" in dispatcher
+    for module in ("admin", "admin_extensions", "browser_approval", "launcher", "nexus_test", "seedance_test"):
+        assert f"dispatcher.include_router({module}.router)" in dispatcher
+    assert dispatcher.index("dispatcher.include_router(browser_approval.router)") < dispatcher.index(
+        "dispatcher.include_router(launcher.router)"
+    )
+    approval = _read("app/bot/handlers/browser_approval.py")
+    assert 'F.args.startswith("auth_")' in approval
+    assert 'F.data.startswith("wa:")' in approval
+    assert 'message.chat.type == "private"' in approval
     assert "dispatcher.include_router(admin.router)" in dispatcher
     assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
     assert "dispatcher.include_router(nexus_test.router)" in dispatcher
