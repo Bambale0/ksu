@@ -3,48 +3,58 @@
 import { useEffect, useState } from "react";
 
 import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
-import { getInitDataFallback } from "@/lib/telegram";
+import { getInitDataFallback, openExternalLink } from "@/lib/telegram";
 
-/**
- * The current public-web login stores a temporary Telegram-backed credential
- * in sessionStorage. Do not offer a website logout inside Telegram's native
- * Mini App, even when its WebView still contains an old browser credential.
- *
- * PR #645 introduces a different server-backed web cookie. Its future
- * sign-out implementation must replace this legacy-only action.
- */
+const WEB_PROFILE_ENTRY = "/login?section=profile";
+
+/** Native Telegram can open the web studio; only a browser session can sign out. */
 export function WebProfileLogout() {
-  const [isBrowserSession, setIsBrowserSession] = useState(false);
+  const [sessionKind, setSessionKind] = useState<"native" | "browser" | null>(null);
 
   useEffect(() => {
     const browserCredential = getBrowserInitData();
     const currentInitData = getInitDataFallback();
     const nativeUser = Boolean(window.Telegram?.WebApp?.initDataUnsafe?.user);
-    // Main App installs the saved browser credential via an SDK facade.
-    // Standalone /account does not have that boundary and may have no SDK
-    // initData at all. In both cases, never expose logout for native Telegram.
-    setIsBrowserSession(Boolean(browserCredential)
-      && !nativeUser
-      && (!currentInitData || currentInitData === browserCredential));
+    // The browser boundary may expose its credential through an SDK facade.
+    const native = nativeUser || Boolean(currentInitData && currentInitData !== browserCredential);
+    if (native) setSessionKind("native");
+    else if (browserCredential) setSessionKind("browser");
   }, []);
 
-  if (!isBrowserSession) return null;
+  if (!sessionKind) return null;
 
   const signOut = () => {
     clearBrowserInitData();
-    // A full navigation drops the SDK facade and returns to the actual public login.
     window.location.replace("/login");
   };
 
   return (
     <section className="web-profile-session panel" aria-label="Веб-сессия">
       <div className="web-profile-session-copy">
-        <strong>Вход в веб-версию</strong>
-        <p className="muted">Можно выйти из браузера, не выходя из Telegram.</p>
+        <strong>
+          <a
+            className="web-profile-entry"
+            href={WEB_PROFILE_ENTRY}
+            onClick={(event) => {
+              if (sessionKind !== "native") return;
+              event.preventDefault();
+              // Use only the current origin and a fixed public route; never
+              // copy Telegram launch data, credentials, or user IDs into URLs.
+              openExternalLink(new URL(WEB_PROFILE_ENTRY, window.location.origin).href);
+            }}
+          >
+            Вход в веб-версию <span aria-hidden="true">↗</span>
+          </a>
+        </strong>
+        <p className="muted">{sessionKind === "native"
+          ? "Открой ROXY в браузере и войди через тот же Telegram-аккаунт."
+          : "Можно выйти из браузера, не выходя из Telegram."}</p>
       </div>
-      <button type="button" className="secondary web-profile-logout" onClick={signOut}>
-        Выйти из аккаунта
-      </button>
+      {sessionKind === "browser" ? (
+        <button type="button" className="secondary web-profile-logout" onClick={signOut}>
+          Выйти из аккаунта
+        </button>
+      ) : null}
     </section>
   );
 }

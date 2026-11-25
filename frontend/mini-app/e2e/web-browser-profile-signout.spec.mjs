@@ -33,6 +33,7 @@ async function openWebProfile(page, { native = false, account = false, malformed
         ? { user: { id: 777, first_name: 'Telegram QA' } }
         : {},
       ready() {}, expand() {}, onEvent() {}, offEvent() {}, close() {},
+      ...(nativeLaunch ? {openLink(url) { window.__qaOpenedWebUrl = url; }} : {}),
       BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
       HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
     } };
@@ -73,6 +74,7 @@ test('signed-in website profile offers logout and clears browser credentials', a
   await openWebProfile(page);
   const logout = page.getByRole('button', { name: 'Выйти из аккаунта' });
   await expect(logout).toBeVisible();
+  await expect(page.getByRole('link', {name:'Вход в веб-версию'})).toHaveAttribute('href','/login?section=profile');
   await logout.click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator('body')).toHaveAttribute('data-page','login');
@@ -96,4 +98,22 @@ test('malformed account overview preserves web logout and shows a retryable erro
   await expect(page.getByRole('button', { name: 'Выйти из аккаунта' })).toBeVisible();
   await expect(page.locator('.action-error')).toContainText('Не удалось загрузить профиль');
   await expect(page.getByText('Не удалось открыть приложение. Ошибка уже отправлена в диагностику.')).toHaveCount(0);
+});
+
+test('native profile heading opens the real website externally without exposing launch credentials', async ({page})=>{
+  await openWebProfile(page,{native:true});
+  const link=page.getByRole('link',{name:'Вход в веб-версию'});
+  await expect(link).toHaveAttribute('href','/login?section=profile');
+  await link.click();
+  expect(await page.evaluate(()=>window.__qaOpenedWebUrl)).toBe(new URL('/login?section=profile',page.url()).href);
+  expect(new URL(page.url()).pathname).toBe('/mini-app/');
+  expect(await page.evaluate(key=>sessionStorage.getItem(key),STORAGE_KEY)).not.toBeNull();
+});
+
+test('browser heading reaches public login and keeps the profile session', async ({page})=>{
+  await openWebProfile(page);
+  await page.getByRole('link',{name:'Вход в веб-версию'}).click();
+  await expect(page).toHaveURL(/login\?section=profile$/);
+  await expect(page.locator('#login-continue')).toHaveAttribute('href','/mini-app/?route=profile');
+  expect(await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).initData,STORAGE_KEY)).toBe(BROWSER_TOKEN);
 });

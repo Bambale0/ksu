@@ -516,7 +516,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 
-/* Browser-only profile sign-out. The native Telegram Mini App remains untouched. */
+/* Shared web entry with browser-only profile sign-out. */
 .web-profile-session {
   display: flex;
   flex-wrap: wrap;
@@ -531,6 +531,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   flex: 1 1 220px;
 }
 .web-profile-session-copy strong { font-size: 15px; }
+.web-profile-entry { color: inherit; text-decoration: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.web-profile-entry:hover { color: #d6a1ff; }
+.web-profile-entry:focus-visible { outline: 2px solid #d6a1ff; outline-offset: 4px; border-radius: 4px; }
 .web-profile-session-copy p {
   margin: 6px 0 0;
   font-size: 13px;
