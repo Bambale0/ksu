@@ -171,3 +171,28 @@ test('original Mini App promos retain their whole image and partner destination'
     await expect(page.locator('body')).toHaveAttribute('data-page','home');
   }
 });
+
+for (const width of [320, 390, 430]) {
+  test(`mobile navigation leaves reading space and returns on upward scroll at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:740});
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.goto('/pricing');
+    await page.evaluate(()=>{document.documentElement.style.scrollBehavior='auto';});
+    const header=page.locator('.site-header');
+    const position=()=>header.evaluate(el=>el.getBoundingClientRect().bottom);
+    await expect.poll(position).toBeGreaterThan(0);
+    await page.evaluate(()=>window.scrollTo(0,600));
+    await expect.poll(position).toBeLessThanOrEqual(0);
+    await page.evaluate(()=>window.scrollTo(0,400));
+    await expect.poll(position).toBeGreaterThan(0);
+    await header.locator('.mobile-nav summary').click();
+    await expect(header.locator('.mobile-nav nav')).toBeVisible();
+    await page.evaluate(()=>window.scrollTo(0,650));
+    await expect.poll(position).toBeGreaterThan(0);
+    await expect(header.locator('.mobile-nav nav')).toBeVisible();
+    await header.locator('.mobile-nav summary').click();
+    await page.evaluate(()=>window.scrollTo(0,0));
+    await expect.poll(position).toBeGreaterThan(0);
+    await expect(header.locator('.top-action')).toBeVisible();
+  });
+}
