@@ -191,6 +191,7 @@
   }
 
   function populateModels() {
+    const selected = dom.trendModel.value;
     dom.trendModel.replaceChildren();
     const placeholder = document.createElement("option");
     placeholder.value = "";
@@ -207,6 +208,7 @@
       }
       dom.trendModel.append(group);
     }
+    if (selected && state.models.some(model => model.id === selected)) dom.trendModel.value = selected;
   }
 
   function parseParameters() {

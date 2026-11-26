@@ -253,3 +253,25 @@ test('explicitly allowlisted Telegram admin opens trend manager without entering
   await expect(page.locator('#trendSearch')).toBeVisible();
   expect(ctx.errors).toEqual([]);
 });
+
+
+test('refresh and search preserve selected legacy trend model and unsaved prompt', async ({page}) => {
+  const original = {id:'legacy',title:'Existing trend',is_active:true,payload:{model_id:'photo',media_type:'image',preview_url:'https://example.invalid/preview.png',prompt:'old',parameters:{},input_mode:'none',tags:[]}};
+  const ctx = await setup(page,'trends',{trendItems:[original],trendModels:[{id:'photo',title:'Photo',media_type:'image',price_rox:'20'},{id:'photo2',title:'Photo 2',media_type:'image',price_rox:'25'}]});
+  await page.locator('#trendList').getByRole('button',{name:'Редактировать'}).click();
+  await page.locator('#trendModel').selectOption('photo2');
+  await page.locator('#trendPrompt').fill('unsaved new prompt');
+  const refresh = page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/admin/trends/options');
+  await page.locator('#trendRefresh').click();
+  await refresh;
+  await expect(page.locator('#trendModel')).toHaveValue('photo2');
+  await expect(page.locator('#trendPrompt')).toHaveValue('unsaved new prompt');
+  const search = page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/admin/trends' && new URL(r.url()).searchParams.get('q')==='Existing');
+  await page.locator('#trendSearch').fill('Existing');
+  await search;
+  await expect(page.locator('#trendModel')).toHaveValue('photo2');
+  await page.getByRole('button',{name:'Сохранить изменения',exact:true}).click();
+  await expect.poll(()=>ctx.writes.length).toBe(1);
+  expect(ctx.writes[0].payload.model_id).toBe('photo2');
+  expect(ctx.writes[0].payload.prompt).toBe('unsaved new prompt');
+});
