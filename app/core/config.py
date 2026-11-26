@@ -8,15 +8,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_GENERATION_PRICING_JSON = (
     '{'
-    '"nano-banana-pro":{"flat":25},'
+    '"nano-banana-pro":{"flat":20,"by_resolution":{"1K":20,"2K":25,"4K":30}},'
     '"wan-2.7-image-pro":{"flat":20},'
     '"gpt-image-2-t2i":{"flat":20},'
     '"gpt-image-2-i2i":{"flat":20},'
-    '"nano-banana-2":{"flat":25},'
-    '"nano-banana-2-lite":{"flat":25},'
+    '"nano-banana-2":{"flat":20,"by_resolution":{"1K":20,"2K":20,"4K":25}},'
+    '"nano-banana-2-lite":{"flat":10},'
     '"seedream-4.5-edit":{"flat":20},'
-    '"seedream-5-pro-t2i":{"flat":20},'
-    '"seedream-5-pro-i2i":{"flat":20},'
+    '"seedream-5-pro-t2i":{"flat":25,"by_quality":{"basic":25,"high":30}},'
+    '"seedream-5-pro-i2i":{"flat":25,"by_quality":{"basic":25,"high":30}},'
     '"seedance-2.0":{"per_second":40,"by_resolution":{"480p":20,"720p":40,"1080p":95}},'
     '"seedance-2.5":{"per_second":60,"by_resolution":{"480p":30,"720p":60,"1080p":130}},'
     '"kling-2.5-turbo-pro-t2v":{"per_second":8},'
@@ -231,6 +231,7 @@ class Settings(BaseSettings):
 
     admin_security_key: str = ""
     admin_bootstrap_telegram_ids: str = ""
+    admin_auto_login_telegram_ids: str = ""
     admin_require_mfa: bool = True
     admin_session_ttl_minutes: int = 480
     admin_idle_timeout_minutes: int = 30

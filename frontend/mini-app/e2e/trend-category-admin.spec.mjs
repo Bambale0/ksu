@@ -356,3 +356,26 @@ for (const editor of ['existing', 'new']) {
     });
   }
 }
+
+
+test('admin searches ready templates and opens full editor of an existing material', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  const state = await mockAdminHome(page);
+  await page.goto('/mini-app/?route=home');
+  await page.locator('#roxy-home-trend-folders').getByRole('button',{name:'Шаблоны',exact:true}).click();
+  const manager = page.getByRole('dialog',{name:'Управление готовыми шаблонами'});
+  await manager.getByLabel('Поиск готовых шаблонов').fill('РАСПАКОВКА');
+  await expect(manager.getByTestId('trend-admin-item-trend_ugc')).toBeVisible();
+  await expect(manager.getByTestId('trend-admin-item-trend_ads')).toHaveCount(0);
+  await manager.getByTestId('trend-admin-full-edit-trend_ugc').click();
+  const editor = page.getByRole('dialog',{name:'Редактировать тренд',exact:true});
+  await expect(editor).toBeVisible();
+  await expect(editor.getByLabel('Название',{exact:true})).toHaveValue(ugcTrend.title);
+  await expect(editor.getByPlaceholder('Инструкция для модели. Пользователь её не увидит.')).toHaveValue(ugcTrend.payload.prompt);
+  await editor.getByLabel('Название',{exact:true}).fill('Новый UGC');
+  await editor.getByPlaceholder('Инструкция для модели. Пользователь её не увидит.').fill('New prompt');
+  await editor.locator('input[type=url]').first().fill('https://example.invalid/ugc.mp4');
+  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();
+  await expect.poll(()=>state.updatedTrendBody?.title).toBe('Новый UGC');
+  expect(state.updatedTrendBody.payload.prompt).toBe('New prompt');
+});

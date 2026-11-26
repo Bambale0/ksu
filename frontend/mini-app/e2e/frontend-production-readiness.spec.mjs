@@ -126,8 +126,12 @@ test('notification loading does not flash empty state and one notification canno
   await installTelegram(page);
   await mockMe(page);
   let readRequests = 0;
+  let releaseList;
+  const listGate = new Promise(resolve => { releaseList = resolve; });
+  let releaseRead;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
   await page.route('**/api/v1/notifications?limit=100', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await listGate;
     return json(route, {
       unread_count: 1,
       items: [{
@@ -142,20 +146,24 @@ test('notification loading does not flash empty state and one notification canno
   });
   await page.route('**/api/v1/notifications/notice_1/read', async (route) => {
     readRequests += 1;
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await readGate;
     return json(route, { ok: true });
   });
 
-  await page.goto('/mini-app/notifications/');
-  await expect(page.getByText('Загружаем уведомления…')).toBeVisible();
-  await expect(page.getByText('Уведомлений пока нет.')).toHaveCount(0);
+  try {
+    await page.goto('/mini-app/notifications/');
+    await expect(page.getByText('Загружаем уведомления…')).toBeVisible();
+    await expect(page.getByText('Уведомлений пока нет.')).toHaveCount(0);
+  } finally { releaseList(); }
 
   const notice = page.getByRole('button', { name: /Готово/ });
   await expect(notice).toBeVisible();
-  await notice.click();
-  await expect(notice).toBeDisabled();
-  await notice.click({ force: true });
-  await expect.poll(() => readRequests).toBe(1);
+  try {
+    await notice.click();
+    await expect(notice).toBeDisabled();
+    await notice.click({ force: true });
+    await expect.poll(() => readRequests).toBe(1);
+  } finally { releaseRead(); }
   await expectTouchTargets(page);
 });
 

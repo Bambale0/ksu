@@ -78,8 +78,8 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert outbox is not None
         assert outbox.status == "pending"
         assert wallet is not None
-        assert generation.cost_rox == Decimal("25.00")
-        assert wallet.balance == Decimal("75.00")
+        assert generation.cost_rox == Decimal("20.00")
+        assert wallet.balance == Decimal("80.00")
         assert generation.provider == "nexus"
         assert generation.parameters["_provider_route"] == ["nexus", "neironych", "kie"]
         assert generation.parameters["_provider_route_index"] == 0
@@ -153,7 +153,7 @@ async def test_active_admin_generates_without_wallet_charge(monkeypatch: pytest.
         wallet = await session.get(Wallet, user.id)
         assert generation.cost_rox == Decimal("0.00")
         assert generation.parameters["_admin_free_generation"] is True
-        assert generation.parameters["_quoted_cost_rox"] == "25.00"
+        assert generation.parameters["_quoted_cost_rox"] == "20.00"
         assert wallet is not None
         assert wallet.balance == Decimal("0.00")
 

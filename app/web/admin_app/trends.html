@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/admin-app/trends.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/admin-app/admin-pagination.js?v=20261106-pagination" defer></script>
-  <script src="/admin-app/trends.js?v=20261106-pagination" defer></script>
+  <script src="/admin-app/trends.js?v=20261126-preserve-model" defer></script>
   <script src="/admin-app/admin-navigation.js" defer></script>
 </head>
 <body>
@@ -54,21 +54,24 @@
             <label class="field trend-span-2"><span>Название</span><input id="trendTitle" maxlength="80" required placeholder="Например: Киношный пролёт камеры"><small>Так тренд увидит пользователь.</small></label>
             <label class="field trend-span-2"><span>Описание</span><textarea id="trendDescription" maxlength="240" placeholder="Коротко объясните, какой результат получится"></textarea></label>
             <label class="field trend-span-2"><span>Превью</span><input id="trendPreviewUrl" type="url" required placeholder="https://.../preview.jpg или .mp4"><small>Публичный HTTPS URL изображения или видео.</small></label>
-            <label class="field"><span>Модель</span><select id="trendModel" required><option value="">Загрузка моделей…</option></select></label>
-            <div class="trend-model-info" id="trendModelInfo">Выберите модель — ROXY покажет её возможности.</div>
-            <label class="field trend-span-2"><span>Скрытый prompt</span><textarea id="trendPrompt" maxlength="8000" required placeholder="Промпт, который будет запускаться при выборе тренда"></textarea><small>Пользователь его не видит. ROXY подставляет его автоматически.</small></label>
-            <label class="field"><span>Референс пользователя</span><select id="trendInputMode"><option value="none">Не нужен</option><option value="image">Нужно фото</option></select></label>
-            <div class="trend-reference-fields" id="trendReferenceFields">
+            <label class="field" data-legacy-trend-field><span>Модель</span><select id="trendModel" required><option value="">Загрузка моделей…</option></select></label>
+            <div class="trend-model-info" id="trendModelInfo" data-legacy-trend-field>Выберите модель — ROXY покажет её возможности.</div>
+            <label class="field trend-span-2" data-legacy-trend-field><span>Скрытый prompt</span><textarea id="trendPrompt" maxlength="8000" required placeholder="Промпт, который будет запускаться при выборе тренда"></textarea><small>Пользователь его не видит. ROXY подставляет его автоматически.</small></label>
+            <label class="field" data-legacy-trend-field><span>Референс пользователя</span><select id="trendInputMode"><option value="none">Не нужен</option><option value="image">Нужно фото</option></select></label>
+            <div class="trend-reference-fields" id="trendReferenceFields" data-legacy-trend-field>
               <label class="field"><span>Минимум фото</span><input id="trendMinReferences" type="number" min="0" max="16" value="0"></label>
               <label class="field"><span>Максимум фото</span><input id="trendMaxReferences" type="number" min="0" max="16" value="0"></label>
             </div>
-            <label class="field"><span>Биллинг, секунд</span><input id="trendBillingSeconds" type="number" min="1" max="600" placeholder="Авто"><small>Для видео можно оставить пустым, если duration задан в настройках.</small></label>
+            <label class="field" data-legacy-trend-field><span>Биллинг, секунд</span><input id="trendBillingSeconds" type="number" min="1" max="600" placeholder="Авто"><small>Для видео можно оставить пустым, если duration задан в настройках.</small></label>
             <label class="field"><span>Приоритет</span><input id="trendSortOrder" type="number" min="-100000" max="100000" value="0"><small>Чем больше число, тем выше тренд.</small></label>
             <label class="field trend-span-2"><span>Теги</span><input id="trendTags" maxlength="500" placeholder="fashion, reels, cinematic"><small>До 20 тегов через запятую.</small></label>
-            <details class="trend-advanced trend-span-2">
+            <details class="trend-advanced trend-span-2" data-legacy-trend-field>
               <summary>Дополнительные настройки модели</summary>
               <label class="field"><span>Parameters JSON</span><textarea id="trendParameters" spellcheck="false">{}</textarea><small id="trendKnownFields">Необязательно. Здесь можно задать duration, aspect_ratio, resolution и другие параметры выбранной модели.</small></label>
             </details>
+            <label class="field trend-span-2" data-legacy-trend-field><span>Постоянное видео шаблона (URL)</span><input id="trendTemplateVideo" type="url" placeholder="https://…"></label>
+            <label class="field trend-span-2" data-legacy-trend-field><span>Поля пользователя (JSON)</span><textarea id="trendUserFields" spellcheck="false">[]</textarea></label>
+            <section id="trendWorkflowSteps" class="trend-span-2 stack" hidden></section>
             <label class="trend-active-row trend-span-2" id="trendActiveRow" hidden><input id="trendActive" type="checkbox" checked><span>Тренд активен и виден пользователям</span></label>
           </div>
 

@@ -125,8 +125,9 @@ class GenerationService:
         override = overrides.get(model_id)
         if isinstance(override, dict):
             for tier_key, parameter_key in (
-                ("by_mode", "mode"),
                 ("by_resolution", "resolution"),
+                ("by_quality", "quality"),
+                ("by_mode", "mode"),
             ):
                 tiers = override.get(tier_key)
                 selected = str(parameters.get(parameter_key) or "")

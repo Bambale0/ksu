@@ -71,7 +71,7 @@ export default function PromocodesPage() {
     <StandaloneShell
       kicker="Промокод"
       title="Партнёрские бонусы"
-      copy="Активируйте промокод, чтобы бонус выбранного пакета начислился после успешной оплаты."
+      copy="Активируйте промокод и применяйте его к конкретному платежу, чтобы получить бонус выбранного пакета после успешной оплаты."
     >
       <div className="panel tool-panel">
         {loading ? <p className="muted" role="status">Проверяем активный промокод…</p> : null}
@@ -84,7 +84,7 @@ export default function PromocodesPage() {
           <span className="kicker">Промокод применён</span>
           <h2>{activePromo.code}</h2>
           <p className="muted">
-            Промокод закреплён за аккаунтом. Бонус пакета начислится только после успешной оплаты.
+            Промокод закреплён за аккаунтом. Примените его к конкретному платежу. Бонус пакета начислится только после успешной оплаты с применённым промокодом.
           </p>
           {!activePromo.program_active ? <p className="muted">
             Бонусная программа временно приостановлена, привязка промокода сохранена.
@@ -115,7 +115,7 @@ export default function PromocodesPage() {
           </label>
           {error ? <div className="action-error" role="alert">{error}</div> : null}
           {result ? <p className="muted">
-            {result.message || ("Промокод " + result.code + " активирован.")} Бонус пакета будет начислен после успешной оплаты.
+            {result.message || ("Промокод " + result.code + " активирован.")} Примените промокод к платежу, чтобы получить бонус пакета после успешной оплаты.
           </p> : null}
           <button className="secondary wide" type="button" disabled={busy || !code.trim()} onClick={() => void activate()}>
             {busy ? "Активирую…" : "Активировать промокод"}

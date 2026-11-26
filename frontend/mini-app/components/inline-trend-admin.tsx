@@ -9,10 +9,13 @@ import { klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, wor
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
+import { resolveAdminAccess } from "@/lib/admin-access";
 import type { TrendUserField, UiField } from "@/lib/types";
 import { inferTemplateFieldType } from "@/lib/trend-user-fields";
 import {
   trendAdminApi,
+  TREND_EDIT_EVENT,
+  TREND_UPDATED_EVENT,
   type TrendAdminImageStep,
   type TrendAdminInput,
   type TrendAdminItem,
@@ -465,6 +468,13 @@ export function InlineTrendAdmin() {
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [items, setItems] = useState<TrendAdminItem[]>([]);
+  const [trendSearch, setTrendSearch] = useState("");
+  const [trendVisibility, setTrendVisibility] = useState("all");
+  const visibleItems = useMemo(() => {
+    const query = trendSearch.trim().normalize("NFKC").toLocaleLowerCase("ru");
+    return items.filter(item => (!query || item.title.normalize("NFKC").toLocaleLowerCase("ru").includes(query))
+      && (trendVisibility === "all" || item.is_active === (trendVisibility === "active")));
+  }, [items, trendSearch, trendVisibility]);
   const [models, setModels] = useState<TrendAdminModel[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
@@ -473,6 +483,7 @@ export function InlineTrendAdmin() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const draftVersion = useRef(0);
+  const requestedEdit = useRef<string | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -480,8 +491,8 @@ export function InlineTrendAdmin() {
 
   useEffect(() => {
     let alive = true;
-    void api.me()
-      .then((me) => { if (alive) setIsAdmin(Boolean(me.is_admin)); })
+    void resolveAdminAccess()
+      .then((admin) => { if (alive) setIsAdmin(admin); })
       .catch(() => { if (alive) setIsAdmin(false); });
     return () => { alive = false; };
   }, []);
@@ -515,12 +526,28 @@ export function InlineTrendAdmin() {
   }, [isAdmin]);
 
   const refresh = useCallback(async () => {
+    const editId = requestedEdit.current;
+    requestedEdit.current = null;
+    const version = draftVersion.current;
     setLoading(true);
     setLoadError("");
     try {
       const result = await trendAdminApi.list();
       setItems(result.items || []);
-      setModels((result.models || []) as TrendAdminModel[]);
+      const currentModels = (result.models || []) as TrendAdminModel[];
+      setModels(currentModels);
+      if (editId && version === draftVersion.current) {
+        const item = (result.items || []).find(entry => entry.id === editId);
+        if (!item) {
+          setLoadError("Тренд не найден или больше недоступен.");
+          return;
+        }
+        setEditingId(item.id);
+        setDraft(draftFrom(item, currentModels));
+        setCustomFieldName("");
+        setError("");
+        setFormOpen(true);
+      }
     } catch {
       setLoadError("Не удалось загрузить тренды. Проверьте соединение и нажмите «Обновить».");
     } finally {
@@ -533,6 +560,23 @@ export function InlineTrendAdmin() {
   }, [open, refresh]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    const onEdit = (event: Event) => {
+      const id = (event as CustomEvent<unknown>).detail;
+      if (typeof id !== "string" || !id.trim() || saving || uploading) return;
+      event.preventDefault();
+      draftVersion.current += 1;
+      requestedEdit.current = id;
+      setFormOpen(false);
+      setError("");
+      if (open) void refresh();
+      else setOpen(true);
+    };
+    window.addEventListener(TREND_EDIT_EVENT, onEdit);
+    return () => window.removeEventListener(TREND_EDIT_EVENT, onEdit);
+  }, [isAdmin, open, refresh, saving, uploading]);
+
+  useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -542,6 +586,8 @@ export function InlineTrendAdmin() {
         setFormOpen(false);
         return;
       }
+      draftVersion.current += 1;
+      requestedEdit.current = null;
       setOpen(false);
     };
     document.addEventListener("keydown", onKeyDown);
@@ -990,6 +1036,7 @@ export function InlineTrendAdmin() {
       if (editingId && saved.id === editingId) {
         setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
       }
+      window.dispatchEvent(new CustomEvent(TREND_UPDATED_EVENT));
       // Reopening must not read the pre-save manager snapshot.
       await refresh();
       if (draftVersion.current !== version) return;
@@ -1031,7 +1078,7 @@ export function InlineTrendAdmin() {
       <div className="inline-trend-admin-panel">
         <header className="inline-trend-admin-head">
           <div><span className="kicker">Админ</span><h2>Тренды</h2><p>Добавляйте и обновляйте готовые сценарии прямо из ROXY.</p></div>
-          <button className="inline-trend-icon-button" type="button" onClick={() => { setOpen(false); setFormOpen(false); }} aria-label="Закрыть">×</button>
+          <button className="inline-trend-icon-button" type="button" onClick={() => { draftVersion.current += 1; requestedEdit.current = null; setOpen(false); setFormOpen(false); }} aria-label="Закрыть">×</button>
         </header>
 
         <div className="inline-trend-admin-toolbar">
@@ -1039,12 +1086,18 @@ export function InlineTrendAdmin() {
           <button className="inline-trend-secondary" type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 
+        <div className="inline-trend-form" style={{padding: 12, margin: 0}}>
+          <label><span>Поиск по названию</span><input type="search" value={trendSearch} onChange={event => setTrendSearch(event.target.value)} placeholder="Название тренда" /></label>
+          <label><span>Видимость</span><select value={trendVisibility} onChange={event => setTrendVisibility(event.target.value)}><option value="all">Все тренды</option><option value="active">Активные</option><option value="hidden">Скрытые</option></select></label>
+          {!loading && !loadError ? <small role="status">Найдено: {visibleItems.length} из {items.length}</small> : null}
+        </div>
         {!formOpen && (error || loadError) ? <div className="inline-trend-error" role="alert">{error || loadError}</div> : null}
         {loading ? <div className="inline-trend-empty">Загружаю тренды…</div> : null}
         {!loading && !loadError && !items.length ? <div className="inline-trend-empty">Трендов пока нет. Создайте первый.</div> : null}
 
+        {!loading && !loadError && items.length > 0 && visibleItems.length === 0 ? <div className="inline-trend-empty">Тренды не найдены. Измените поиск или фильтр.</div> : null}
         <div className="inline-trend-admin-list">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const payload = item.payload || ({} as TrendAdminPayload);
             const video = !isWorkflowPayload(payload) && previewIsVideo(String(payload.preview_url || ""));
             const modelId = isWorkflowPayload(payload) ? payload.steps[0].model_id : payload.model_id;
@@ -1105,7 +1158,7 @@ export function InlineTrendAdmin() {
             <label><span>Название шага фото</span><input value={draft.photo.title} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, title: event.target.value } } : current)} required /></label>
             <label><span>Модель фото</span><select value={draft.photo.modelId} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, modelId: event.target.value, parameters: workflowParameterDefaults(models.find((model) => model.id === event.target.value)) } } : current)} required><option value="">Выберите фото-модель</option>{workflowPhotoModels.map((model) => <option value={model.id} key={model.id}>{model.title || model.id}{model.price_rox ? ` · ${model.price_rox} ROX` : ""}</option>)}</select><small>Цена только для просмотра; расчёт тарифа остаётся на сервере.</small></label>
             <label><span>Инструкции к фото</span><textarea rows={2} value={draft.photo.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, instructions: event.target.value } } : current)} /></label>
-            <label><span>Промпт фото</span><textarea rows={4} maxLength={8000} value={draft.photo.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, prompt: event.target.value, inputs: syncWorkflowPromptInputs(event.target.value, current.photo.inputs, referenceCapacity(models.find((model) => model.id === current.photo.modelId))) } } : current)} placeholder="Скрытая инструкция для модели" required /></label><small>Поля фото добавляются по @Image1, @Image2 и далее. Для параметров пользователя укажите ключ в двойных скобках, например {"{{height}}"}. Названия и типы полей настройте ниже.</small>
+            <label><span>Промпт фото</span><textarea aria-label="Промпт фото" rows={4} maxLength={8000} value={draft.photo.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, prompt: event.target.value, inputs: syncWorkflowPromptInputs(event.target.value, current.photo.inputs, referenceCapacity(models.find((model) => model.id === current.photo.modelId))) } } : current)} placeholder="Скрытая инструкция для модели" required /></label><small>Поля фото добавляются по @Image1, @Image2 и далее. Для параметров пользователя укажите ключ в двойных скобках, например {"{{height}}"}. Названия и типы полей настройте ниже.</small>
             <ModelParameterControls model={models.find((model) => model.id === draft.photo.modelId)} parameters={draft.photo.parameters} onChange={(name, value) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, parameters: { ...current.photo.parameters, [name]: value } } } : current)} />
             <WorkflowInputEditor prompt={draft.photo.prompt} inputs={draft.photo.inputs} onChange={(inputs) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, inputs } } : current)} />
           </section>
@@ -1120,7 +1173,7 @@ export function InlineTrendAdmin() {
             <label><span>Название шага видео</span><input value={draft.video.title} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, title: event.target.value } } : current)} required /></label>
             <label><span>Модель видео</span><select aria-label="Модель видео" aria-describedby="workflow-video-model-help" value={draft.video.modelId} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, modelId: event.target.value, parameters: workflowParameterDefaults(models.find((model) => model.id === event.target.value)), bindingTarget: workflowBindingTarget(models.find((model) => model.id === event.target.value)) } } : current)} required><option value="">Выберите I2V-модель</option>{workflowVideoModels.map((model) => <option value={model.id} key={model.id}>{model.title || model.id}{model.price_rox ? ` · ${model.price_rox} ROX` : ""}</option>)}</select><small id="workflow-video-model-help">В список попадают только модели с серверно подтверждённой I2V-возможностью.</small></label>
             <label><span>Инструкции к видео</span><textarea rows={2} value={draft.video.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, instructions: event.target.value } } : current)} /></label>
-            <label><span>Промпт видео</span><textarea rows={4} maxLength={8000} value={draft.video.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, prompt: event.target.value } } : current)} placeholder="Скрытая инструкция для модели" required /></label>
+            <label><span>Промпт видео</span><textarea aria-label="Промпт видео" rows={4} maxLength={8000} value={draft.video.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, prompt: event.target.value } } : current)} placeholder="Скрытая инструкция для модели" required /></label>
             <ModelParameterControls model={models.find((model) => model.id === draft.video.modelId)} parameters={draft.video.parameters} onChange={(name, value) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, parameters: { ...current.video.parameters, [name]: value } } } : current)} />
             <label><span>Поле изображения видео</span><select value={draft.video.bindingTarget || ""} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, bindingTarget: event.target.value } } : current)}><option value="">Выберите поле привязки</option>{(models.find((model) => model.id === draft.video.modelId)?.known_fields || []).filter((field) => BINDABLE_IMAGE_FIELDS.has(field)).map((field) => <option value={field} key={field}>{field}</option>)}</select><small>{draft.video.bindingTarget ? `Результат шага фото будет передан в ${draft.video.bindingTarget}.` : "Модель не объявила совместимое поле."}</small></label>
           </section>

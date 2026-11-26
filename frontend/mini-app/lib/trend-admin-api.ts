@@ -4,6 +4,14 @@ import { telegramHeaders } from "./telegram";
 import type { GenerationModel, TrendUserField, UiSchema } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
+export const TREND_EDIT_EVENT = "roxy:trend-edit";
+export const TREND_UPDATED_EVENT = "roxy:trend-updated";
+
+export function requestTrendEdit(trendId: string): boolean {
+  if (typeof window === "undefined" || !trendId.trim()) return false;
+  // Cancellation is a synchronous acknowledgement from the mounted admin editor.
+  return !window.dispatchEvent(new CustomEvent(TREND_EDIT_EVENT, { detail: trendId, cancelable: true }));
+}
 const INLINE_HASHTAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
 
 export function setTrendCollectionTarget(collectionId: string): void {

@@ -32,6 +32,7 @@ test('admin can change the Neironych balance alert policy after MFA step-up', as
     if (path.endsWith('.css')) return route.fulfill({
       contentType: 'text/css', body: readFileSync(new URL(path.split('/').pop(), adminRoot), 'utf8'),
     });
+    if (path === '/api/v1/admin/auth/login' && request.postDataJSON()?.auto) return json({ detail: 'Additional admin verification required' }, 428);
     if (path === '/api/v1/admin/auth/login') return json({ token: 'test-token', mfa_verified: true });
     if (path === '/api/v1/admin/auth/me') return json({ role: 'admin', is_active: true, telegram_id: 123, permissions: ['*'] });
     if (path === '/api/v1/admin/dashboard') return json({});
@@ -57,6 +58,7 @@ test('admin can change the Neironych balance alert policy after MFA step-up', as
   });
 
   await page.goto('http://127.0.0.1:3018/admin-app/control.html');
+  await expect(page.getByText('Для обычного входа введите код подтверждения.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Алерт Нейроныча', exact: true }).click();

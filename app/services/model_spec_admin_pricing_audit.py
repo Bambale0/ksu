@@ -8,7 +8,7 @@ _INSTALLED = False
 def install_model_spec_admin_pricing_audit() -> None:
     """Reject tariff tiers that cannot be selected by the target model.
 
-    The admin tariff API supports by_mode/by_resolution. Validate those tier
+    The admin tariff API supports by_mode/by_quality/by_resolution. Validate those tier
     keys against the same public ui_schema used by the Mini App so a published
     tariff cannot silently target impossible provider values. Dedicated flat
     products such as Suno have no selectable pricing tiers and are handled by
@@ -46,7 +46,7 @@ def install_model_spec_admin_pricing_audit() -> None:
                 for field in schema.get("fields", [])
                 if isinstance(field, dict)
             }
-            for section, parameter in (("by_mode", "mode"), ("by_resolution", "resolution")):
+            for section, parameter in (("by_mode", "mode"), ("by_quality", "quality"), ("by_resolution", "resolution")):
                 tiers = override.get(section)
                 if not isinstance(tiers, dict):
                     continue

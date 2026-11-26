@@ -98,19 +98,19 @@
     return node;
   }
 
-  async function login(event) {
-    event.preventDefault();
+  async function login(event = null, auto = false) {
+    event?.preventDefault?.();
     if (!tg?.initData) {
       msg("Нужен свежий Telegram initData. Открой эту страницу внутри Telegram.", true);
       return;
     }
     msg("Проверяю доступ…");
     try {
-      const otp = byId("loginOtp").value.trim();
+      const otp = auto ? "" : byId("loginOtp").value.trim();
       const result = await api("/api/v1/admin/auth/login", {
         method: "POST",
         telegram: true,
-        body: JSON.stringify({ otp: otp || null, recovery_code: null }),
+        body: JSON.stringify(auto ? { auto: true } : { otp: otp || null, recovery_code: null }),
       });
       state.token = result.token;
       if (result.mfa_setup_required) {
@@ -126,6 +126,10 @@
       byId("adminIdentity").textContent = `${state.me.username ? `@${state.me.username}` : state.me.telegram_id} · ${state.me.role}`;
       await refresh();
     } catch (error) {
+      if (auto && error.status === 428) {
+        msg("Для обычного входа введите код подтверждения.");
+        return;
+      }
       msg(error.message || "Не удалось войти", true);
     }
   }
@@ -382,6 +386,7 @@
     byId("loginForm")?.addEventListener("submit", login);
     byId("refreshButton")?.addEventListener("click", () => void refresh());
     byId("statusFilter")?.addEventListener("change", () => void refresh({ applications: { status: byId("statusFilter").value, offset: 0 } }));
+    if (tg?.initData) void login(null, true);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });

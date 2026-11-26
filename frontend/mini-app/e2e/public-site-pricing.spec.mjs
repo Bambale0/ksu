@@ -38,7 +38,10 @@ test('pricing uses retail data, true package total, shared request and filters',
  await expect(models.locator('.model-price-card')).toHaveCount(3);
  await expect(models).toContainText('14,5 ROX / запуск');
  await expect(models).toContainText('8 ROX / с');
- await expect(page.locator('[data-packages]')).toContainText('330 ROX');
+ await expect(page.locator('[data-packages] .package-price-card h3')).toHaveText('300 ROX');
+ await expect(page.locator('[data-packages]')).toContainText('330 ROX с промокодом');
+ await expect(page.locator('[data-packages]')).toContainText('+30 ROX после оплаты');
+ await expect(page.locator('#packages-title + p')).toContainText('только при применении действующего промокода');
  await expect(page.locator('[data-packages]')).toContainText('326,1 ₽');
  expect(requests).toBe(1);
  await models.getByRole('button',{name:'Видео',exact:true}).click();
@@ -107,4 +110,17 @@ test('pricing and partners animate independently, with reduced motion respected'
  await page.reload();
  await expect(page.locator('.partner-intro')).not.toHaveAttribute('data-motion-played','true');
  await expect(page.locator('.partner-story').first()).toBeVisible();
+});
+
+
+test('public model price cards display configured resolution and quality tiers',async({page})=>{
+ await setup(page);
+ await page.route('**/api/v1/generations/models',route=>route.fulfill({json:{models:[
+  {...photo,title:'Nano Banana Pro',retail_price_rox:'20',retail_price_tiers:{by_resolution:{'1K':'20','2K':'25','4K':'30'}},ui_schema:{fields:[{name:'resolution',suggestions:['1K','2K','4K']}]}},
+  {...photo,title:'Seedream 5 Pro',retail_price_rox:'25',retail_price_tiers:{by_quality:{basic:'25',high:'30'}},ui_schema:{fields:[{name:'quality',suggestions:['basic','high']}]}}
+ ]}}));
+ await page.goto('/pricing');
+ const cards=page.locator('[data-catalog="all"] .model-price-card');
+ await expect(cards.filter({hasText:'Nano Banana Pro'})).toContainText('1K — 20 ROX · 2K — 25 ROX · 4K — 30 ROX');
+ await expect(cards.filter({hasText:'Seedream 5 Pro'})).toContainText('BASIC — 25 ROX · HIGH — 30 ROX');
 });
