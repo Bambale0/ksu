@@ -26,8 +26,12 @@ async def robust_route(page: Page, name: str) -> None:
         "home": ".home-screen",
         "create": ".create-screen",
         "profile": ".profile-screen",
-    }.get(name, "main .screen")
+    }.get(name, "main.main-shell .screen")
     await expect(page.locator(ready).first).to_be_visible(timeout=10000)
+    # The server-owned onboarding status overlay may briefly mount during
+    # hydration, even with ONBOARDING_ENABLED=false in this E2E environment.
+    # Do not interact with or count the underlying app until the gate clears.
+    await expect(page.locator(".roxy-onboarding-v2")).to_be_hidden(timeout=10000)
 
 
 async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) -> None:
@@ -117,7 +121,7 @@ async def scenario_profile_support_partner(page: Page, report: suite.legacy.Repo
     report.controls_seen.update({"profile:works", "profile:publications"})
 
     await robust_route(page, "partners")
-    await expect(page.locator("main")).to_contain_text(
+    await expect(page.locator("main.main-shell")).to_contain_text(
         re.compile(r"Партн|Приглас|ссыл|Начисл|ROX", re.I), timeout=10000
     )
     copy = page.get_by_role("button", name=re.compile(r"Скопировать", re.I)).first
@@ -134,8 +138,9 @@ async def scenario_profile_support_partner(page: Page, report: suite.legacy.Repo
 async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None:
     for route in ("feed", "catalog", "create", "history", "profile", "partners"):
         await robust_route(page, route)
-        await expect(page.locator("main")).to_be_visible(timeout=10000)
-        assert (await page.locator("main").inner_text()).strip(), f"route {route} rendered empty"
+        main = page.locator("main.main-shell")
+        await expect(main).to_be_visible(timeout=10000)
+        await expect(main).not_to_have_text(re.compile(r"^\s*$"), timeout=10000)
         report.controls_seen.add(f"route:{route}")
 
     for path, expected in (
