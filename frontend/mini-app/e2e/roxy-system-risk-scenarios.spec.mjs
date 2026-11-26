@@ -279,7 +279,7 @@ const cases = [
   { name: 'trend-admin-manager-list', route: 'catalog', admin: true, run: async (page) => {
     const dialog = await openTrendAdmin(page);
     await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
-    await expect(dialog.getByText('Активен')).toBeVisible();
+    await expect(dialog.getByText('Активен', { exact: true })).toBeVisible();
   } },
   { name: 'trend-admin-create-validation', route: 'catalog', admin: true, run: async (page) => {
     const dialog = await openTrendAdmin(page);
@@ -303,7 +303,7 @@ const cases = [
   { name: 'trend-admin-hide-restore', route: 'catalog', admin: true, run: async (page) => {
     const dialog = await openTrendAdmin(page);
     await dialog.getByRole('button', { name: 'Скрыть' }).click();
-    await expect(dialog.getByText('Скрыт')).toBeVisible();
+    await expect(dialog.getByText('Скрыт', { exact: true })).toBeVisible();
     await dialog.getByRole('button', { name: 'Вернуть' }).click();
     await expect(dialog.getByText('Активен')).toBeVisible();
   } },

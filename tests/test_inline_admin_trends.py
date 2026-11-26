@@ -14,7 +14,8 @@ def test_inline_trend_admin_is_mounted_in_customer_mini_app() -> None:
 
     assert 'import { InlineTrendAdmin } from "@/components/inline-trend-admin"' in page
     assert "<InlineTrendAdmin />" in page
-    assert "me.is_admin" in component
+    assert "resolveAdminAccess()" in component
+    assert "me.is_admin" in _read(FRONTEND / "lib" / "admin-access.ts")
     # The admin action stays in the stable catalog header during feature-hub
     # hydration; a legacy trend-section portal is vulnerable to a lost tap.
     assert 'node.querySelector<HTMLElement>(".screen-head .kicker")' in component
@@ -86,3 +87,15 @@ def test_inline_trend_admin_backend_enforces_real_admin_permission() -> None:
     # Static /{trend_id} routes must be registered after /manage so FastAPI
     # cannot interpret the literal word 'manage' as a UUID trend id.
     assert trends.index('@router.get("/manage")') < trends.index('@router.get("/{trend_id}")')
+
+
+def test_existing_template_opens_full_editor_by_id_without_creating_a_new_trend() -> None:
+    collection = _read(FRONTEND / "components" / "trend-collection-admin.tsx")
+    component = _read(FRONTEND / "components" / "inline-trend-admin.tsx")
+    assert "requestTrendEdit(trendId)" in collection
+    assert "trend-admin-full-edit-" in collection
+    assert "Поиск готовых шаблонов" in collection
+    assert "if (!isAdmin) return;" in component
+    assert "entry.id === editId" in component
+    assert "setEditingId(item.id)" in component
+    assert "draftFrom(item, currentModels)" in component

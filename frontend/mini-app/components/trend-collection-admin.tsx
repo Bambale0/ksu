@@ -7,6 +7,8 @@ import {
   clearTrendCollectionTarget,
   setTrendCollectionTarget,
   trendAdminApi,
+  requestTrendEdit,
+  TREND_UPDATED_EVENT,
   type TrendAdminItem,
 } from "@/lib/trend-admin-api";
 import type { TrendUserField } from "@/lib/types";
@@ -138,6 +140,11 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   const [collections, setCollections] = useState<TrendCollection[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [trends, setTrends] = useState<TrendAdminItem[]>([]);
+  const [trendSearch, setTrendSearch] = useState("");
+  const filteredTrends = useMemo(() => {
+    const query = trendSearch.trim().normalize("NFKC").toLocaleLowerCase("ru");
+    return trends.filter(trend => trend.title.normalize("NFKC").toLocaleLowerCase("ru").includes(query));
+  }, [trends, trendSearch]);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [editingTrend, setEditingTrend] = useState<TrendDraft | null>(null);
   const [customTrendFieldName, setCustomTrendFieldName] = useState("");
@@ -175,6 +182,16 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   useEffect(() => {
     if (open) void refresh();
   }, [open, refresh]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const onUpdated = () => {
+      void refresh();
+      onChanged?.();
+    };
+    window.addEventListener(TREND_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(TREND_UPDATED_EVENT, onUpdated);
+  }, [isAdmin, refresh, onChanged]);
 
   const collectionById = useMemo(
     () => new Map(collections.map((item) => [item.id, item])),
@@ -339,6 +356,17 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
     }, 80);
   };
 
+  const openExistingTrend = (trendId: string) => {
+    clearTrendCollectionTarget();
+    if (!requestTrendEdit(trendId)) {
+      setError("Полный редактор ещё не готов. Обновите приложение и попробуйте снова.");
+      return;
+    }
+    setOpen(false);
+    setEditingTrend(null);
+    setCustomTrendFieldName("");
+  };
+
   if (!isAdmin) return null;
 
   return <>
@@ -383,8 +411,10 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
         </div>
 
         <div className="trend-folder-admin-assign">
-          <div><span className="kicker">Содержимое</span><h3>Управление трендами</h3><p>Старые фото и видео не нужно загружать заново. Выберите категорию, поправьте название или хэштеги и при необходимости скройте шаблон.</p></div>
-          {trends.map((trend) => {
+          <div><span className="kicker">Содержимое</span><h3>Управление трендами</h3><p>Старые фото и видео не нужно загружать заново. Полный редактор позволяет изменить промпт, модель, превью и остальные настройки существующего шаблона.</p></div>
+          <label className="trend-folder-admin-search"><span>Поиск по названию</span><input type="search" aria-label="Поиск готовых шаблонов" value={trendSearch} onChange={event => setTrendSearch(event.target.value)} placeholder="Название тренда" /></label>
+          {!loading && filteredTrends.length === 0 ? <div className="trend-folder-admin-empty">Шаблоны не найдены.</div> : null}
+          {filteredTrends.map((trend) => {
             const currentId = assignments[trend.id] || "trends";
             const isEditing = editingTrend?.id === trend.id;
             return <article className={`trend-folder-admin-trend${trend.is_active ? "" : " is-hidden"}`} key={trend.id} data-testid={`trend-admin-item-${trend.id}`}>
@@ -431,7 +461,8 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
                 <select aria-label={`Категория для ${trend.title}`} data-testid={`trend-admin-category-${trend.id}`} value={collectionById.has(currentId) ? currentId : "trends"} disabled={busy === `trend:${trend.id}`} onChange={(event) => void assign(trend.id, event.target.value)}>
                   {collections.map((folder) => <option key={folder.id} value={folder.id}>{folder.title}{folder.is_active ? "" : " · скрыта"}</option>)}
                 </select>
-                <button type="button" data-testid={`trend-admin-edit-${trend.id}`} onClick={() => { setEditingTrend(trendDraft(trend)); setCustomTrendFieldName(""); }}>Редактировать</button>
+                <button type="button" className="primary" data-testid={`trend-admin-full-edit-${trend.id}`} onClick={() => openExistingTrend(trend.id)}>Полное редактирование</button>
+                <button type="button" data-testid={`trend-admin-edit-${trend.id}`} onClick={() => { setEditingTrend(trendDraft(trend)); setCustomTrendFieldName(""); }}>Название и поля</button>
                 <button type="button" data-testid={`trend-admin-visibility-${trend.id}`} className={trend.is_active ? "danger" : ""} disabled={busy === `trend-status:${trend.id}`} onClick={() => void toggleTrend(trend)}>{busy === `trend-status:${trend.id}` ? "…" : trend.is_active ? "Скрыть" : "Опубликовать"}</button>
               </div>
             </article>;
@@ -448,6 +479,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
         .trend-folder-admin-form,.trend-folder-admin-trend-form{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid rgba(190,120,255,.25);border-radius:18px;background:#110e16}.trend-folder-admin-form label,.trend-folder-admin-trend-form label{display:grid;gap:6px}.trend-folder-admin-form label span,.trend-folder-admin-trend-form label span{font-size:11px;color:#bbb2c5;font-weight:800}.trend-folder-admin-form label small{font-size:10px;color:#817888}.trend-folder-admin-form input,.trend-folder-admin-form textarea,.trend-folder-admin-trend-form input,.trend-folder-admin-trend-form textarea{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:#08070b;color:#fff;padding:11px 12px;font:inherit}
         .trend-folder-admin-user-fields{display:grid;gap:10px;padding:12px;border:1px solid rgba(190,120,255,.2);border-radius:14px;background:rgba(169,91,255,.05)}.trend-folder-admin-user-fields>div:first-child{display:grid;gap:3px}.trend-folder-admin-user-fields small{color:#92899d;font-size:10px;line-height:1.4}.trend-folder-admin-field-presets{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-field-presets button{min-height:34px;padding:0 10px}.trend-folder-admin-custom-field{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.trend-folder-admin-custom-field button{min-height:40px}.trend-folder-admin-selected-fields{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-selected-fields>div{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 9px;border:1px solid rgba(190,120,255,.23);border-radius:999px;background:rgba(169,91,255,.1);color:#e3c8ff;font-size:11px;font-weight:800}.trend-folder-admin-selected-fields button{min-height:26px;width:26px;padding:0;border-radius:50%}
         .trend-folder-admin-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.trend-folder-admin-card{padding:13px;border:1px solid rgba(255,255,255,.09);border-radius:17px;background:#110e16}.trend-folder-admin-card.is-hidden,.trend-folder-admin-trend.is-hidden{opacity:.62}.trend-folder-admin-card>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:8px}.trend-folder-admin-card small{color:#9d93a8;font-size:10px}.trend-folder-admin-card p{min-height:34px;color:#aaa2b4;font-size:12px;line-height:1.4}.trend-folder-admin-card .danger,.trend-folder-admin-trend .danger{color:#ffbdca;border-color:rgba(255,100,130,.3)}.trend-folder-admin-no-tags{display:block;margin:8px 0}.category-tags{margin:8px 0}
+        .trend-folder-admin-search{display:grid;gap:6px;color:#bbb2c5;font-size:12px;font-weight:700}.trend-folder-admin-search input{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:#08070b;color:#fff;padding:11px 12px;font:inherit;min-height:44px}.trend-folder-admin-controls .primary{border-color:rgba(190,120,255,.35);background:#36204a}
         .trend-folder-admin-assign{display:grid;gap:9px;margin-top:22px}.trend-folder-admin-assign h3{margin:4px 0;font-size:20px}.trend-folder-admin-trend{display:grid;gap:10px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#100d14}.trend-folder-admin-trend-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.trend-folder-admin-trend-head>span:first-child{display:grid;min-width:0}.trend-folder-admin-trend-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trend-folder-admin-trend-head small{color:#9d93a8}.trend-folder-admin-status{flex:0 0 auto;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:5px 8px;color:#aaa2b4;font-size:10px;font-weight:800}.trend-folder-admin-status.is-live{border-color:rgba(139,255,201,.2);color:#9ff3c9}.trend-folder-admin-trend-description{margin:0;color:#aaa2b4;font-size:12px;line-height:1.45}.trend-folder-admin-tags{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-tags span{padding:4px 7px;border-radius:999px;background:rgba(169,91,255,.12);color:#d9b5ff;font-size:11px}.trend-folder-admin-controls{align-items:center}.trend-folder-admin-controls select{flex:1 1 190px;min-width:0;border:1px solid rgba(255,255,255,.11);border-radius:11px;background:#08070b;color:#fff;padding:10px}
         @media(max-width:520px){.trend-folder-admin-list{grid-template-columns:1fr}.trend-folder-admin-trend-head{align-items:center}.trend-folder-admin-controls{display:grid;grid-template-columns:1fr 1fr}.trend-folder-admin-controls select{grid-column:1/-1;width:100%}}
       `}</style>
