@@ -6,7 +6,6 @@ import { OnboardingRequiredBoundary } from "@/components/onboarding-required-bou
 import { TelegramAuthBoundary } from "@/components/telegram-auth-boundary";
 import { GenerationDeliveryBridge } from "@/components/generation-delivery-bridge";
 import "./globals.css";
-import "./browser-landing.css";
 import "./loader.css";
 import "./catalog.css";
 import "./ux-polish.css";
