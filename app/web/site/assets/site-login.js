@@ -31,7 +31,7 @@
       const url = new URL(raw, location.origin);
       if (url.origin !== location.origin || !/^\/mini-app\/(?:[a-z-]+\/)?$/.test(url.pathname)) return "";
       const safe = new URLSearchParams();
-      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab"]) {
+      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab", "source", "surface", "scenario", "mode", "workflow", "provider"]) {
         const value = url.searchParams.get(name);
         if (value && value.length <= 512) safe.set(name, value);
       }
