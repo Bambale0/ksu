@@ -117,6 +117,8 @@ No Alembic migration is required for this epic because the existing `admin_trend
 
 ## Template categories
 
+Category cards occupy one full-width row on mobile and desktop, both on the canonical Home/Catalog surface and the expanded category list. The gallery inside an opened category retains its existing two-column photo/video layout. The separate lazy template rails are unchanged.
+
 Template categories are stored relationally:
 
 - `trend_collections` owns category metadata, ordering, visibility and hashtag aliases;
