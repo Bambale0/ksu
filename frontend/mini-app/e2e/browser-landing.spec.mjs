@@ -77,3 +77,38 @@ test('expired browser session uses the same canonical login and keeps the select
   expect(await page.evaluate(() => sessionStorage.getItem('__roxy_browser_init_data_v1'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('__roxy_browser_resume_v1'))).toBe('/mini-app/?route=history&startapp=ref_777');
 });
+
+
+const resumeCases = [
+  ['/mini-app/remix/', { source: '11111111-1111-4111-8111-111111111111', surface: 'profile' }],
+  ['/mini-app/ai-reference/', { scenario: 'hd' }],
+  ['/mini-app/prompt-tools/', { mode: 'seedance' }],
+  ['/mini-app/trend/', { id: '11111111-1111-4111-8111-111111111111', workflow: '22222222-2222-4222-8222-222222222222' }],
+  ['/mini-app/payments/', { provider: 'card' }],
+];
+
+for (const [path, params] of resumeCases) {
+  test(`sign-in preserves the original screen selectors for ${path}`, async ({ page }) => {
+    await loginFixture(page);
+    await page.route('**/api/v1/browser-auth', route => route.fulfill({ json: {
+      ok: true, init_data: 'query_id=browser-test&hash=synthetic', expires_in: 3600,
+    } }));
+    const search = new URLSearchParams({ ...params, ref: 'QA', unknown: 'discard' });
+    await page.goto(path + '?' + search.toString());
+    await expect(page.locator('#login-status')).toContainText('Подтверди вход');
+    expect(new URL(page.url()).search).toBe('?resume=1');
+    // Observe the actual post-auth document navigation independently of
+    // individual screens' API fixtures; their behavior has its own E2E suite.
+    await page.route(url => url.pathname === path, route =>
+      route.request().isNavigationRequest()
+        ? route.fulfill({ contentType: 'text/html', body: '<h1>Destination reached</h1>' })
+        : route.fallback());
+    await Promise.all([
+      page.waitForURL(url => url.pathname === path),
+      page.evaluate(() => { void window.onRoxyTelegramAuth({ id: 42, first_name: 'Test', auth_date: 1, hash: 'fixture' }); }),
+    ]);
+    await expect(page.getByRole('heading', { name: 'Destination reached' })).toBeVisible();
+    expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({ ...params, ref: 'QA' });
+    expect(await page.evaluate(() => sessionStorage.getItem('__roxy_browser_resume_v1'))).toBeNull();
+  });
+}
