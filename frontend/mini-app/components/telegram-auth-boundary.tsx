@@ -61,6 +61,13 @@ function CanonicalLoginRedirect() {
         const value = current.searchParams.get(name);
         if (value && value.length <= 512) params.set(name, value);
       }
+      // Legacy browser links may use a hash; only product routing fields
+      // survive, never tgWebAppData or any signed credential.
+      const hash = new URLSearchParams(current.hash.replace(/^#/, ""));
+      for (const name of ["startapp", "start_payload", "start", "ref", "tgWebAppStartParam"]) {
+        const value = hash.get(name);
+        if (!params.has(name) && value && value.length <= 512) params.set(name, value);
+      }
       const query = params.toString();
       window.sessionStorage.setItem(BROWSER_RESUME_KEY, current.pathname + (query ? "?" + query : ""));
     } catch {
