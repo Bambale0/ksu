@@ -57,7 +57,7 @@ function CanonicalLoginRedirect() {
       // Keep the intended app route in this tab, never copy Telegram launch
       // credentials or private repeat tokens into the public login URL.
       const params = new URLSearchParams();
-      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab"]) {
+      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab", "source", "surface", "scenario", "mode", "workflow", "provider"]) {
         const value = current.searchParams.get(name);
         if (value && value.length <= 512) params.set(name, value);
       }
