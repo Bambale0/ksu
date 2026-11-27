@@ -627,7 +627,6 @@ export function InlineTrendAdmin() {
   const workflowVideoModels = models.filter((model) => workflowModelSupportsI2V(model) || (draft.mode === "workflow" && model.id === draft.video.modelId));
 
   const beginCreate = () => {
-    if (loading || !models.length) return;
     draftVersion.current += 1;
     setUploading(false);
     const modelId = models[0]?.id || "";
@@ -1087,7 +1086,7 @@ export function InlineTrendAdmin() {
         </header>
 
         <div className="inline-trend-admin-toolbar">
-          <button className="inline-trend-primary" type="button" disabled={loading || !models.length} onClick={beginCreate}>＋ Новый тренд</button>
+          <button className="inline-trend-primary" type="button" onClick={beginCreate}>＋ Новый тренд</button>
           <button className="inline-trend-secondary" type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 

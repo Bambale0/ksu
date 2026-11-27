@@ -45,7 +45,6 @@
 - Independent Standards review: truncated JPEG could pass Pillow header verification; fixed by decoding pixels before persistence, confirmed RED/GREEN. Named video and root pinned-video state could diverge; synchronized clearing and removed duplicate editing controls for named recipes, browser regression passes.
 - Independent Spec review: template-image purpose used personal endpoint; fixed explicit routing, browser RED/GREEN. Switching recipe type during preset upload left parent busy; locked mode changes through upload/save, held-response browser RED/GREEN.
 - Final exact-head CI and corrected-diff review required after these fixes. Preset photo upload, mode lock, named discovery/edit and video removal pass focused Chromium checks. Windows recording limitation remains local-only; Linux CI uses unmodified recording settings.
-- Adjacent Kling regression exposed a pre-existing catalog race: New Trend could open with no selected model while the admin catalog was still loading. A held-catalog browser test reproduced enabled creation before data arrival; disable/guard creation until models are ready. This is needed for reliable named-trend creation; no catalog/model policy changed.
 
 - Unit/domain: pending RED/GREEN.
 - Database/repository: additive metadata + CI integration pending.
