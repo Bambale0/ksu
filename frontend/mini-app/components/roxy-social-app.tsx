@@ -798,7 +798,7 @@ function CatalogScreen({ canonicalHome = false, models, families, trends, onCrea
     <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
     <SectionTitle kicker="Тренды" title="Готовые сценарии" />
     <div className="ready-trend-rail" aria-label="Готовые сценарии">
-      {filteredTrends.slice(0, 12).map((trend) => <button className="ready-trend-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}>
+      {filteredTrends.slice(0, 12).map((trend) => <button className="ready-trend-card" data-trend-launch="true" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}>
         {trend.preview_url ? <TrendPreviewMedia className="ready-trend-cover" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
         {trend.media_type === "video" ? <span className="ready-trend-video" aria-label="Видео"><Icon name={modelIcon(trend.media_type)} /></span> : null}
         <span className="ready-trend-copy"><strong>{trend.title}</strong><span className="price-pill">{priceLabel(trend.cost_rox)}</span></span>
