@@ -1,6 +1,32 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
+test('existing v1 trend gains confirmed named references and retains them on reopen', async ({ page }) => {
+  const model = { ...photoModel, id: 'nano-banana-pro', known_fields: ['prompt', 'image_input', 'aspect_ratio', 'resolution'], reference_capacity: 4 };
+  const item = { id: 'named-existing', title: 'Готовый тренд', is_active: true, payload: {
+    model_id: model.id, media_type: 'image', prompt: 'Image1 персонаж, @image_2 одежда',
+    preview_url: 'https://cdn.example.invalid/preview.jpg', parameters: { aspect_ratio: '1:1' },
+    input_mode: 'image', min_references: 1, max_references: 4,
+  } };
+  const state = await setup(page, { items: [item], models: [model, videoModel] });
+  await page.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await expect(form.getByText('Найдены референсы в промпте', { exact: true })).toBeVisible();
+  await form.getByRole('button', { name: 'Подтвердить референсы из промпта' }).click();
+  await form.getByLabel('Название референса 1', { exact: true }).fill('Персонаж');
+  await form.getByLabel('Название референса 2', { exact: true }).fill('Одежда');
+  await form.getByLabel('Описание референса 2', { exact: true }).fill('Образ без человека');
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.reference_schema).toMatchObject({ mode: 'strict', slots: [
+    { id: 'image_1', label: 'Персонаж', order: 0, required: true },
+    { id: 'image_2', label: 'Одежда', description: 'Образ без человека', order: 1, required: true },
+  ] });
+  await page.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  await expect(form.getByLabel('Название референса 2', { exact: true })).toHaveValue('Одежда');
+  expect(state.errors).toEqual([]);
+});
+
 const stepPreviewPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 const stepVideoFixtures = {
   chromium: { extension: 'webm', contentType: 'video/webm', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.webm', import.meta.url)) },

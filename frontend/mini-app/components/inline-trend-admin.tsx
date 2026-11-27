@@ -8,9 +8,10 @@ import { createPortal } from "react-dom";
 import { klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
+import { TrendReferenceEditor } from "@/components/trend-reference-editor";
 import { api } from "@/lib/api";
 import { resolveAdminAccess } from "@/lib/admin-access";
-import type { TrendUserField, UiField } from "@/lib/types";
+import type { TrendUserField, UiField, TrendReferenceSchema } from "@/lib/types";
 import { inferTemplateFieldType } from "@/lib/trend-user-fields";
 import {
   trendAdminApi,
@@ -104,6 +105,7 @@ type DraftBase = {
 };
 
 type LegacyDraft = DraftBase & {
+  referenceSchema?: TrendReferenceSchema;
   mode: "legacy";
   modelId: string;
   prompt: string;
@@ -258,6 +260,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
     modelId: String(payload.model_id || ""),
     prompt: String(payload.prompt || ""),
     templateVideoUrl: String(payload.template_video_url || ""),
+    referenceSchema: payload.reference_schema ? structuredClone(payload.reference_schema) : undefined,
     userFields: Array.isArray(payload.user_fields) ? payload.user_fields.slice(0, 6) : [],
     inputMode: payload.input_mode === "image" ? "image" : "none",
     minReferences: Number(payload.min_references || 0),
@@ -998,6 +1001,7 @@ export function InlineTrendAdmin() {
         return;
       }
       const legacyPayload: TrendAdminV1Payload = {
+        reference_schema: draft.referenceSchema,
         description: draft.description.trim(),
         preview_url: draft.previewUrl.trim(),
         media_type: model.media_type,
@@ -1195,6 +1199,11 @@ export function InlineTrendAdmin() {
               maxReferences: Math.min(capacity, Math.max(current.maxReferences || (count ? capacity : 0), count)),
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          <TrendReferenceEditor key={draftVersion.current} value={draft.referenceSchema} prompt={draft.prompt} templateVideoUrl={draft.templateVideoUrl}
+            disabled={saving || uploading} onBusy={setUploading} onChange={schema => setDraft(current => current.mode === "legacy" ? {
+              ...current, referenceSchema: schema,
+              ...(schema?.slots.some(slot => slot.kind === "video" && slot.source === "admin" && slot.url) ? { templateVideoUrl: schema.slots.find(slot => slot.kind === "video" && slot.source === "admin")!.url || "" } : {}),
+            } : current)} />
           {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
         {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
@@ -1274,7 +1283,7 @@ export function InlineTrendAdmin() {
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
           </div>
 
-          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={templateVideoUrl ? 0 : 1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => {
+          {!draft.referenceSchema && draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={templateVideoUrl ? 0 : 1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => {
             if (current.mode !== "legacy") return current;
             const required = current.modelId === "kling-4.0" ? klingTrendRequiredImages(current.prompt) : 0;
             const next = Math.min(capacity, Math.max(required, current.templateVideoUrl ? 0 : 1, Number(event.target.value || 0)));

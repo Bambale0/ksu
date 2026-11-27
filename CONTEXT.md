@@ -1482,3 +1482,8 @@ Transparent hero and navigation QA checkpoint at efad72ab: 12 standalone Python 
 
 ## Active Feature Execution — original Mini App promos in public site (2026-11-24)
 Reuse exact 1440x810 original WebP blobs (author rewards promo-2, partner promo-1), author editorial band after hero and partner image instead of closing RX. No regeneration/crop, responsive stacked mobile, lazy load, reduced motion. Both links reach existing partners route after /login?section=partners. No financial or eligibility logic changes. Existing graphic amounts not independently verified against current live configuration; textual copy refers to program terms. Skills refreshed: TDD, claw UX, microinteractions, dev-agents-pack, agentskills format-only, anthropics frontend-design; .agents 404, .clinerules fallback. Exact source identity, image proportions, links, responsive browser and generated parity tests required. No DB, payment or provider changes. Keep #662 scope and protected release.
+## Active Feature Execution — named trend references (2026-11-27)
+
+- Baseline: main and successful Deploy Production run 45817847774, `9949ca8a70ba9653f0b0318f1924d02535e35344`.
+- Audit, acceptance criteria, implementation and verification ledger: [named references](docs/agents/EXECUTION/named-trend-references-20261127.md).
+- Status: audited existing v1 ranges, v2 semantic workflow inputs, private prompt boundary, personal uploads and product-owned Kling video. Implement opt-in v1 named slots; retain existing v2 workflow contracts and free-generation paths. Exact-head CI, separate review and deployment verification remain required.

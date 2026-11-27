@@ -26,6 +26,10 @@ from app.services.template_video import TemplateVideoService
 from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.seedance25_contract import SEEDANCE25_MAX_VIDEO_REFS
 from app.services.trend_collections import TrendCollectionService
+from app.services.trend_references import (
+    normalize_reference_schema, public_reference_schema, resolve_reference_inputs,
+    merge_reference_urls, user_slots,
+)
 from app.services.trend_user_fields import (
     TrendUserFieldsError,
     normalize_trend_user_fields,
@@ -190,6 +194,27 @@ class TrendService:
             # Clamp legacy/admin recipes to the provider capability. Existing
             # Nexus trends historically stored 8 even though Nexus accepts 4.
             max_references = min(max_references, reference_capacity)
+        try:
+            reference_schema = normalize_reference_schema(payload.get("reference_schema"), prompt=prompt)
+        except ValueError as exc:
+            raise TrendRecipeError(str(exc)) from exc
+        if reference_schema:
+            images = [s for s in reference_schema["slots"] if s["kind"] == "image"]
+            if len(images) > reference_capacity:
+                raise TrendRecipeError(f"Модель поддерживает не более {reference_capacity} фото")
+            customer_images = user_slots(reference_schema, "image")
+            customer_videos = user_slots(reference_schema, "video")
+            if customer_videos and (spec.id != "seedance-2.5" or len(customer_videos) > SEEDANCE25_MAX_VIDEO_REFS):
+                raise TrendRecipeError("Модель не поддерживает пользовательские видеореференсы")
+            if any(not s["required"] for s in customer_videos):
+                raise TrendRecipeError("Видеореференсы должны быть обязательными")
+            admin_videos = [s for s in reference_schema["slots"] if s["kind"] == "video" and s["source"] == "admin"]
+            if admin_videos and (spec.id != "kling-4.0" or len(admin_videos) != 1 or admin_videos[0].get("url") != template_video_url):
+                raise TrendRecipeError("Заранее заданное видео требует закреплённого видео Kling 4.0")
+            min_references = sum(s["required"] for s in customer_images)
+            max_references = len(customer_images)
+            video_reference_count = len(customer_videos)
+            input_mode = "image" if images else "none"
         billing_seconds_raw = payload.get("billing_seconds")
         if billing_seconds_raw is None and spec.duration_field:
             billing_seconds_raw = parameters.get(spec.duration_field)
@@ -233,6 +258,7 @@ class TrendService:
             "tags": clean_tags,
             "sort_order": sort_order,
             "usage_count": usage_count,
+            **({"reference_schema": reference_schema} if reference_schema else {}),
         }
 
     @staticmethod
@@ -260,6 +286,8 @@ class TrendService:
                 )
         if recipe["template_video_url"]:
             await TemplateVideoService.verified(session, recipe["template_video_url"])
+        if recipe.get("reference_schema"):
+            await TrendService._verify_named_presets(session, recipe["reference_schema"])
         if TemplateAudioService.audio_urls(recipe["parameters"]):
             await TemplateAudioService.lock(session)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
@@ -378,6 +406,7 @@ class TrendService:
                 "video": {"min": recipe["video_reference_count"], "max": recipe["video_reference_count"]},
             },
             "user_fields": recipe["user_fields"],
+            **({"reference_schema": public_reference_schema(recipe["reference_schema"])} if recipe.get("reference_schema") else {}),
             "aspect_ratio_options": TrendService._aspect_ratio_options(recipe),
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
@@ -404,6 +433,7 @@ class TrendService:
         user_values: dict[str, str] | None = None,
         resolution: str | None = None,
         aspect_ratio: str | None = None,
+        reference_inputs: list[dict[str, str]] | None = None,
     ) -> tuple[Generation, dict[str, Any]]:
         item = await session.get(AdminTrend, trend_id)
         if item is None or not item.is_active:
@@ -413,6 +443,34 @@ class TrendService:
             raise TrendRecipeError(
                 "This trend requires the sequential workflow API; direct v1 runs are disabled"
             )
+        schema = recipe.get("reference_schema")
+        if schema:
+            if reference_urls or video_reference_urls:
+                raise TrendRecipeError("Именные референсы нельзя смешивать с общим списком загрузок")
+            try:
+                reference_urls, video_reference_urls = resolve_reference_inputs(schema, reference_inputs)
+            except ValueError as exc:
+                raise TrendRecipeError(str(exc)) from exc
+        elif reference_inputs is not None:
+            raise TrendRecipeError("Этот тренд использует общий список референсов")
+        if schema:
+            from app.db.reference_models import UserReference
+            for entry in reference_inputs or []:
+                row = await session.scalar(select(UserReference).where(
+                    UserReference.user_id == user_id,
+                    UserReference.source_url == entry["url"],
+                    UserReference.kind == entry["kind"],
+                    UserReference.status == "ready",
+                    UserReference.probe_status == "ready",
+                ).limit(1))
+                if row is None or not ReferenceStaticStorage.local_url_exists(row.source_url):
+                    raise TrendRecipeError("Загрузите свой проверенный файл в соответствующий референс")
+                # MIME alone cannot establish that video bytes are an image.
+                if entry["kind"] == "image" and (not row.width or not row.height or row.duration_ms):
+                    raise TrendRecipeError("Для фото нужен проверенный файл изображения")
+                if entry["kind"] == "video" and (not row.video_codec or not row.duration_ms or row.duration_ms <= 0):
+                    raise TrendRecipeError("Загрузите проверенный файл видео с видеодорожкой")
+            await TrendService._verify_named_presets(session, schema)
         refs = [TrendService._safe_http_url(url, field="reference_url") for url in reference_urls]
         if len(refs) < recipe["min_references"] or len(refs) > recipe["max_references"]:
             raise TrendRecipeError(
@@ -477,6 +535,23 @@ class TrendService:
         }
 
     @staticmethod
+    async def _verify_named_presets(session: AsyncSession, schema: dict[str, Any]) -> None:
+        from app.db.reference_models import TemplateImageReference
+        for slot in schema["slots"]:
+            if slot["source"] != "admin":
+                continue
+            if slot["kind"] == "video":
+                await TemplateVideoService.verified(session, slot["url"])
+                continue
+            row = await session.scalar(select(TemplateImageReference).where(
+                TemplateImageReference.source_url == slot["url"],
+            ).with_for_update(read=True))
+            if (row is None or row.status != "ready" or not row.content_type.startswith("image/")
+                    or row.width <= 0 or row.height <= 0 or row.size_bytes <= 0
+                    or not ReferenceStaticStorage.local_url_exists(row.source_url)):
+                raise TrendRecipeError("Загрузите проверенное постоянное фото через редактор шаблона")
+
+    @staticmethod
     def reference_capacity(spec: ModelSpec) -> int:
         field = TrendService._reference_field(spec)
         if field is None:
@@ -516,6 +591,9 @@ class TrendService:
             required=require_aspect_ratio,
         )
         spec = ModelCatalog.get(str(recipe["model_id"]))
+        schema = recipe.get("reference_schema")
+        if schema:
+            reference_urls = merge_reference_urls(schema, "image", reference_urls)
         for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):
             parameters.pop(field, None)
         videos = video_reference_urls or []

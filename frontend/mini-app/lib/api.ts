@@ -202,7 +202,7 @@ export const api = {
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: async (body: Record<string, unknown>) => normalizeCustomerQuote(await request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) })),
   create: (body: Record<string, unknown>) => trackGenerationStart(request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) })),
-  upload: (file: File, purpose?: "template-audio" | "template-video") => {
+  upload: (file: File, purpose?: "template-audio" | "template-video" | "template-image") => {
     const form = new FormData();
     form.append("file", file, file.name);
     return request<{
@@ -287,10 +287,11 @@ export const api = {
     body: JSON.stringify(body),
   }),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string; videoReferenceUrls?: string[] } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string; videoReferenceUrls?: string[]; referenceInputs?: import("./types").TrendReferenceInput[] } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({
       reference_urls: referenceUrls,
+      ...(options.referenceInputs !== undefined ? { reference_inputs: options.referenceInputs } : {}),
       ...(options.videoReferenceUrls?.length ? { video_reference_urls: options.videoReferenceUrls } : {}),
       ...(Object.keys(userValues).length ? { user_values: userValues } : {}),
       ...(options.resolution ? { resolution: options.resolution } : {}),

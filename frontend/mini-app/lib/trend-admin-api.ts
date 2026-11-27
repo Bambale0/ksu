@@ -1,7 +1,7 @@
 "use client";
 
 import { telegramHeaders } from "./telegram";
-import type { GenerationModel, TrendUserField, UiSchema } from "./types";
+import type { GenerationModel, TrendUserField, UiSchema, TrendReferenceSchema } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
 export const TREND_EDIT_EVENT = "roxy:trend-edit";
@@ -58,6 +58,7 @@ type TrendAdminPayloadBase = {
 };
 
 export type TrendAdminV1Payload = TrendAdminPayloadBase & {
+  reference_schema?: TrendReferenceSchema;
   schema_version?: 1;
   media_type: "image" | "video" | string;
   model_id: string;

@@ -21,7 +21,7 @@
     "trendModelInfo", "trendPrompt", "trendInputMode", "trendReferenceFields",
     "trendMinReferences", "trendMaxReferences", "trendBillingSeconds", "trendSortOrder",
     "trendTags", "trendParameters", "trendKnownFields", "trendActiveRow", "trendActive",
-    "trendTemplateVideo", "trendUserFields", "trendWorkflowSteps",
+    "trendTemplateVideo", "trendUserFields", "trendReferenceSchema", "trendWorkflowSteps",
     "trendPreview", "trendFormMessage", "trendSubmit", "trendReset", "trendFormKicker",
     "trendFormTitle", "trendSearch", "trendStatusFilter", "trendList", "trendPagination", "trendToast",
   ];
@@ -327,6 +327,7 @@
       usage_count: Number(state.editing?.payload?.usage_count || 0),
       template_video_url: dom.trendTemplateVideo.value.trim() || null,
       user_fields: parseJsonField(dom.trendUserFields.value || "[]", "Поля пользователя", true),
+      ...(dom.trendReferenceSchema.value.trim() ? { reference_schema: parseJsonField(dom.trendReferenceSchema.value, "Именные референсы", false) } : {}),
     };
     if (billingRaw) recipe.billing_seconds = Number(billingRaw);
     return recipe;
@@ -374,6 +375,7 @@
     dom.trendParameters.value = JSON.stringify(payload.parameters || {}, null, 2);
     dom.trendTemplateVideo.value = payload.template_video_url || "";
     dom.trendUserFields.value = JSON.stringify(payload.user_fields || [], null, 2);
+    dom.trendReferenceSchema.value = payload.reference_schema ? JSON.stringify(payload.reference_schema, null, 2) : "";
     dom.trendActive.checked = item.is_active !== false;
     dom.trendActiveRow.hidden = duplicate;
     dom.trendFormKicker.textContent = duplicate ? "Копия тренда" : "Редактирование";

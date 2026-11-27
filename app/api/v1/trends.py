@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
@@ -33,7 +33,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trends", tags=["trends"])
 
 
+class TrendReferenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slot_id: str = Field(min_length=1, max_length=32)
+    kind: Literal["image", "video"]
+    url: str = Field(min_length=1, max_length=4096)
+
+
 class RunTrendRequest(BaseModel):
+    reference_inputs: list[TrendReferenceInput] | None = Field(default=None, max_length=16)
     video_reference_urls: list[str] = Field(default_factory=list, max_length=SEEDANCE25_MAX_VIDEO_REFS)
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
     user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
@@ -608,6 +616,7 @@ async def run_trend(
             user_values=payload.user_values,
             resolution=payload.resolution,
             aspect_ratio=payload.aspect_ratio,
+            reference_inputs=[entry.model_dump() for entry in payload.reference_inputs] if payload.reference_inputs is not None else None,
         )
     except Exception as exc:
         await session.rollback()

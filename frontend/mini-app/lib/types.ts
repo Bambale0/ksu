@@ -307,7 +307,22 @@ export type TrendQualityOption = {
   default?: boolean;
 };
 
+export type TrendReferenceSlot = {
+  id: string;
+  label: string;
+  description: string;
+  kind: "image" | "video";
+  source: "user" | "admin";
+  order: number;
+  required: boolean;
+  url?: string;
+};
+
+export type TrendReferenceSchema = { mode: "strict" | "range"; slots: TrendReferenceSlot[] };
+export type TrendReferenceInput = { slot_id: string; kind: "image" | "video"; url: string };
+
 export type TrendItem = {
+  reference_schema?: TrendReferenceSchema;
   id: string;
   title: string;
   description?: string;
