@@ -1,6 +1,18 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
+test('new trend waits for the admin model catalog before opening a draft', async ({ page }) => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  await setup(page, { waitBeforeList: pending });
+  const create = page.getByRole('button', { name: '＋ Новый тренд', exact: true });
+  try { await expect(create).toBeDisabled(); }
+  finally { release(); }
+  await expect(create).toBeEnabled();
+  await create.click();
+  await expect(page.getByRole('dialog', { name: 'Добавить тренд', exact: true }).getByRole('combobox', { name: 'Модель', exact: true })).toHaveValue(photoModel.id);
+});
+
 test('existing v1 trend gains confirmed named references and retains them on reopen', async ({ page }) => {
   const model = { ...photoModel, id: 'nano-banana-pro', known_fields: ['prompt', 'image_input', 'aspect_ratio', 'resolution'], reference_capacity: 4 };
   const item = { id: 'named-existing', title: 'Готовый тренд', is_active: true, payload: {
@@ -206,7 +218,7 @@ function v2Payload(videoModelId = videoModel.id) {
   };
 }
 
-async function setup(page, { items = [], models = [photoModel, videoModel], touch = false, waitAfterWriteList } = {}) {
+async function setup(page, { items = [], models = [photoModel, videoModel], touch = false, waitAfterWriteList, waitBeforeList } = {}) {
   const state = { items, models, writes: [], errors: [], unexpectedWrites: [], refreshAfterWrite: 0 };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.addInitScript(() => {
@@ -225,6 +237,7 @@ async function setup(page, { items = [], models = [photoModel, videoModel], touc
     if (path === '/api/v1/me') return json({ id: 'admin', telegram_id: 777, first_name: 'Admin', is_admin: true, balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/trends/manage' && request.method() === 'GET') {
+      if (waitBeforeList) await waitBeforeList;
       if (waitAfterWriteList && state.writes.length) {
         state.refreshAfterWrite += 1;
         await waitAfterWriteList;
