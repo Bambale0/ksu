@@ -22,7 +22,28 @@
     }
   }
   for (const [name, value] of approved) target.searchParams.set(name, value);
-  const destination = target.pathname + target.search;
+  const resumeKey = "__roxy_browser_resume_v1";
+  function resumeDestination() {
+    if (query.get("resume") !== "1") return "";
+    try {
+      const raw = sessionStorage.getItem(resumeKey) || "";
+      if (!raw.startsWith("/mini-app/") || raw.startsWith("//")) return "";
+      const url = new URL(raw, location.origin);
+      if (url.origin !== location.origin || !/^\/mini-app\/(?:[a-z-]+\/)?$/.test(url.pathname)) return "";
+      const safe = new URLSearchParams();
+      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab", "source", "surface", "scenario", "mode", "workflow", "provider"]) {
+        const value = url.searchParams.get(name);
+        if (value && value.length <= 512) safe.set(name, value);
+      }
+      const search = safe.toString();
+      return url.pathname + (search ? "?" + search : "");
+    } catch { return ""; }
+  }
+  function clearResume() {
+    try { sessionStorage.removeItem(resumeKey); } catch {}
+  }
+  const resumed = resumeDestination();
+  const destination = resumed || target.pathname + target.search;
   const status = document.getElementById("login-status");
   const widget = document.getElementById("login-widget");
   const retry = document.getElementById("login-retry");
@@ -52,6 +73,7 @@
       const result = await fetch("/api/v1/me", {credentials:"same-origin",cache:"no-store",headers:{"X-Telegram-Init-Data":credential}});
       if (result.ok) {
         proceed.href = destination;
+        proceed.addEventListener("click", clearResume, {once:true});
         proceed.hidden = false;
         message("Ты уже вошёл в аккаунт. Продолжи в студии.");
         return true;
@@ -74,6 +96,7 @@
       const ttl = Number(payload.expires_in);
       if (!response.ok || !payload.ok || typeof payload.init_data !== "string" || !payload.init_data || !Number.isFinite(ttl) || ttl <= 0) throw new Error("invalid auth response");
       sessionStorage.setItem(key, JSON.stringify({initData:payload.init_data,expiresAt:Date.now()+ttl*1000}));
+      clearResume();
       location.assign(destination);
     } catch {
       message("Не удалось войти. Повтори вход через Telegram.", true);
