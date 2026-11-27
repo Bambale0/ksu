@@ -145,3 +145,12 @@ The public catalogue and tool pages read the existing anonymous GET /api/v1/gene
 
 ## Independent commercial pages and web logout (2026-11-25)
 Public /pricing and /partners have their own documents, navigation, and distinct one-shot viewport entrances. The home promo links open /partners, with actual cabinet CTA preserving approved query parameters through /login. Partner copy describes the two existing programs without asserting personalized rates. Pricing still uses live API values. Motion is progressive enhancement with reduced-motion support. Existing Telegram-backed web logout clears its temporary credential and returns to /login; native Telegram has no logout control. Cookie identity migration remains independent #645. No financial rules changed.
+
+
+## Single public login entry (2026-11-27)
+
+The production screenshot at `/mini-app/?route=home` exposed the old embedded `TelegramBrowserLogin` marketing page, not the current root site. That component, its CSS import and its 216×216 demo atlas are removed. The canonical public landing remains `/`, independent of the customer app; unauthenticated browser visits to any app screen go to `/login?resume=1`. The current public login keeps the existing signed Telegram widget/exchange and browser session; native signed WebApp launches continue to bypass public login.
+
+The app keeps an allowlisted relative route and product launch parameters in tab-scoped sessionStorage. The public login validates the same-origin app path and re-filters query parameters before navigation; external destinations, unknown parameters and signed launch credentials are not forwarded. Private repeat tokens are not copied into the login URL. After login the saved route is consumed. Direct public login/tool/trend links still follow the existing routing contract. No changes to the root visual campaign, billing, provider, wallet, admin or Telegram signature validation.
+
+Regression coverage: canonical login at 320/390/768/1280/1648px, exact post-login route, direct trend referral, unsafe destination fallback, expired session and legacy hash, native referral permission behavior. Exact-head CI and browser screenshots remain required before release; deployment uses the normal exact-SHA workflow.

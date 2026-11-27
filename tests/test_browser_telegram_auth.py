@@ -69,14 +69,16 @@ def test_browser_init_data_enters_existing_webapp_auth_contour() -> None:
 def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     root = Path(__file__).resolve().parents[1]
     boundary = (root / "frontend/mini-app/components/telegram-auth-boundary.tsx").read_text(encoding="utf-8")
-    gate = (root / "frontend/mini-app/components/telegram-browser-login.tsx").read_text(encoding="utf-8")
+    gate = (root / "app/web/site/assets/site-login.js").read_text(encoding="utf-8")
     browser_session = (root / "frontend/mini-app/lib/browser-auth-session.ts").read_text(encoding="utf-8")
     telegram = (root / "frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
     layout = (root / "frontend/mini-app/app/layout.tsx").read_text(encoding="utf-8")
     social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     action = (root / "frontend/mini-app/components/generation-action-app.tsx").read_text(encoding="utf-8")
 
-    assert "TelegramBrowserLogin" in boundary
+    assert "CanonicalLoginRedirect" in boundary
+    assert '/login?resume=1' in boundary
+    assert "TelegramBrowserLogin" not in boundary
     assert "getInitDataFallback" in boundary
     assert "getBrowserInitData" in boundary
     assert "tg.initData = browserInitData" not in boundary
@@ -94,7 +96,8 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "/api/v1/browser-auth/config" in gate
     assert "/api/v1/browser-auth" in gate
     assert "telegram-widget.js" in gate
-    assert "saveBrowserInitData" in gate
+    assert "sessionStorage.setItem(key" in gate
+    assert "resumeDestination" in gate
     assert "tgWebAppData" not in gate
     assert "__roxy_browser_init_data_v1" in browser_session
     assert "sessionStorage" in browser_session
