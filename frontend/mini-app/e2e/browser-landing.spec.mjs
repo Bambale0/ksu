@@ -62,3 +62,18 @@ test('resume cannot redirect outside the app', async ({ page }) => {
   await page.goto('/login?resume=1');
   await expect(page.locator('#login-continue')).toHaveAttribute('href', '/mini-app/');
 });
+
+test('expired browser session uses the same canonical login and keeps the selected screen', async ({ page }) => {
+  await loginFixture(page);
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('qa-expired')) {
+      sessionStorage.setItem('qa-expired', '1');
+      sessionStorage.setItem('__roxy_browser_init_data_v1', JSON.stringify({ initData: 'expired', expiresAt: Date.now() - 1000 }));
+    }
+  });
+  await page.goto('/mini-app/?route=history#startapp=ref_777');
+  await expect(page.locator('body')).toHaveAttribute('data-page', 'login');
+  await expect(page.locator('#login-status')).toContainText('Подтверди вход');
+  expect(await page.evaluate(() => sessionStorage.getItem('__roxy_browser_init_data_v1'))).toBeNull();
+  expect(await page.evaluate(() => sessionStorage.getItem('__roxy_browser_resume_v1'))).toBe('/mini-app/?route=history&startapp=ref_777');
+});
