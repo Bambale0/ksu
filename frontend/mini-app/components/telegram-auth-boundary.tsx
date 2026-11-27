@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
 import { getInitDataFallback, initTelegram, type TelegramWebApp } from "@/lib/telegram";
 import { RoxyLoadingVideo } from "./roxy-loading-video";
-import { TelegramBrowserLogin } from "./telegram-browser-login";
+
 
 async function validateInitData(initData: string): Promise<boolean> {
   try {
@@ -46,6 +46,29 @@ function installBrowserInitDataFacade(browserInitData: string): () => void {
       // Browser auth remains server-validated even if the SDK namespace is immutable.
     }
   };
+}
+
+const BROWSER_RESUME_KEY = "__roxy_browser_resume_v1";
+
+function CanonicalLoginRedirect() {
+  useEffect(() => {
+    try {
+      const current = new URL(window.location.href);
+      // Keep the intended app route in this tab, never copy Telegram launch
+      // credentials or private repeat tokens into the public login URL.
+      const params = new URLSearchParams();
+      for (const name of ["route", "id", "token", "generation", "action", "action_context_id", "create_media", "startapp", "start_payload", "ref", "onboarding", "start", "tgWebAppStartParam", "model", "model_id", "media", "tab"]) {
+        const value = current.searchParams.get(name);
+        if (value && value.length <= 512) params.set(name, value);
+      }
+      const query = params.toString();
+      window.sessionStorage.setItem(BROWSER_RESUME_KEY, current.pathname + (query ? "?" + query : ""));
+    } catch {
+      // Storage-disabled browsers can still access the canonical login.
+    }
+    window.location.replace("/login?resume=1");
+  }, []);
+  return <RoxyLoadingVideo message="Открываю безопасный вход…" />;
 }
 
 export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
@@ -106,6 +129,6 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   if (!ready) {
     return <RoxyLoadingVideo message="Открываю ROXY…" />;
   }
-  if (!authenticated) return <TelegramBrowserLogin />;
+  if (!authenticated) return <CanonicalLoginRedirect />;
   return <>{children}</>;
 }
