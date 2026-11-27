@@ -213,7 +213,7 @@ export const api = {
       probe_status?: string | null;
       duration_ms?: number | null;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
-    }>(purpose === "template-audio" ? "/api/v1/uploads/template-audio" : purpose === "template-video" ? "/api/v1/uploads/template-video" : "/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
+    }>(purpose ? `/api/v1/uploads/${purpose}` : "/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),

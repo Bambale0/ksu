@@ -39,6 +39,13 @@
 - WebKit on Windows cannot record video reliably in this Unicode OneDrive path. The first run failed before page creation (Screencast.startVideo). ASCII output alone still stalled recording. With recording disabled in an ignored local-only config, the new named-slot journey passes in mobile WebKit (1/1); repository CI retains original video evidence settings and includes the new file in Linux WebKit coverage.
 - No production recipes, users, wallets or provider calls changed. No migration has run on production.
 
+### Review and CI checkpoint
+
+- PR #673, first head `11267250e5629f57f14dd721b100f3295ff10eea`: CI green with 3071 backend tests; migration 0048 applied and ORM parity clean. Admin Console, Batch Generation, ROXY E2E and ROXY Release Gate green; full browser workflow still running at correction time. This earlier-head evidence is not the final release gate.
+- Independent Standards review: truncated JPEG could pass Pillow header verification; fixed by decoding pixels before persistence, confirmed RED/GREEN. Named video and root pinned-video state could diverge; synchronized clearing and removed duplicate editing controls for named recipes, browser regression passes.
+- Independent Spec review: template-image purpose used personal endpoint; fixed explicit routing, browser RED/GREEN. Switching recipe type during preset upload left parent busy; locked mode changes through upload/save, held-response browser RED/GREEN.
+- Final exact-head CI and corrected-diff review required after these fixes. Preset photo upload, mode lock, named discovery/edit and video removal pass focused Chromium checks. Windows recording limitation remains local-only; Linux CI uses unmodified recording settings.
+
 - Unit/domain: pending RED/GREEN.
 - Database/repository: additive metadata + CI integration pending.
 - Authorization: existing admin policy, typed owned media checks; tests pending.

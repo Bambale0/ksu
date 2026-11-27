@@ -27,6 +27,79 @@ test('existing v1 trend gains confirmed named references and retains them on reo
   expect(state.errors).toEqual([]);
 });
 
+test('admin preset photo uses product-owned upload and survives recipe save', async ({ page }) => {
+  const model = { ...photoModel, id: 'nano-banana-pro', known_fields: ['prompt', 'image_input', 'aspect_ratio', 'resolution'], reference_capacity: 4 };
+  const item = { id: 'named-preset', title: 'Постоянная одежда', is_active: true, payload: {
+    model_id: model.id, media_type: 'image', prompt: 'Image1 person, Image2 outfit',
+    preview_url: 'https://cdn.example.invalid/preview.jpg', parameters: { aspect_ratio: '1:1' }, input_mode: 'image',
+    reference_schema: { mode: 'strict', slots: [
+      { id: 'image_1', label: 'Персонаж', description: '', kind: 'image', source: 'user', required: true, order: 0 },
+      { id: 'image_2', label: 'Одежда', description: '', kind: 'image', source: 'user', required: true, order: 1 },
+    ] },
+  } };
+  const state = await setup(page, { items: [item], models: [model, videoModel] });
+  let uploads = 0;
+  await page.route('**/api/v1/uploads/template-image', route => {
+    uploads++;
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ url: 'https://cdn.example.invalid/preset.png', probe_status: 'ready', reference: { id: 'preset', kind: 'image' } }) });
+  });
+  await page.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await form.getByRole('combobox', { name: 'Источник референса 2', exact: true }).selectOption('admin');
+  await form.getByLabel('Загрузить постоянный референс 2', { exact: true }).setInputFiles({ name: 'outfit.png', mimeType: 'image/png', buffer: stepPreviewPng });
+  await expect.poll(() => uploads).toBe(1);
+  await expect(form.getByAltText('Одежда', { exact: true })).toBeVisible();
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.reference_schema.slots[1]).toMatchObject({ source: 'admin', url: 'https://cdn.example.invalid/preset.png' });
+  expect(state.unexpectedWrites).toEqual([]);
+});
+
+test('preset upload locks recipe type until it finishes', async ({ page }) => {
+  const model = { ...photoModel, known_fields: ['prompt', 'image_input', 'aspect_ratio'], reference_capacity: 4 };
+  const item = { id: 'pending-preset', title: 'Preset', is_active: true, payload: {
+    model_id: model.id, media_type: 'image', prompt: 'portrait', preview_url: 'https://cdn.example.invalid/preview.jpg', parameters: { aspect_ratio: '1:1' },
+    reference_schema: { mode: 'strict', slots: [{ id: 'image_1', label: 'Одежда', description: '', kind: 'image', source: 'admin', required: true, order: 0 }] },
+  } };
+  await setup(page, { items: [item], models: [model, videoModel] });
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  let started = false;
+  await page.route(/\/api\/v1\/uploads\/(kie|template-image)$/, async route => {
+    started = true; await pending;
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ url: 'https://cdn.example.invalid/preset.png', probe_status: 'ready', reference: { id: 'preset', kind: 'image' } }) });
+  });
+  await page.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await form.getByLabel('Загрузить постоянный референс 1', { exact: true }).setInputFiles({ name: 'outfit.png', mimeType: 'image/png', buffer: stepPreviewPng });
+  await expect.poll(() => started).toBe(true);
+  try { await expect(form.getByRole('combobox', { name: 'Тип шаблона', exact: true })).toBeDisabled(); }
+  finally { release(); }
+  await expect(form.getByRole('button', { name: 'Сохранить', exact: true })).toBeEnabled();
+});
+
+test('removing a named preset video clears its legacy video binding', async ({ page }) => {
+  const model = { ...videoModel, id: 'kling-4.0', reference_capacity: 10, known_fields: ['prompt', 'image_urls', 'video_urls', 'aspect_ratio', 'resolution', 'duration'] };
+  const item = { id: 'named-video', title: 'Named video', is_active: true, payload: {
+    model_id: model.id, media_type: 'video', prompt: '@image_1 follows @video_1', preview_url: 'https://cdn.example.invalid/preview.jpg',
+    template_video_url: 'https://cdn.example.invalid/private-motion.mp4', input_mode: 'image', min_references: 1, max_references: 1,
+    parameters: { aspect_ratio: '9:16', resolution: '720p', duration: 5 },
+    reference_schema: { mode: 'strict', slots: [
+      { id: 'image_1', label: 'Персонаж', description: '', kind: 'image', source: 'user', required: true, order: 0 },
+      { id: 'video_1', label: 'Движение', description: '', kind: 'video', source: 'admin', required: true, order: 1, url: 'https://cdn.example.invalid/private-motion.mp4' },
+    ] },
+  } };
+  const state = await setup(page, { items: [item], models: [photoModel, model] });
+  await page.getByRole('button', { name: 'Редактировать', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+  await form.getByRole('textbox', { name: 'Скрытый промпт', exact: true }).fill('@image_1 portrait');
+  await form.getByRole('group', { name: 'Video1 · Движение', exact: true }).getByRole('button', { name: 'Удалить референс', exact: true }).click();
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.template_video_url).toBeUndefined();
+  expect(state.writes[0].payload.reference_schema.slots).toHaveLength(1);
+});
+
 const stepPreviewPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 const stepVideoFixtures = {
   chromium: { extension: 'webm', contentType: 'video/webm', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.webm', import.meta.url)) },

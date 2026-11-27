@@ -55,6 +55,26 @@ async def test_mime_disguised_video_cannot_be_saved_as_preset_photo(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_truncated_jpeg_cannot_be_saved_as_verified_preset(monkeypatch):
+    monkeypatch.setattr(trends_api, "_inline_admin", AsyncMock())
+    monkeypatch.setattr(AbuseProtectionService, "upload_rate_and_bytes", AsyncMock())
+    buffer = BytesIO()
+    Image.new("RGB", (300, 300), "blue").save(buffer, "JPEG")
+    broken = buffer.getvalue()[: len(buffer.getvalue()) // 2]
+    file = UploadFile(
+        BytesIO(broken), filename="truncated.jpg", headers=Headers({"content-type": "image/jpeg"})
+    )
+    persist = Mock(return_value=("https://roxy.example/fake.jpg", "unused", len(broken)))
+    monkeypatch.setattr(ReferenceStaticStorage, "persist_stream", persist)
+    session = AsyncMock()
+    session.add = Mock()
+    with pytest.raises(HTTPException) as error:
+        await upload_template_image(User(id=uuid.uuid4()), AsyncMock(), session, file)
+    assert error.value.status_code == 422
+    persist.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_preset_image_remains_after_uploader_deletion_and_outside_personal_memory(
     monkeypatch, tmp_path
 ):

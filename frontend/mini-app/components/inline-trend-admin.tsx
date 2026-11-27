@@ -638,7 +638,7 @@ export function InlineTrendAdmin() {
   };
 
   const chooseDraftMode = (mode: "legacy" | "workflow") => {
-    if (mode === draft.mode) return;
+    if (mode === draft.mode || uploading || saving) return;
     draftVersion.current += 1;
     setError("");
     setDraft(mode === "workflow" ? emptyWorkflowDraft(models) : emptyDraft(models[0]?.id || ""));
@@ -1139,7 +1139,7 @@ export function InlineTrendAdmin() {
         <label><span>Название</span><input value={draft.title} maxLength={80} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Например, Киношный портрет" required /></label>
         <label><span>Описание</span><textarea value={draft.description} maxLength={240} rows={2} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Что получит пользователь" /></label>
 
-        <label><span>Тип шаблона</span><select value={draft.mode === "workflow" ? WORKFLOW_TYPE : "legacy"} onChange={(event) => chooseDraftMode(event.target.value === WORKFLOW_TYPE ? "workflow" : "legacy")} aria-label="Тип шаблона">
+        <label><span>Тип шаблона</span><select disabled={uploading || saving} value={draft.mode === "workflow" ? WORKFLOW_TYPE : "legacy"} onChange={(event) => chooseDraftMode(event.target.value === WORKFLOW_TYPE ? "workflow" : "legacy")} aria-label="Тип шаблона">
           <option value="legacy">Обычный шаблон</option>
           <option value={WORKFLOW_TYPE}>Фото → Видео</option>
         </select><small>«Фото → Видео»: пользователь сначала создаёт фото, затем оживляет его отдельным запуском.</small></label>
@@ -1200,12 +1200,17 @@ export function InlineTrendAdmin() {
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
           <TrendReferenceEditor key={draftVersion.current} value={draft.referenceSchema} prompt={draft.prompt} templateVideoUrl={draft.templateVideoUrl}
-            disabled={saving || uploading} onBusy={setUploading} onChange={schema => setDraft(current => current.mode === "legacy" ? {
-              ...current, referenceSchema: schema,
-              ...(schema?.slots.some(slot => slot.kind === "video" && slot.source === "admin" && slot.url) ? { templateVideoUrl: schema.slots.find(slot => slot.kind === "video" && slot.source === "admin")!.url || "" } : {}),
-            } : current)} />
+            disabled={saving || uploading} onBusy={setUploading} onChange={schema => setDraft(current => {
+              if (current.mode !== "legacy") return current;
+              const presetVideo = schema?.slots.find(slot => slot.kind === "video" && slot.source === "admin");
+              const hadNamedVideo = current.referenceSchema?.slots.some(slot => slot.kind === "video" && slot.source === "admin");
+              return { ...current, referenceSchema: schema,
+                templateVideoUrl: presetVideo ? presetVideo.url || "" : hadNamedVideo ? "" : current.templateVideoUrl,
+              };
+            })} />
+          {klingPinnedAllowed && draft.referenceSchema && templateVideoUrl ? <ModelParameterControls model={selectedModel || undefined} parameters={pinnedParameters} onChange={updatePinnedParameter} /> : null}
           {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
-        {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
+        {klingPinnedAllowed && !draft.referenceSchema ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
           <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Количество пользовательских фото задаётся промптом и настройками ниже. Превью — отдельное поле.</small>
           <label><span>Загрузить видео MP4/MOV · 2–30 с{pinnedVideoMaxMb ? `, до ${pinnedVideoMaxMb} МБ` : ""}</span>

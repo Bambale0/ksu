@@ -415,7 +415,8 @@ async def upload_template_image(
             width, height = image.size
             if getattr(image, "is_animated", False):
                 raise ValueError("Нужно статичное изображение")
-            image.verify()
+            # JPEG verify() checks headers only; decoding rejects truncated pixels.
+            image.load()
         file.file.seek(0)
         return width, height
 
