@@ -117,7 +117,7 @@ No Alembic migration is required for this epic because the existing `admin_trend
 
 ## Template categories
 
-Category cards occupy one full-width row on mobile and desktop, both on the canonical Home/Catalog surface and the expanded category list. The gallery inside an opened category retains its existing two-column photo/video layout. The separate lazy template rails are unchanged.
+On the canonical Home/Catalog surface, every category occupies its own full-width section on mobile and desktop. The compact cover header retains the category description and counters and opens the complete category via “Все”. Nonempty categories load at most eight mixed photo/video template previews when their horizontal rail enters the viewport. The previews link to the canonical trend launcher and reuse lazy media loading; a preview request failure does not block the full category. The alternate catalog's expanded category list also uses one column. The gallery inside an opened category retains its existing two-column photo/video layout.
 
 Template categories are stored relationally:
 
