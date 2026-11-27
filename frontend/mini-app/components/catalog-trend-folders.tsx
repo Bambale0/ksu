@@ -48,10 +48,39 @@ function price(trend: TrendItem): string {
     : `${trend.cost_rox} ROX`;
 }
 
+function CollectionRail({ folder, open }: { folder: TrendCollection; open: () => void }) {
+  const node = useRef<HTMLElement>(null);
+  const [items, setItems] = useState<TrendItem[]>([]);
+  useEffect(() => {
+    if (!node.current) return;
+    let active = true;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      void trendCollectionsApi.items(folder.id).then(result => {
+        if (active) setItems((result.items || []).slice(0, 8));
+      }).catch(() => { /* The full collection remains accessible. */ });
+    });
+    observer.observe(node.current);
+    return () => { active = false; observer.disconnect(); };
+  }, [folder.id]);
+  return <section className="template-rail" ref={node} aria-label={folder.title}>
+    <header><h3>{folder.title}</h3><button className="home-trend-folders-back" type="button" onClick={open} aria-label={`Все шаблоны: ${folder.title}`}>Все</button></header>
+    {items.length ? <div className="template-rail-track">{items.map(trend => (
+      <a key={trend.id} className="template-rail-card" href={`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`}>
+        {trend.preview_url ? <TrendPreviewMedia className="home-trend-folder-media" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
+        {trend.media_type === "video" ? <span className="template-rail-video">Видео</span> : null}
+        <strong>{trend.title}</strong>
+      </a>
+    ))}</div> : null}
+  </section>;
+}
+
 export function CatalogTrendFolders() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [collections, setCollections] = useState<TrendCollection[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [showFolders, setShowFolders] = useState(false);
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [items, setItems] = useState<TrendItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,6 +158,15 @@ export function CatalogTrendFolders() {
       <style>{`
         #roxy-catalog-trend-folders{margin:0 0 24px;min-width:0}
         .catalog-trend-folders{display:grid;gap:13px;margin:2px 0 26px;min-width:0}
+        .template-rail{min-width:0;display:grid;gap:10px;margin:8px 0}
+        .template-rail header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+        .template-rail h3{margin:0;color:#e2b5ff;font-size:20px;overflow-wrap:anywhere}
+        .template-rail-track{display:grid;grid-auto-flow:column;grid-auto-columns:clamp(126px,42%,220px);gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:3px}
+        .template-rail-card{position:relative;isolation:isolate;display:flex;align-items:end;aspect-ratio:3/4;overflow:hidden;border-radius:18px;border:1px solid #51405e;background:#1a1222;color:white;text-decoration:none;scroll-snap-align:start;padding:12px}
+        .template-rail-card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(transparent 45%,rgba(8,5,12,.94))}
+        .template-rail-card .home-trend-folder-media{z-index:-2}
+        .template-rail-card strong{overflow-wrap:anywhere}
+        .template-rail-video{position:absolute;top:8px;right:8px;background:#17131d;border-radius:8px;padding:4px 7px;font-size:11px}
         .catalog-trend-folders.is-open{position:fixed;z-index:70;inset:0 0 calc(92px + var(--tg-safe-bottom)) 0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;margin:0;padding:calc(18px + var(--tg-safe-top)) max(14px,var(--tg-safe-right)) 28px max(14px,var(--tg-safe-left));background:#0b0b10;align-content:start;-webkit-overflow-scrolling:touch}
         .catalog-trend-folders .home-trend-folders-head{display:flex;align-items:end;justify-content:space-between;gap:12px}
         .catalog-trend-folders .home-trend-folders-copy{display:grid;gap:4px;min-width:0}
@@ -175,7 +213,12 @@ export function CatalogTrendFolders() {
         <TrendCategoryAdmin onChanged={refreshCollections} />
       </div>}
       {error ? <div className="home-trend-folders-error" role="alert">{error}</div> : null}
-      {!selected ? loading ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <div className="home-trend-folder-grid">
+      {!selected ? loading ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <>
+        <button className="primary wide" type="button" aria-expanded={showFolders} onClick={() => setShowFolders(current => !current)}>{showFolders ? "Свернуть список категорий" : "Посмотреть все шаблоны"}</button>
+        {!showFolders ? collections.map(folder => <CollectionRail key={folder.id} folder={folder} open={() => {
+          setSelectedId(folder.id);
+          setMediaType(!folder.photo_count && folder.video_count ? "video" : "image");
+        }} />) : <div className="home-trend-folder-grid">
         {collections.map((folder) => <button className="home-trend-folder" type="button" key={folder.id} onClick={() => {
           haptic("light");
           setSelectedId(folder.id);
@@ -188,7 +231,7 @@ export function CatalogTrendFolders() {
             <span className="home-trend-folder-meta"><span>{countLabel(Number(folder.item_count || 0))}</span><span>Фото {folder.photo_count || 0}</span><span>Видео {folder.video_count || 0}</span></span>
           </span>
         </button>)}
-      </div> : <div className="home-trend-folders-empty">Категории скоро появятся здесь.</div> : <>
+      </div>}</> : <div className="home-trend-folders-empty">Категории скоро появятся здесь.</div> : <>
         <div className="home-trend-folder-tabs" role="tablist" aria-label="Тип шаблона">
           <button className={mediaType === "image" ? "active" : ""} role="tab" aria-selected={mediaType === "image"} type="button" onClick={() => setMediaType("image")}>Фото · {selected.photo_count || 0}</button>
           <button className={mediaType === "video" ? "active" : ""} role="tab" aria-selected={mediaType === "video"} type="button" onClick={() => setMediaType("video")}>Видео · {selected.video_count || 0}</button>

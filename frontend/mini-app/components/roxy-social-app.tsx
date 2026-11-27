@@ -1,5 +1,7 @@
 "use client";
 
+import { TrendPreviewMedia } from "@/components/trend-preview-media";
+
 import { RoxyLoadingVideo } from "./roxy-loading-video";
 import { KlingReferenceFields } from "./kling-reference-fields";
 
@@ -795,7 +797,21 @@ function CatalogScreen({ canonicalHome = false, models, families, trends, onCrea
   return <section className={canonicalHome ? "screen home-screen" : "screen"}><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Начните с готового сценария или выберите модель под свою идею." />
     <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
     <SectionTitle kicker="Тренды" title="Готовые сценарии" />
-    <div className="model-grid">{filteredTrends.slice(0, 12).map((trend) => <button className="model-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Тренд"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></button>)}</div>
+    <div className="ready-trend-rail" aria-label="Готовые сценарии">
+      {filteredTrends.slice(0, 12).map((trend) => <button className="ready-trend-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}>
+        {trend.preview_url ? <TrendPreviewMedia className="ready-trend-cover" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
+        {trend.media_type === "video" ? <span className="ready-trend-video" aria-label="Видео"><Icon name={modelIcon(trend.media_type)} /></span> : null}
+        <span className="ready-trend-copy"><strong>{trend.title}</strong><span className="price-pill">{priceLabel(trend.cost_rox)}</span></span>
+      </button>)}
+    </div>
+    <style>{`
+      .ready-trend-rail{display:grid;grid-auto-flow:column;grid-auto-columns:clamp(136px,43%,220px);gap:10px;min-width:0;overflow-x:auto;scroll-snap-type:x proximity;padding:3px}
+      .ready-trend-card{position:relative;isolation:isolate;display:flex;align-items:end;aspect-ratio:3/4;overflow:hidden;border:1px solid #554269;border-radius:18px;background:#20172b;color:white;text-align:left;padding:12px;scroll-snap-align:start}
+      .ready-trend-cover{position:absolute;inset:0;object-fit:cover;width:100%;height:100%;z-index:-2}
+      .ready-trend-card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(transparent 25%,rgba(9,6,14,.96))}
+      .ready-trend-copy{display:grid;gap:8px;justify-items:start;overflow-wrap:anywhere}
+      .ready-trend-video{position:absolute;right:8px;top:8px;background:#191421;border-radius:9px;padding:6px}
+    `}</style>
     <SectionTitle kicker="Модели" title="Полный каталог" />
     <div className="model-grid">{filteredFamilies.map((family) => <button key={family.id} className="model-card" type="button" onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>)}</div>
     {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId="" onClose={() => setFamilySheet(null)} onChoose={(id) => { const model = byId.get(id); if (model) onCreate(model); setFamilySheet(null); }} />}
