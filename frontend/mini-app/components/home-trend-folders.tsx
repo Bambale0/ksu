@@ -43,6 +43,50 @@ function price(trend: TrendItem): string {
     : `${trend.cost_rox} ROX`;
 }
 
+function CollectionPreview({ folder }: { folder: TrendCollection }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [items, setItems] = useState<TrendItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const node = track.current;
+    if (!node) return;
+    let active = true;
+    let started = false;
+    const load = () => {
+      if (started || !active) return;
+      started = true;
+      void trendCollectionsApi.items(folder.id, undefined, 8).then(result => {
+        if (active) setItems((result.items || []).slice(0, 8));
+      }).catch(() => {
+        if (active) { setFailed(true); setItems([]); }
+      });
+    };
+    if (typeof IntersectionObserver === "undefined") {
+      load();
+      return () => { active = false; };
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) return;
+      observer.disconnect();
+      load();
+    });
+    observer.observe(node);
+    return () => { active = false; observer.disconnect(); };
+  }, [folder.id]);
+
+  return <div ref={track} className="trend-collection-preview-track" aria-label={`Шаблоны категории ${folder.title}`}>
+    {failed ? <span className="trend-collection-preview-status">Превью недоступны. Откройте все шаблоны.</span>
+      : items === null ? <span className="trend-collection-preview-status" role="status">Загружаю шаблоны…</span>
+      : items.length === 0 ? <span className="trend-collection-preview-status">В категории пока нет шаблонов.</span>
+      : items.map(trend => <a key={trend.id} className="trend-collection-preview-card" href={`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`}>
+        {trend.preview_url ? <TrendPreviewMedia className="trend-collection-preview-media" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
+        {trend.media_type === "video" ? <span className="trend-collection-preview-kind">Видео</span> : null}
+        <strong>{trend.title}</strong>
+      </a>)}
+  </div>;
+}
+
 function TrendCards({ trends }: { trends: TrendItem[] }) {
   return <div className="home-trend-folder-items">
     {trends.map((trend) => <article className="home-trend-folder-item" key={trend.id}>
@@ -163,6 +207,20 @@ export function HomeTrendFolders() {
     <section className={`home-trend-folders${selected ? " is-open" : ""}`} aria-label="Категории шаблонов">
       <style>{`
         .home-trend-folders{display:grid;gap:13px;margin:2px 0 26px;min-width:0}.home-trend-folders.is-open{position:fixed;z-index:70;inset:0 0 calc(92px + var(--tg-safe-bottom)) 0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;margin:0;padding:calc(18px + var(--tg-safe-top)) max(14px,var(--tg-safe-right)) 28px max(14px,var(--tg-safe-left));background:#0b0b10;align-content:start;-webkit-overflow-scrolling:touch}.home-trend-folders-head{display:flex;align-items:end;justify-content:space-between;gap:12px}.home-trend-folders-copy{display:grid;gap:4px;min-width:0}.home-trend-folders-copy h2{margin:0;font-size:24px;line-height:1;letter-spacing:-.04em}.home-trend-folders-copy p{margin:2px 0 0;color:var(--muted);font-size:12px;line-height:1.4}.home-trend-folders-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.home-trend-folders-back{border:1px solid rgba(255,255,255,.11);background:#17131d;color:#fff;border-radius:999px;padding:8px 11px;font-weight:850}.home-trend-folders-admin{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-height:0}.home-trend-folder-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}.home-trend-folder{position:relative;min-height:158px;overflow:hidden;border:1px solid rgba(190,117,255,.24);border-radius:23px;background:radial-gradient(circle at 80% 12%,rgba(170,74,255,.2),transparent 42%),linear-gradient(145deg,#15101e,#09070d);color:#fff;padding:0;text-align:left;box-shadow:0 16px 38px rgba(0,0,0,.2)}.home-trend-folder-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.52}.home-trend-folder::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,3,9,.06),rgba(5,3,9,.9))}.home-trend-folder-card-copy{position:absolute;z-index:2;inset:auto 13px 13px;display:grid;gap:5px}.home-trend-folder-card-copy strong{font-size:18px;line-height:1.05}.home-trend-folder-card-copy small{color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.home-trend-folder-meta,.home-trend-folder-item-meta{display:flex;gap:5px;flex-wrap:wrap}.home-trend-folder-meta span,.home-trend-folder-item-meta span{padding:5px 7px;border-radius:999px;border:1px solid rgba(225,192,255,.18);background:rgba(12,8,18,.62);color:#ead8f8;font-size:9px;font-weight:850}.home-trend-folder-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:4px;border:1px solid rgba(255,255,255,.08);border-radius:17px;background:#0c0a0f}.home-trend-folder-tabs button{min-height:42px;border:0;border-radius:13px;background:transparent;color:#9d95a7;font-weight:850}.home-trend-folder-tabs button.active{background:linear-gradient(135deg,rgba(159,72,255,.88),rgba(207,94,255,.82));color:#fff;box-shadow:0 8px 24px rgba(165,72,255,.18)}.home-trend-folder-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;overflow:visible;padding:2px 0 8px;min-width:0}.home-trend-folder-item{position:relative;aspect-ratio:3/4;min-height:0;min-width:0;overflow:hidden;border:1px solid rgba(185,105,255,.28);border-radius:22px;background:#0b0910;color:#fff;box-shadow:0 18px 42px rgba(0,0,0,.24)}.home-trend-folder-item-open{position:absolute;inset:0;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left}.home-trend-folder-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0b0910}.home-trend-folder-item-open::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04) 28%,rgba(4,3,7,.88) 100%);pointer-events:none}.home-trend-folder-item-copy{position:absolute;z-index:2;left:14px;right:14px;bottom:14px;display:grid;gap:6px}.home-trend-folder-item-copy strong{font-size:18px;line-height:1.05}.home-trend-folder-item-copy small{color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.home-trend-folders-empty{padding:17px;border:1px dashed rgba(190,130,255,.26);border-radius:20px;color:var(--muted);background:rgba(16,12,22,.72)}.home-trend-folders-error{padding:11px 13px;border-radius:14px;background:rgba(255,80,120,.1);color:#ffc6d3}
+
+        .home-trend-folder-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;min-width:0}
+        .home-trend-folders .home-trend-folder-grid{gap:20px}
+        .home-trend-folders .home-trend-folder-row>.home-trend-folder{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;width:100%;min-height:100px;padding:13px}
+        .home-trend-folder-row .home-trend-folder-card-copy{position:relative;inset:auto;min-width:0;flex:1}
+        .home-trend-folder-row .home-trend-folder-card-copy strong{overflow-wrap:anywhere}
+        .home-trend-folder-view-all{position:relative;z-index:2;align-self:center;flex-shrink:0;padding:8px 11px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:#17131d;font-size:12px;font-weight:850}
+        .trend-collection-preview-track{display:grid;grid-auto-flow:column;grid-auto-columns:clamp(126px,44%,188px);gap:10px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;min-width:0;padding:2px 0 6px}
+        .trend-collection-preview-card{position:relative;isolation:isolate;display:flex;align-items:flex-end;aspect-ratio:3/4;box-sizing:border-box;min-width:0;overflow:hidden;border:1px solid rgba(185,105,255,.28);border-radius:18px;background:#1a1222;color:#fff;text-decoration:none;padding:10px;scroll-snap-align:start}
+        .trend-collection-preview-card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(transparent 35%,rgba(8,5,12,.94));pointer-events:none}
+        .trend-collection-preview-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
+        .trend-collection-preview-card strong{font-size:14px;overflow-wrap:anywhere}
+        .trend-collection-preview-kind{position:absolute;top:8px;right:8px;background:#17131d;border-radius:8px;padding:4px 7px;font-size:11px}
+        .trend-collection-preview-status{grid-column:1/-1;min-height:72px;display:flex;align-items:center;color:var(--muted);font-size:12px}
       `}</style>
 
       {selected ? <div className="home-trend-folders-head">
@@ -182,7 +240,8 @@ export function HomeTrendFolders() {
       {error ? <div className="home-trend-folders-error" role="alert">{error}</div> : null}
 
       {!selected ? loadingCollections ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <div className="home-trend-folder-grid">
-        {collections.map((folder) => <button className="home-trend-folder" type="button" key={folder.id} onClick={() => openFolder(folder)}>
+        {collections.map((folder) => <section key={folder.id} className="home-trend-folder-row" aria-label={folder.title}>
+          <button className="home-trend-folder" type="button" onClick={() => openFolder(folder)}>
           {folder.preview_url ? <TrendPreviewMedia className="home-trend-folder-preview" mediaType={folder.preview_media_type} url={folder.preview_url} thumbnailUrl={folder.preview_thumbnail_url} /> : null}
           <span className="home-trend-folder-card-copy">
             <strong>{folder.title}</strong>
@@ -193,7 +252,10 @@ export function HomeTrendFolders() {
               <span>Видео {folder.video_count || 0}</span>
             </span>
           </span>
-        </button>)}
+          <span className="home-trend-folder-view-all">Все →</span>
+          </button>
+          {Number(folder.item_count || 0) > 0 ? <CollectionPreview folder={folder} /> : null}
+        </section>)}
       </div> : <div className="home-trend-folders-empty">Категории скоро появятся здесь.</div> : <>
         <div className="home-trend-folder-tabs" role="tablist" aria-label="Тип шаблона">
           <button className={mediaType === "image" ? "active" : ""} role="tab" aria-selected={mediaType === "image"} type="button" onClick={() => setMediaType("image")}>Фото · {selected.photo_count || 0}</button>
