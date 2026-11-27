@@ -1,3 +1,11 @@
+## Active Fix Execution — Full-width trend categories (2026-11-27)
+
+- Baseline: `main@5c3257a01e49928b06b78542435722e7916a890f`; user screenshot shows three category cards side by side. Both HomeTrendFolders and CatalogTrendFolders define two columns by default and three at 720px. HomeTrendFolders is mounted in CatalogRouteFeatures and used on canonical home/catalog. CatalogTrendFolders also supports a separate lazy rail view; keep that behavior. Category list is distinct from the two-column gallery inside an opened category.
+- Acceptance: one category per row on mobile and desktop, existing card content, admin, navigation, ordering and opened photo/video gallery unchanged. No prefactor, API, database, migrations, auth, billing, provider, retry/idempotency or runtime settings change; presentation-only. Existing lazy media loading and telemetry unchanged. Rollback by reverting the scoped commit.
+- Verification: add browser regression with multiple categories across 320/390/1440px in home/catalog, verify bounding boxes and width; retain existing navigation/gallery tests. Exact-SHA CI and production visual smoke required before release claim. Browser RED/GREEN execution depends on CI availability.
+- Guidance: KSU AGENTS, TRENDS.md, local .clinerules TDD; .agents index files and nested mini-app AGENTS absent remotely. Bambale0/skills README inspected (TDD search no result); claw frontend-qa, wondelai refactoring-ui, dev-agents-pack README, anthropics webapp-testing, agentskills README (no app-specific guidance). NEUROMIX tanyapi serving path inspected; exact visual component parity not yet verified.
+- Plan: document audit, commit regression, change only category-grid columns in both components, update Trends docs, PR and inspect CI. Do not change opened gallery CSS.
+
 ## Active Fix Execution — Kling 4.0 sound contract and customer-facing copy (2026-11-11)
 
 - Baseline: `main@45197e2d0393c59e251482a221490f18dea0eddc` (prior #589 production), branch `fix/kling4-audio-ux-contract-20261111`.
