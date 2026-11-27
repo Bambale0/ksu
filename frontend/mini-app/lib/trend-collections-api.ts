@@ -67,8 +67,8 @@ function writeHeaders(prefix: string): Record<string, string> {
 
 export const trendCollectionsApi = {
   list: () => request<{ items: TrendCollection[] }>("/api/v1/trend-collections"),
-  items: (collectionId: string, mediaType?: "image" | "video") => request<{ collection: TrendCollection; items: TrendItem[] }>(
-    `/api/v1/trend-collections/${encodeURIComponent(collectionId)}/items?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`,
+  items: (collectionId: string, mediaType?: "image" | "video", limit = 60) => request<{ collection: TrendCollection; items: TrendItem[] }>(
+    `/api/v1/trend-collections/${encodeURIComponent(collectionId)}/items?limit=${limit}${mediaType ? `&media_type=${mediaType}` : ""}`,
   ),
   manage: () => request<TrendCollectionState>("/api/v1/trend-collections/manage"),
   create: (body: TrendCollectionWrite) => request<TrendCollection>("/api/v1/trend-collections/manage", {
