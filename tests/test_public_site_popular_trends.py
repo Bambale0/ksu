@@ -124,7 +124,8 @@ async def test_public_site_trends_route_works_anonymously_and_uses_cache(monkeyp
     rows = [trend(10, usages=14, url="https://cdn.example.org/t-10.mp4")]
     session, redis = FakeSession(rows), FakeRedis()
 
-    async def public_view(_session, row):
+    async def public_view(_session, row, *, include_image_quality_options=True):
+        assert include_image_quality_options is False
         return {
             "title": row.title,
             "media_type": "video",

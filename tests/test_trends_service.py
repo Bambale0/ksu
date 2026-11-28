@@ -1055,3 +1055,29 @@ async def test_image_trend_quality_choices_and_override(monkeypatch) -> None:  #
     await TrendService.run(session, AsyncMock(), resolution="4K", **kwargs)
     assert create.await_args.kwargs["parameters"]["resolution"] == "4K"
     assert item.payload["parameters"]["resolution"] == "1K"
+
+
+@pytest.mark.parametrize("min_refs", [0, 1])
+@pytest.mark.asyncio
+async def test_wan_trend_quality_choices_respect_image_reference_context(monkeypatch, min_refs) -> None:
+    from app.services.trending_model_catalog import _validate_active_wan_request
+
+    item = _item()
+    item.payload.update(model_id="wan-2.7-image-pro", min_references=min_refs,
+                        parameters={"resolution": "2K", "aspect_ratio": "1:1"})
+
+    async def prepare(_session, *, model_id, prompt, parameters, billing_seconds):
+        _validate_active_wan_request(model_id, parameters)
+        return ModelCatalog.get(model_id), parameters, Decimal("20"), None, Decimal("20")
+
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
+    recipe = TrendService.normalize_recipe(item.title, item.payload)
+    view = await TrendService.public_view(AsyncMock(), item)
+    options = view["quality_options"]
+    assert [option["value"] for option in options] == (["1K", "2K"] if min_refs else ["1K", "2K", "4K"])
+    if not min_refs:
+        assert options[-1]["requires_no_image_references"] is True
+        assert TrendService._parameters_with_references(recipe, [], resolution="4K")["resolution"] == "4K"
+    with pytest.raises(TrendRecipeError, match="Unsupported image resolution"):
+        TrendService._parameters_with_references(recipe, ["https://cdn.example.invalid/ref.jpg"], resolution="4K")
+    assert TrendService._parameters_with_references(recipe, ["https://cdn.example.invalid/ref.jpg"], resolution="2K")["resolution"] == "2K"

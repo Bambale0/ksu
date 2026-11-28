@@ -320,3 +320,26 @@ def test_image_resolution_choices_follow_current_model_capabilities(model_id, ex
     from app.services.image_resolution_policy import image_resolution_options
 
     assert image_resolution_options(model_id) == expected
+
+
+@pytest.mark.parametrize("with_required_reference", [False, True])
+async def test_wan_repeat_resolution_choices_and_actual_reference_override(monkeypatch, with_required_reference) -> None:
+    source = _source_with_auto()
+    source.parameters = {"_model_id": "wan-2.7-image-pro", "_requested_model_id": "wan-2.7-image-pro",
+                         "aspect_ratio": "1:1", "resolution": "2K"}
+    if with_required_reference:
+        source.parameters["input_urls"] = ["https://cdn.example.test/source.jpg"]
+    own_image = SimpleNamespace(kind="image", source_url="https://cdn.example.test/own.jpg")
+    await _stub_source(monkeypatch, source, [own_image])
+    prepared = await FeedRemixService.prepare(
+        object(), source_generation_id=source.id, viewer_user_id=uuid.uuid4(), surface="feed",
+    )
+    assert prepared["resolution_options"] == (["1K", "2K"] if with_required_reference else ["1K", "2K", "4K"])
+    assert prepared["resolution_options_with_references"] == ["1K", "2K"]
+    kwargs = dict(source_generation_id=source.id, remix_author_id=uuid.uuid4(), surface="feed",
+                  prompt_override=None, reference_ids=[uuid.uuid4()], confirm_own_references=True,
+                  aspect_ratio="1:1")
+    with pytest.raises(FeedRemixReferenceError, match="разрешение"):
+        await FeedRemixService._composition(object(), resolution="4K", **kwargs)
+    _, _, _, params, _ = await FeedRemixService._composition(object(), resolution="2K", **kwargs)
+    assert params["resolution"] == "2K"
