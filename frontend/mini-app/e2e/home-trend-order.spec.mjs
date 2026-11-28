@@ -81,15 +81,20 @@ async function mockHome(page, { delayedFolderTabs = false, mediaPreviews = false
     if (path === '/api/v1/trend-collections') return json({ items: [
       { id: 'trends', system_key: 'trends', title: 'Тренды', description: 'Instagram', sort_order: 0, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
       { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 3, photo_count: 2, video_count: 1 },
+      { id: 'autumn', title: 'Осень', description: 'Осенние идеи', sort_order: 20, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
     ] });
     if (path === '/api/v1/trend-collections/birthday/items') {
       const mediaType = url.searchParams.get('media_type');
       if (delayedFolderTabs) await new Promise((resolve) => setTimeout(resolve, mediaType === 'image' ? 180 : 20));
       return json({
         collection: { id: 'birthday', title: 'День рождения' },
-        items: mediaType === 'video' ? [birthdayVideoTrend] : [birthdayTrend, birthdayPhotoTrend],
+        items: mediaType === 'video' ? [birthdayVideoTrend] : mediaType === 'image' ? [birthdayTrend, birthdayPhotoTrend] : [birthdayTrend, birthdayPhotoTrend, birthdayVideoTrend],
       });
     }
+    if (path === '/api/v1/trend-collections/autumn/items') return json({
+      collection: { id: 'autumn', title: 'Осень' },
+      items: [{ ...birthdayTrend, id: 'trend_autumn', title: 'Осенний портрет' }],
+    });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/referrals/stats') return json({});
     if (path === '/api/v1/referrals/rewards' || path === '/api/v1/referrals/invitations') return json({ items: [] });
@@ -313,3 +318,50 @@ test('home ignores stale folder responses when switching photo and video tabs qu
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toHaveCount(0);
 });
+
+
+for (const route of ['home', 'catalog']) {
+  test(`${route} category cards each occupy their own full-width row`, async ({ page }) => {
+    await mockHome(page);
+    await page.goto(`/mini-app/?route=${route}`);
+    const grid = page.locator('#roxy-home-trend-folders .home-trend-folder-grid');
+    const cards = grid.locator('.home-trend-folder');
+    await expect(cards).toHaveCount(2);
+    for (const width of [320, 390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(() => grid.evaluate(node => {
+        const [first, second] = Array.from(node.querySelectorAll('.home-trend-folder')).map(card => card.getBoundingClientRect());
+        const bounds = node.getBoundingClientRect();
+        return {
+          fullWidth: Math.abs(first.width - bounds.width) <= 1 && Math.abs(second.width - bounds.width) <= 1,
+          aligned: Math.abs(first.left - second.left) <= 1,
+          stacked: second.top >= first.bottom,
+          fits: node.scrollWidth <= node.clientWidth + 1,
+        };
+      })).toEqual({ fullWidth: true, aligned: true, stacked: true, fits: true });
+    }
+  });
+}
+
+for (const route of ['home', 'catalog']) {
+  test(`${route} category rows expose horizontal mixed-media template previews and full gallery`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockHome(page);
+    await page.goto(`/mini-app/?route=${route}`);
+    const grid = page.locator('#roxy-home-trend-folders .home-trend-folder-grid');
+    const birthday = grid.getByRole('region', { name: 'День рождения', exact: true });
+    const autumn = grid.getByRole('region', { name: 'Осень', exact: true });
+    const track = birthday.locator('.trend-collection-preview-track');
+    await track.scrollIntoViewIfNeeded();
+    await expect(track.getByRole('link')).toHaveCount(3);
+    await expect(track.getByRole('link', { name: /Видео-поздравление/ })).toHaveAttribute('href', '/mini-app/trend/?id=trend_birthday_video');
+    await expect.poll(() => track.evaluate(node => ({ scroll: getComputedStyle(node).overflowX, overflows: node.scrollWidth > node.clientWidth })))
+      .toEqual({ scroll: 'auto', overflows: true });
+    await expect(autumn).toBeAttached();
+    await autumn.locator('.trend-collection-preview-track').scrollIntoViewIfNeeded();
+    await expect(autumn.getByRole('link', { name: /Осенний портрет/ })).toHaveAttribute('href', '/mini-app/trend/?id=trend_autumn');
+    await birthday.getByRole('button', { name: /День рождения/ }).click();
+    await expect(grid).toHaveCount(0);
+    await expect(page.locator('#roxy-home-trend-folders').getByRole('tab', { name: /Видео/ })).toBeVisible();
+  });
+}
