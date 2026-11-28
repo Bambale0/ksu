@@ -87,7 +87,8 @@ async def test_popular_trends_sort_by_real_counter_and_hide_private_recipes(monk
     ]
     session = FakeSession(rows)
 
-    async def public_view(_session, item):
+    async def public_view(_session, item, *, include_image_quality_options=True):
+        assert include_image_quality_options is False
         assert item.is_active
         return {
             "id": str(item.id),
