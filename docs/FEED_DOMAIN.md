@@ -42,6 +42,8 @@ A derivative has `source_feed_gen_id != NULL`.
 
 The source prompt is never accepted from the client during remix.
 
+For supported image models, the prepare response additionally publishes native `resolution_options` and `default_resolution`. The same optional `resolution` override is validated in quote and launch before generation admission. The frontend invalidates the previous quote when the user changes resolution. Omitting the override preserves source settings for legacy clients. Author media and private prompt rules are unchanged; the current server tariff determines the charge.
+
 ## Surface authorization
 
 Every interaction receives or derives a surface:
