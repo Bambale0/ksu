@@ -6,6 +6,8 @@ import { AspectRatioSelect } from "@/components/aspect-ratio-select";
 import { explicitAspectRatioOptions, isAspectRatioReady, isAutomaticAspectRatio, selectedAspectRatio as defaultAspectRatio } from "@/lib/aspect-ratio";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
+import { TrendReferenceUploads } from "@/components/trend-reference-uploads";
+import { namedReferencesReady, referenceInputs } from "@/lib/trend-references";
 import { api } from "@/lib/api";
 import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
@@ -869,6 +871,7 @@ export default function TrendPage() {
   const [sharing, setSharing] = useState(false);
   const [copying, setCopying] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
+  const [namedReferences, setNamedReferences] = useState<Record<string, string>>({});
   const [videoReferences, setVideoReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [selectedQuality, setSelectedQuality] = useState("");
@@ -985,7 +988,9 @@ export default function TrendPage() {
   const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
   const aspectRatioReady = !aspectRatioOptions.length || aspectRatioOptions.includes(selectedAspectRatio);
-  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && videoReferences.length === videoCount && userFieldsReady && aspectRatioReady;
+  const referencesReady = trend?.reference_schema ? namedReferencesReady(trend.reference_schema, namedReferences)
+    : references.length >= minimum && (!maximum || references.length <= maximum) && videoReferences.length === videoCount;
+  const ready = referencesReady && userFieldsReady && aspectRatioReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";
     if (videoCount) return minimum
@@ -1088,6 +1093,7 @@ export default function TrendPage() {
         {
           ...(chosenQuality ? { resolution: chosenQuality.value } : {}),
           videoReferenceUrls: videoReferences.map((item) => item.url),
+          ...(trend.reference_schema ? { referenceInputs: referenceInputs(trend.reference_schema, namedReferences) } : {}),
           ...(selectedAspectRatio ? { aspectRatio: selectedAspectRatio } : {}),
         },
       );
@@ -1192,9 +1198,9 @@ export default function TrendPage() {
                 </div>
               </section>
             ) : null}
-            <p className="muted">{referenceCopy}</p>
+            {trend.reference_schema ? <TrendReferenceUploads schema={trend.reference_schema} values={namedReferences} onChange={setNamedReferences} disabled={running} onBusy={setUploading} /> : <p className="muted">{referenceCopy}</p>}
 
-            {maximum > 0 ? (
+            {!trend.reference_schema && maximum > 0 ? (
               <>
                 <label className="upload-control">
                   <span>{uploading ? "Загружаю…" : references.length ? `Добавлено ${references.length}/${maximum}` : "Добавить референсы"}</span>
@@ -1221,7 +1227,7 @@ export default function TrendPage() {
               </>
             ) : null}
 
-            {videoCount > 0 ? <div className="trend-video-references">
+            {!trend.reference_schema && videoCount > 0 ? <div className="trend-video-references">
               <label className="upload-control">
                 <span>{uploading ? "Загружаю…" : `Добавить видео · ${videoReferences.length}/${videoCount}`}</span>
                 <input type="file" accept="video/mp4,video/quicktime" multiple={videoCount > 1}
@@ -1275,6 +1281,7 @@ export default function TrendPage() {
             ) : null}
 
             {error ? <div className="action-error" role="alert">{error}</div> : null}
+            {trend.reference_schema && !ready ? <p className="muted">Загрузите обязательные референсы по порядку и заполните обязательные поля.</p> : null}
             <button className="primary wide" type="button" disabled={!ready || uploading || running} onClick={() => void run()}>
               {running ? "Запускаю…" : adminFree ? "Сгенерировать бесплатно" : `Сгенерировать · ${money(displayedCost)} ROX`}
             </button>

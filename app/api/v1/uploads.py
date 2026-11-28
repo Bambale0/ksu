@@ -384,3 +384,62 @@ async def upload_template_video(
         "probe_status": "ready", "duration_ms": probe.duration_ms,
         "reference": {"id": str(row.id), "kind": "video", "url": url},
     }
+
+
+@router.post('/template-image', status_code=status.HTTP_201_CREATED)
+async def upload_template_image(
+    user: CurrentUserDep, redis: RedisDep, session: SessionDep,
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    import uuid
+    from PIL import Image, UnidentifiedImageError
+    from app.api.v1.trends import _inline_admin
+    from app.db.reference_models import TemplateImageReference
+    from app.services.admin_policy import AdminPolicyError
+
+    try:
+        await _inline_admin(session, user_id=user.id)
+    except AdminPolicyError as exc:
+        raise HTTPException(status_code=403, detail="Admin permission required") from exc
+    content_type = _upload_content_type(file)
+    if not content_type.startswith("image/") or not ReferenceStaticStorage.supports_content_type(content_type):
+        raise HTTPException(status_code=415, detail="Загрузите изображение")
+    size_bytes = _upload_size(file)
+    if not 0 < size_bytes <= settings.kie_upload_max_bytes:
+        raise HTTPException(status_code=413, detail="Некорректный размер файла")
+    await AbuseProtectionService.upload_rate_and_bytes(redis, user_id=user.id, size_bytes=size_bytes)
+
+    def verify_image() -> tuple[int, int]:
+        file.file.seek(0)
+        with Image.open(file.file) as image:
+            width, height = image.size
+            if getattr(image, "is_animated", False):
+                raise ValueError("Нужно статичное изображение")
+            # JPEG verify() checks headers only; decoding rejects truncated pixels.
+            image.load()
+        file.file.seek(0)
+        return width, height
+
+    try:
+        width, height = await asyncio.to_thread(verify_image)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise HTTPException(status_code=422, detail="Не удалось проверить изображение") from exc
+    file_hash = await asyncio.to_thread(_sha256_stream, file.file)
+    reference_id = uuid.uuid4()
+    try:
+        url, _path, stored_size = await asyncio.to_thread(partial(
+            ReferenceStaticStorage.persist_stream, file.file, user_id=reference_id,
+            kind="image", file_hash=file_hash, filename=file.filename or "image",
+            content_type=content_type, expected_size=size_bytes,
+        ))
+    except ReferenceStaticStorageError as exc:
+        raise HTTPException(status_code=500, detail="Reference storage failed") from exc
+    row = TemplateImageReference(
+        id=reference_id, source_url=url, uploaded_by=user.id, status="ready",
+        content_type=content_type, size_bytes=stored_size, width=width, height=height,
+    )
+    session.add(row)
+    await session.commit()
+    logging.getLogger(__name__).info("template_image_uploaded reference_id=%s actor_user_id=%s", row.id, user.id)
+    return {"url": url, "name": file.filename or "image", "probe_status": "ready",
+            "reference": {"id": str(row.id), "kind": "image", "url": url}}

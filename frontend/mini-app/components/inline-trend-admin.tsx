@@ -8,9 +8,10 @@ import { createPortal } from "react-dom";
 import { klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
+import { TrendReferenceEditor } from "@/components/trend-reference-editor";
 import { api } from "@/lib/api";
 import { resolveAdminAccess } from "@/lib/admin-access";
-import type { TrendUserField, UiField } from "@/lib/types";
+import type { TrendUserField, UiField, TrendReferenceSchema } from "@/lib/types";
 import { inferTemplateFieldType } from "@/lib/trend-user-fields";
 import {
   trendAdminApi,
@@ -104,6 +105,7 @@ type DraftBase = {
 };
 
 type LegacyDraft = DraftBase & {
+  referenceSchema?: TrendReferenceSchema;
   mode: "legacy";
   modelId: string;
   prompt: string;
@@ -258,6 +260,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
     modelId: String(payload.model_id || ""),
     prompt: String(payload.prompt || ""),
     templateVideoUrl: String(payload.template_video_url || ""),
+    referenceSchema: payload.reference_schema ? structuredClone(payload.reference_schema) : undefined,
     userFields: Array.isArray(payload.user_fields) ? payload.user_fields.slice(0, 6) : [],
     inputMode: payload.input_mode === "image" ? "image" : "none",
     minReferences: Number(payload.min_references || 0),
@@ -635,7 +638,7 @@ export function InlineTrendAdmin() {
   };
 
   const chooseDraftMode = (mode: "legacy" | "workflow") => {
-    if (mode === draft.mode) return;
+    if (mode === draft.mode || uploading || saving) return;
     draftVersion.current += 1;
     setError("");
     setDraft(mode === "workflow" ? emptyWorkflowDraft(models) : emptyDraft(models[0]?.id || ""));
@@ -998,6 +1001,7 @@ export function InlineTrendAdmin() {
         return;
       }
       const legacyPayload: TrendAdminV1Payload = {
+        reference_schema: draft.referenceSchema,
         description: draft.description.trim(),
         preview_url: draft.previewUrl.trim(),
         media_type: model.media_type,
@@ -1135,7 +1139,7 @@ export function InlineTrendAdmin() {
         <label><span>Название</span><input value={draft.title} maxLength={80} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Например, Киношный портрет" required /></label>
         <label><span>Описание</span><textarea value={draft.description} maxLength={240} rows={2} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Что получит пользователь" /></label>
 
-        <label><span>Тип шаблона</span><select value={draft.mode === "workflow" ? WORKFLOW_TYPE : "legacy"} onChange={(event) => chooseDraftMode(event.target.value === WORKFLOW_TYPE ? "workflow" : "legacy")} aria-label="Тип шаблона">
+        <label><span>Тип шаблона</span><select disabled={uploading || saving} value={draft.mode === "workflow" ? WORKFLOW_TYPE : "legacy"} onChange={(event) => chooseDraftMode(event.target.value === WORKFLOW_TYPE ? "workflow" : "legacy")} aria-label="Тип шаблона">
           <option value="legacy">Обычный шаблон</option>
           <option value={WORKFLOW_TYPE}>Фото → Видео</option>
         </select><small>«Фото → Видео»: пользователь сначала создаёт фото, затем оживляет его отдельным запуском.</small></label>
@@ -1195,8 +1199,18 @@ export function InlineTrendAdmin() {
               maxReferences: Math.min(capacity, Math.max(current.maxReferences || (count ? capacity : 0), count)),
             };
           })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          <TrendReferenceEditor key={draftVersion.current} value={draft.referenceSchema} prompt={draft.prompt} templateVideoUrl={draft.templateVideoUrl}
+            disabled={saving || uploading} onBusy={setUploading} onChange={schema => setDraft(current => {
+              if (current.mode !== "legacy") return current;
+              const presetVideo = schema?.slots.find(slot => slot.kind === "video" && slot.source === "admin");
+              const hadNamedVideo = current.referenceSchema?.slots.some(slot => slot.kind === "video" && slot.source === "admin");
+              return { ...current, referenceSchema: schema,
+                templateVideoUrl: presetVideo ? presetVideo.url || "" : hadNamedVideo ? "" : current.templateVideoUrl,
+              };
+            })} />
+          {klingPinnedAllowed && draft.referenceSchema && templateVideoUrl ? <ModelParameterControls model={selectedModel || undefined} parameters={pinnedParameters} onChange={updatePinnedParameter} /> : null}
           {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
-        {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
+        {klingPinnedAllowed && !draft.referenceSchema ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
           <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Количество пользовательских фото задаётся промптом и настройками ниже. Превью — отдельное поле.</small>
           <label><span>Загрузить видео MP4/MOV · 2–30 с{pinnedVideoMaxMb ? `, до ${pinnedVideoMaxMb} МБ` : ""}</span>
@@ -1274,7 +1288,7 @@ export function InlineTrendAdmin() {
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
           </div>
 
-          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={templateVideoUrl ? 0 : 1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => {
+          {!draft.referenceSchema && draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={templateVideoUrl ? 0 : 1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => {
             if (current.mode !== "legacy") return current;
             const required = current.modelId === "kling-4.0" ? klingTrendRequiredImages(current.prompt) : 0;
             const next = Math.min(capacity, Math.max(required, current.templateVideoUrl ? 0 : 1, Number(event.target.value || 0)));

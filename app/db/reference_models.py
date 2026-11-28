@@ -104,3 +104,21 @@ class TemplateVideoReference(TimestampMixin, Base):
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     duration_ms: Mapped[int | None] = mapped_column(BigInteger)
     probe_status: Mapped[str | None] = mapped_column(String(16))
+
+
+class TemplateImageReference(TimestampMixin, Base):
+    """Preset images survive personal reference pruning and uploader deletion."""
+
+    __tablename__ = "template_image_references"
+    __table_args__ = (
+        CheckConstraint("status IN ('ready', 'deleted')", name="ck_template_image_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)

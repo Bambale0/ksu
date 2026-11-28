@@ -108,6 +108,54 @@ The Mini App Trends runner:
 
 ## Compatibility and rollout
 
+### Opt-in named references (v1 recipes)
+
+Existing v1 trends keep their image ranges until an administrator explicitly saves
+`reference_schema`. The Mini App editor suggests slots from `Image1`, `@Image1`,
+`@image_1` and corresponding video tokens; the administrator confirms the suggestion,
+edits names/descriptions/types/sources and saves. Detection never silently changes
+published recipes. Existing v2 sequential workflows retain their semantic inputs.
+
+```json
+"reference_schema": {
+  "mode": "strict",
+  "slots": [
+    {"id":"image_1","label":"Персонаж","description":"Чёткое фото лица","kind":"image","source":"user","order":0,"required":true},
+    {"id":"image_2","label":"Одежда","description":"Нужный образ","kind":"image","source":"user","order":1,"required":true}
+  ]
+}
+```
+
+`strict` requires every slot. `range` allows optional trailing slots of each media
+kind; required counts and maximums are derived from the configured user slots.
+Slots referenced in the hidden prompt must be required. IDs are sequential per
+media kind and `order` is the zero-based array position. Optional middle gaps are
+rejected, so provider numbering cannot shift. Model capacity includes preset images.
+This adds no global limit to ordinary generations or existing trend ranges.
+
+Named runs send `reference_inputs: [{"slot_id":"image_1","kind":"image","url":"https://…"}, …]`
+in schema order, with empty/omitted legacy reference arrays. The server rejects
+unknown/duplicate/reordered slots, wrong types, missing required slots, gaps,
+unverified or foreign user uploads and missing/invalid personal values before
+`GenerationService.create()` (and therefore before debit/outbox/provider admission).
+Legacy recipes continue accepting their original reference arrays.
+
+Preset slots use `source: "admin"` with a private `url`. Images use the admin-only
+`POST /api/v1/uploads/template-image` endpoint and additive migration
+`0048_template_image`; image bytes are decoded/verified and stored under independent
+asset IDs in `template_image_references`, outside personal pruning. Uploader deletion
+retains them. Preset video slots reuse the existing verified Kling 4.0 video upload
+and `template_video_url`; other unsupported video combinations fail closed. Customer
+videos remain supported for Seedance 2.5. Presets are assembled in slot order and
+cannot be overridden by run requests. Public schemas omit every preset URL and
+continue hiding prompts/provider settings. The web console JSON editor preserves
+and can edit the same schema.
+
+Deploy the additive image metadata migration before publishing preset-image trends.
+Rollback retains metadata and media; first disable new named-schema trends before
+rolling back to code that cannot enforce their contracts. A populated metadata table
+refuses downgrade. Existing recipes are neither backfilled nor made strict globally.
+
 Existing legacy `admin_trends` rows are not migrated automatically. Public listing skips active rows that cannot be normalized against the current recipe contract. Operators should recreate or update such entries through the validated admin path before relying on them in production.
 
 Legacy trends with video inputs or `@VideoN` tags need an admin recipe/prompt update before they can be listed or run. Their display videos can remain uploaded; removing or re-uploading the preview is not necessary. Hidden creative prompts are never rewritten automatically.
