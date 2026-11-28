@@ -454,4 +454,4 @@ export type Draft = {
   quantity?: number;
 };
 
-export type Route = "home" | "feed" | "catalog" | "create" | "history" | "profile" | "partners";
+export type Route = "home" | "feed" | "catalog" | "create" | "history" | "profile" | "partners" | "ai-chat";

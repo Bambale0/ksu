@@ -77,15 +77,16 @@ Any already-existing browser guest components inside the Mini App are outside th
 
 ## Primary navigation
 
-The React app owns exactly five primary destinations:
+The canonical React customer app owns six primary destinations in this order:
 
-1. `Главная`
-2. `Каталог`
+1. `Каталог` (canonical Home)
+2. `Лента`
 3. `Создать`
-4. `История`
-5. `Профиль`
+4. `ИИ ЧАТ` (`/mini-app/?route=ai-chat`)
+5. `Партнёры`
+6. `Профиль`
 
-`Создать` is the central action. `Лента` must not return as a primary navigation label.
+`Создать` remains the highlighted creation action. History remains accessible from the account/catalog. The AI CHAT route contains the existing assistant tools, not a new conversation service: PINTEREST AI, image/video descriptions, video scenario and batch generation. Their standalone routes and server pricing are unchanged. The catalog retains generation launchers, trends, AI Reference and account services, without duplicating assistant cards.
 
 ## Main product surfaces
 
