@@ -311,3 +311,48 @@ test(`Remix ${defaultRatio === 'AUTO' ? 'clears a legacy automatic ratio' : 'pre
   expect(runs[0].aspect_ratio).toBe(expectedRatio);
 });
 }
+
+
+test('public photo repeat requests a fresh price when changing resolution and launches that resolution', async ({ page }) => {
+  await installTelegram(page);
+  const quotes: Array<{ resolution?: string }> = [];
+  const runs: Array<{ resolution?: string }> = [];
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === '/api/v1/feed/source/remix/prepare') return json({
+      source_generation_id: 'source', source_feed_gen_id: 'source', surface: 'feed',
+      model_id: 'nano-banana-pro', effective_model_id: 'nano-banana-pro', model_title: 'NanoBanana PRO',
+      prompt: '', prompt_hidden: true, prompt_editable: false, settings: { resolution: '2K' },
+      aspect_ratio_options: ['9:16'], aspect_ratio_required: true, default_aspect_ratio: '9:16',
+      resolution_options: ['1K', '2K', '4K'], default_resolution: '2K',
+      reference_requirements: { image_count: 0, video_count: 0, audio_count: 0, required: false },
+    });
+    if (path === '/api/v1/feed/source/remix/quote') {
+      const body = request.postDataJSON();
+      quotes.push(body);
+      if (body.resolution === '4K') await new Promise(resolve => setTimeout(resolve, 300));
+      return json({ cost_rox: body.resolution === '4K' ? '30' : '25', admin_free: false });
+    }
+    if (path === '/api/v1/feed/source/remix/launch') {
+      runs.push(request.postDataJSON());
+      return json({ id: 'remix-result', status: 'queued' });
+    }
+    if (path === '/api/v1/me') return json({ id: 'user-1', telegram_id: 777, first_name: 'QA', balance_rox: '100' });
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/remix/?source=source&surface=feed');
+  const resolution = page.getByRole('radiogroup', { name: 'Разрешение' });
+  await expect(resolution.getByRole('radio')).toHaveCount(3);
+  await expect(resolution.getByRole('radio', { name: '2K' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: 'Повторить · 25 ROX' })).toBeEnabled();
+  await resolution.getByRole('radio', { name: '4K' }).click();
+  await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toBeDisabled();
+  const run = page.getByRole('button', { name: 'Повторить · 30 ROX' });
+  await expect(run).toBeEnabled();
+  await run.click();
+  await expect.poll(() => runs.length).toBe(1);
+  expect(quotes.at(-1)?.resolution).toBe('4K');
+  expect(runs[0].resolution).toBe('4K');
+});
