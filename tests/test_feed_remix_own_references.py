@@ -295,12 +295,14 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
             reference_ids=[own_reference.id],
             confirm_own_references=True,
             aspect_ratio="9:16",
+            resolution="4K",
         )
 
         assert captured["prompt"] == "hidden author prompt"
         assert captured["input_url"] is None
         assert captured["parameters"] == {
             "aspect_ratio": "9:16",
+            "resolution": "4K",
             "reference_images": ["https://example.invalid/remixer-reference.png"]
         }
         assert "author-reference.png" not in str(captured)
