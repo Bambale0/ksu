@@ -1024,3 +1024,31 @@ async def test_inline_kling_trend_create_replays_same_id_after_lost_gateway_resp
             )
         )
         assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_image_trend_quality_choices_and_override(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _item()
+    prices = {"1K": Decimal("20.00"), "2K": Decimal("25.00"), "4K": Decimal("30.00")}
+
+    async def prepare(_session, *, model_id, prompt, parameters, billing_seconds):
+        return ModelCatalog.get(model_id), parameters, prices[parameters["resolution"]], None, prices[parameters["resolution"]]
+
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    view = await TrendService.public_view(session, item)
+    assert [(option["value"], option["cost_rox"]) for option in view["quality_options"]] == [
+        ("1K", "20.00"), ("2K", "25.00"), ("4K", "30.00"),
+    ]
+    assert view["quality_options"][0]["default"] is True
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+    kwargs = dict(user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/ref.jpg"], aspect_ratio="1:1")
+    with pytest.raises(TrendRecipeError):
+        await TrendService.run(session, AsyncMock(), resolution="8K", **kwargs)
+    create.assert_not_awaited()
+    await TrendService.run(session, AsyncMock(), resolution="4K", **kwargs)
+    assert create.await_args.kwargs["parameters"]["resolution"] == "4K"
+    assert item.payload["parameters"]["resolution"] == "1K"
