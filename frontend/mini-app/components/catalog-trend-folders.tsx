@@ -175,7 +175,7 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folders-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
         .catalog-trend-folders .home-trend-folders-back{border:1px solid rgba(255,255,255,.11);background:#17131d;color:#fff;border-radius:999px;padding:8px 11px;font-weight:850;flex-shrink:0}
         .catalog-trend-folders .home-trend-folders-admin{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-height:0}
-        .catalog-trend-folders .home-trend-folder-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+        .catalog-trend-folders .home-trend-folder-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}
         .catalog-trend-folders .home-trend-folder{position:relative;min-height:158px;overflow:hidden;border:1px solid rgba(190,117,255,.24);border-radius:23px;background:radial-gradient(circle at 80% 12%,rgba(170,74,255,.2),transparent 42%),linear-gradient(145deg,#15101e,#09070d);color:#fff;padding:0;text-align:left;box-shadow:0 16px 38px rgba(0,0,0,.2)}
         .catalog-trend-folders .home-trend-folder-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.52}
         .catalog-trend-folders .home-trend-folder::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,3,9,.06),rgba(5,3,9,.9))}
@@ -197,7 +197,7 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folder-item-copy small{color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .catalog-trend-folders .home-trend-folders-empty{padding:17px;border:1px dashed rgba(190,130,255,.26);border-radius:20px;color:var(--muted);background:rgba(16,12,22,.72)}
         .catalog-trend-folders .home-trend-folders-error{padding:11px 13px;border-radius:14px;background:rgba(255,80,120,.1);color:#ffc6d3}
-        @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        
       `}</style>
       {selected ? <div className="home-trend-folders-head">
         <div className="home-trend-folders-copy">
