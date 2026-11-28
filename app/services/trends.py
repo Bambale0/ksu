@@ -323,7 +323,7 @@ class TrendService:
             ):
                 continue
             try:
-                view = await TrendService.public_view(session, row)
+                view = await TrendService.public_view(session, row, include_image_quality_options=False)
             except (ValueError, KeyError):
                 continue
             if media_type and view["media_type"] != media_type:
@@ -343,7 +343,9 @@ class TrendService:
             raise LookupError("Trend not found") from exc
 
     @staticmethod
-    async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
+    async def public_view(
+        session: AsyncSession, item: AdminTrend, *, include_image_quality_options: bool = True,
+    ) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
         if recipe.get("schema_version") == 2:
             from app.services.trend_workflows import TrendWorkflowService
@@ -388,7 +390,8 @@ class TrendService:
             "created_at": item.created_at.isoformat(),
             **(
                 {"quality_options": await TrendService._quality_options(session, recipe, refs)}
-                if TrendService._resolution_options(recipe) and not recipe["template_video_url"]
+                if (include_image_quality_options or recipe["media_type"] != "image")
+                and TrendService._resolution_options(recipe) and not recipe["template_video_url"]
                 else {}
             ),
         }
