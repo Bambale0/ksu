@@ -17,6 +17,7 @@ from app.db.models import Generation
 from app.providers.nexus import NANO_BANANA_MAX_REFERENCES, NANO_BANANA_MODELS
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
+from app.services.image_resolution_policy import image_resolution_options
 from app.services.kling4_contract import KLING4_MAX_IMAGE_REFERENCES, KLING4_MAX_TOTAL_REFERENCES
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_routing import video_references
@@ -583,9 +584,11 @@ class TrendService:
 
     @staticmethod
     def _resolution_options(recipe: dict[str, Any]) -> list[str]:
+        model_id = str(recipe["model_id"])
+        if recipe.get("media_type") == "image":
+            return image_resolution_options(model_id)
         if recipe.get("media_type") != "video":
             return []
-        model_id = str(recipe["model_id"])
         spec = ModelCatalog.get(model_id)
         if "resolution" not in set(spec.known_fields):
             return []
@@ -625,9 +628,9 @@ class TrendService:
         selected = str(resolution).strip()
         options = TrendService._resolution_options(recipe)
         if not options:
-            raise TrendRecipeError("This trend does not support video quality selection")
+            raise TrendRecipeError("This trend does not support resolution selection")
         if selected not in options:
-            raise TrendRecipeError("Unsupported video quality")
+            raise TrendRecipeError("Unsupported video quality" if recipe.get("media_type") == "video" else "Unsupported image resolution")
         parameters["resolution"] = selected
 
     @staticmethod
