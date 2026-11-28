@@ -243,8 +243,8 @@ async function boot(page, scenario) {
   const nav = page.getByRole('navigation', { name: 'Основная навигация' });
   await expect(nav).toBeVisible();
   const visibleButtons = nav.locator('button:visible');
-  await expect(visibleButtons).toHaveCount(5);
-  await expect(visibleButtons.locator('small')).toHaveText(['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']);
+  await expect(visibleButtons).toHaveCount(6);
+  await expect(visibleButtons.locator('small')).toHaveText(['Каталог', 'Лента', 'Создать', 'ИИ ЧАТ', 'Партнёры', 'Профиль']);
   await expect(page.locator('.bottom-nav button.central small')).toHaveText('Создать');
 }
 
@@ -280,7 +280,7 @@ async function chooseFamily(page, name) {
 async function runHome(page, check) {
   if (check === 'shell') {
     await expect(page.getByRole('heading', { name: 'Создавайте с ROXY', exact: true })).toBeVisible();
-    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(7);
   } else if (check === 'create-image') {
     await page.locator('[data-catalog-feature="create-image"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
@@ -367,11 +367,9 @@ async function runFeed(page, check) {
 async function runCatalog(page, check) {
   if (check === 'shell') {
     await expect(page.getByRole('heading', { name: 'Создавайте с ROXY', exact: true })).toBeVisible();
-    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
-    await expect(page.getByText('Описание по фото')).toBeVisible();
-    await expect(page.getByText('Описание по видео').first()).toBeVisible();
-    await expect(page.getByText('Сценарий для видео')).toBeVisible();
-    await expect(page.getByText('Пакетная обработка')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(7);
+    await expect(page.locator('[data-catalog-feature="prompt-image"]')).toHaveCount(0);
+    await expect(page.locator('[data-catalog-feature="pinterest-repeat"]')).toHaveCount(0);
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
     await expect(page.getByText('Полный каталог')).toBeVisible();
   } else if (check === 'image-filter') {
@@ -634,4 +632,36 @@ test('feed actually plays the active video and resumes after scrolling', async (
   await expect.poll(() => slides.nth(0).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
   await slides.nth(1).scrollIntoViewIfNeeded();
   await expect.poll(() => slides.nth(1).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
+});
+
+
+test('ИИ ЧАТ moves all assistants out of catalog and preserves standalone navigation', async ({ page }) => {
+  await boot(page, { route: 'catalog', viewport: { width: 320, height: 740 } });
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  await expect(page.locator('[data-catalog-feature="pinterest-repeat"]')).toHaveCount(0);
+  const nav = page.locator('.bottom-nav');
+  await nav.getByRole('button', { name: 'ИИ ЧАТ', exact: true }).click();
+  await expect(page).toHaveURL(/route=ai-chat/);
+  await expect(nav.getByRole('button', { name: 'ИИ ЧАТ', exact: true })).toHaveAttribute('aria-current', 'page');
+  const screen = page.locator('.ai-chat-screen');
+  await expect(screen.getByRole('heading', { name: 'ИИ ЧАТ', exact: true })).toBeVisible();
+  await expect(screen.locator('[data-catalog-feature] strong')).toHaveText(['PINTEREST AI', 'Описание по фото', 'Описание по видео', 'Сценарий для видео', 'Пакетная обработка']);
+  await expect(screen.getByText('Повтори любое фото с Pinterest — с твоей внешностью')).toBeVisible();
+  await expect(page.locator('#roxy-catalog-feature-hub')).toHaveCount(0);
+  await expect.poll(() => nav.locator('button').evaluateAll(nodes => nodes.every(node => {
+    const rect = node.getBoundingClientRect();
+    const label = node.querySelector('small');
+    return rect.width >= 44 && rect.height >= 44 && rect.left >= 0 && rect.right <= innerWidth + 1
+      && label.scrollWidth <= label.clientWidth + 1;
+  }))).toBe(true);
+  await page.reload();
+  await expect(screen.getByText('PINTEREST AI', { exact: true })).toBeVisible();
+  await screen.locator('[data-catalog-feature="pinterest-repeat"]').click();
+  await expect(page).toHaveURL(/\/mini-app\/pinterest-repeat\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/route=ai-chat/);
+  await expect(screen.getByText('PINTEREST AI', { exact: true })).toBeVisible();
+  await nav.getByRole('button', { name: 'Каталог', exact: true }).click();
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  await expect(screen).toHaveCount(0);
 });

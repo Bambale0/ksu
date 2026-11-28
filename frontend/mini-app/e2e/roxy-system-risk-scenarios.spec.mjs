@@ -323,7 +323,7 @@ const cases = [
     await page.locator('.model-card').filter({ hasText: 'Музыка' }).last().click();
     await expect(page.locator('.variant-row').filter({ hasText: 'ROXY Music' })).toContainText('100 ROX');
   } },
-  { name: 'catalog-prompt-tools', route: 'catalog', run: async (page) => {
+  { name: 'ai-chat-prompt-tools', route: 'ai-chat', run: async (page) => {
     await expect(page.getByText('Описание по фото')).toBeVisible();
     await expect(page.getByText('Описание по видео').first()).toBeVisible();
   } },
@@ -394,7 +394,7 @@ const cases = [
   } },
   { name: 'bottom-nav-route-integrity', route: 'home', run: async (page) => {
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
-    await expect(nav.locator('button:visible')).toHaveCount(5);
+    await expect(nav.locator('button:visible')).toHaveCount(6);
     await bottomButton(page, 'Лента').click();
     await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
   } },

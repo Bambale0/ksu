@@ -100,6 +100,7 @@ test('Seedance catalog card advertises the real 5-second minimum price', async (
   await mockCatalog(page);
   await page.goto('/mini-app/?route=catalog');
 
+  await page.locator('[data-roxy-customer-route="ai-chat"]').click();
   const seedance = page.locator('[data-catalog-feature="prompt-seedance"]');
   await expect(seedance).toBeVisible();
   await expect(seedance.locator('.catalog-feature-pill')).toHaveText('от 30 ROX');
