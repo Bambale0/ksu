@@ -123,6 +123,7 @@ export type FeedRemixDraft = {
   aspect_ratio_required?: boolean;
   default_aspect_ratio?: string | null;
   resolution_options?: string[];
+  resolution_options_with_references?: string[];
   default_resolution?: string | null;
   billing_seconds?: number | null;
   reference_requirements: {

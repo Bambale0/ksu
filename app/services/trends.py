@@ -512,7 +512,9 @@ class TrendService:
         template: bool = False,
     ) -> dict[str, Any]:
         parameters = dict(recipe.get("parameters") or {})
-        TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
+        TrendService._apply_resolution_override(
+            recipe, parameters, resolution=resolution, has_image_references=bool(reference_urls),
+        )
         TrendService._apply_aspect_ratio_override(
             recipe,
             parameters,
@@ -586,10 +588,15 @@ class TrendService:
         parameters["aspect_ratio"] = selected
 
     @staticmethod
-    def _resolution_options(recipe: dict[str, Any]) -> list[str]:
+    def _resolution_options(
+        recipe: dict[str, Any], *, has_image_references: bool | None = None,
+    ) -> list[str]:
         model_id = str(recipe["model_id"])
         if recipe.get("media_type") == "image":
-            return image_resolution_options(model_id)
+            return image_resolution_options(
+                model_id,
+                has_image_references=bool(recipe.get("min_references")) if has_image_references is None else has_image_references,
+            )
         if recipe.get("media_type") != "video":
             return []
         spec = ModelCatalog.get(model_id)
@@ -621,6 +628,7 @@ class TrendService:
         parameters: dict[str, Any],
         *,
         resolution: str | None,
+        has_image_references: bool | None = None,
     ) -> None:
         if recipe.get("template_video_url"):
             if resolution not in (None, ""):
@@ -629,7 +637,7 @@ class TrendService:
         if resolution in (None, ""):
             return
         selected = str(resolution).strip()
-        options = TrendService._resolution_options(recipe)
+        options = TrendService._resolution_options(recipe, has_image_references=has_image_references)
         if not options:
             raise TrendRecipeError("This trend does not support resolution selection")
         if selected not in options:
@@ -642,8 +650,11 @@ class TrendService:
         recipe: dict[str, Any],
         refs: list[str],
     ) -> list[dict[str, Any]]:
-        options = TrendService._resolution_options(recipe)
-        default = TrendService._default_resolution(recipe) or (options[0] if options else None)
+        options = TrendService._resolution_options(recipe, has_image_references=bool(refs))
+        with_references = TrendService._resolution_options(recipe, has_image_references=True)
+        default = TrendService._default_resolution(recipe)
+        if default not in options:
+            default = options[0] if options else None
         result: list[dict[str, Any]] = []
         for resolution in options:
             parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution, template=True)
@@ -663,6 +674,8 @@ class TrendService:
                     "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
                     "billing_seconds": seconds,
                     "default": resolution == default,
+                    **({"requires_no_image_references": True}
+                       if recipe["media_type"] == "image" and resolution not in with_references else {}),
                 }
             )
         return result

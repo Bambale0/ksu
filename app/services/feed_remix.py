@@ -200,7 +200,10 @@ class FeedRemixService:
         ratio_options = cls._aspect_ratio_options(
             effective_model_id, has_image_references=bool(source_context.reference_images),
         )
-        resolution_options = image_resolution_options(effective_model_id)
+        resolution_options = image_resolution_options(
+            effective_model_id, has_image_references=bool(requirements["image_count"]),
+        )
+        reference_resolution_options = image_resolution_options(effective_model_id, has_image_references=True)
         default_resolution = settings.get("resolution") or MODEL_DEFAULTS.get(effective_model_id, {}).get("resolution")
         return {
             "source_generation_id": str(source.id),
@@ -222,6 +225,7 @@ class FeedRemixService:
                 settings.get("aspect_ratio") if settings.get("aspect_ratio") in ratio_options else None
             ),
             "resolution_options": resolution_options,
+            "resolution_options_with_references": reference_resolution_options,
             "default_resolution": default_resolution if default_resolution in resolution_options else (resolution_options[0] if resolution_options else None),
             "billing_seconds": (source.parameters or {}).get("_billing_seconds"),
             "reference_requirements": requirements,
@@ -372,7 +376,9 @@ class FeedRemixService:
             )
         base = cls._reusable_parameters(source, effective_model_id)
         if resolution is not None:
-            if resolution not in image_resolution_options(effective_model_id):
+            if resolution not in image_resolution_options(
+                effective_model_id, has_image_references=bool(references.get("image")),
+            ):
                 raise FeedRemixReferenceError("Выберите доступное разрешение изображения для повтора")
             base["resolution"] = resolution
         ratio_options = cls._aspect_ratio_options(

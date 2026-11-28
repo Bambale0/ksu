@@ -977,7 +977,7 @@ export default function TrendPage() {
   const maximum = Math.max(minimum, Number(trend?.reference_requirements?.image?.max ?? trend?.reference_requirements?.max ?? minimum));
   const videoCount = Number(trend?.reference_requirements?.video?.min || 0);
   const userFields = (trend?.user_fields || []).slice(0, 6);
-  const qualityOptions = trend?.quality_options || [];
+  const qualityOptions = (trend?.quality_options || []).filter(option => !option.requires_no_image_references || references.length === 0);
   const qualityLabel = trend?.media_type === "image" ? "Разрешение" : "Качество видео";
   const aspectRatioOptions = explicitAspectRatioOptions(trend?.aspect_ratio_options);
   const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;

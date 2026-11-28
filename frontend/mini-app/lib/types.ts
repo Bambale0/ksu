@@ -305,6 +305,7 @@ export type TrendQualityOption = {
   admin_free?: boolean;
   billing_seconds?: number | null;
   default?: boolean;
+  requires_no_image_references?: boolean;
 };
 
 export type TrendItem = {
