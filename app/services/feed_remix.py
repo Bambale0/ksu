@@ -19,6 +19,8 @@ from app.services.aspect_ratio_policy import (
 from app.services.billing_access import BillingAccessService
 from app.services.feed import FeedError, FeedService
 from app.services.generations import GenerationService
+from app.services.image_resolution_policy import image_resolution_options
+from app.services.model_ui_contract import MODEL_DEFAULTS
 from app.services.feed_seedance_replay import (
     PRIVATE_AUTHOR_REPLAY_MARKER,
     SEEDANCE_AUTHOR_REPLAY_MODEL_ID,
@@ -198,6 +200,8 @@ class FeedRemixService:
         ratio_options = cls._aspect_ratio_options(
             effective_model_id, has_image_references=bool(source_context.reference_images),
         )
+        resolution_options = image_resolution_options(effective_model_id)
+        default_resolution = settings.get("resolution") or MODEL_DEFAULTS.get(effective_model_id, {}).get("resolution")
         return {
             "source_generation_id": str(source.id),
             "source_feed_gen_id": str(cls._root_source_id(source)),
@@ -217,6 +221,8 @@ class FeedRemixService:
             "default_aspect_ratio": (
                 settings.get("aspect_ratio") if settings.get("aspect_ratio") in ratio_options else None
             ),
+            "resolution_options": resolution_options,
+            "default_resolution": default_resolution if default_resolution in resolution_options else (resolution_options[0] if resolution_options else None),
             "billing_seconds": (source.parameters or {}).get("_billing_seconds"),
             "reference_requirements": requirements,
             "source_has_video_reference": source_has_video_reference,
@@ -333,6 +339,7 @@ class FeedRemixService:
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
         aspect_ratio: str | None = None,
+        resolution: str | None = None,
     ) -> tuple[Generation, str, str, dict[str, Any], int | None]:
         if not confirm_own_references:
             raise FeedRemixReferenceError("Confirm your own references before repeating")
@@ -364,6 +371,10 @@ class FeedRemixService:
                 source_audio_count=len(source_context.reference_audios),
             )
         base = cls._reusable_parameters(source, effective_model_id)
+        if resolution is not None:
+            if resolution not in image_resolution_options(effective_model_id):
+                raise FeedRemixReferenceError("Выберите доступное разрешение изображения для повтора")
+            base["resolution"] = resolution
         ratio_options = cls._aspect_ratio_options(
             effective_model_id, has_image_references=bool(references.get("image")),
         )
@@ -414,6 +425,7 @@ class FeedRemixService:
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
         aspect_ratio: str | None = None,
+        resolution: str | None = None,
     ) -> dict[str, Any]:
         _source, model_id, prompt, parameters, billing_seconds = await cls._composition(
             session,
@@ -424,6 +436,7 @@ class FeedRemixService:
             reference_ids=reference_ids,
             confirm_own_references=confirm_own_references,
             aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
         spec, _clean, retail_cost, seconds, unit_price = await GenerationService.prepare_request(
             session,
@@ -460,6 +473,7 @@ class FeedRemixService:
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
         aspect_ratio: str | None = None,
+        resolution: str | None = None,
     ) -> Generation:
         source, model_id, prompt, parameters, billing_seconds = await cls._composition(
             session,
@@ -470,6 +484,7 @@ class FeedRemixService:
             reference_ids=reference_ids,
             confirm_own_references=confirm_own_references,
             aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
         root_source_id = cls._root_source_id(source)
         generation = await GenerationService.create(
