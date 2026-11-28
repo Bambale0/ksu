@@ -308,3 +308,15 @@ async def test_remix_resolution_override_is_validated_and_shared_by_quote_and_la
     assert params == captured["parameters"]
     assert source.parameters["resolution"] == "2K"
     assert RemixCompositionRequest(resolution="4K").model_dump()["resolution"] == "4K"
+
+
+@pytest.mark.parametrize(("model_id", "expected"), [
+    ("nano-banana-pro", ["1K", "2K", "4K"]),
+    ("nano-banana-2", ["1K", "2K", "4K"]),
+    ("nano-banana-2-lite", []),
+    ("seedance-2.5", []),
+])
+def test_image_resolution_choices_follow_current_model_capabilities(model_id, expected) -> None:
+    from app.services.image_resolution_policy import image_resolution_options
+
+    assert image_resolution_options(model_id) == expected
