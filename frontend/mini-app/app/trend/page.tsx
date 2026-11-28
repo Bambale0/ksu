@@ -978,6 +978,7 @@ export default function TrendPage() {
   const videoCount = Number(trend?.reference_requirements?.video?.min || 0);
   const userFields = (trend?.user_fields || []).slice(0, 6);
   const qualityOptions = trend?.quality_options || [];
+  const qualityLabel = trend?.media_type === "image" ? "Разрешение" : "Качество видео";
   const aspectRatioOptions = explicitAspectRatioOptions(trend?.aspect_ratio_options);
   const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;
   const displayedCost = chosenQuality?.cost_rox || trend?.cost_rox;
@@ -1163,12 +1164,12 @@ export default function TrendPage() {
               </section>
             ) : null}
             {qualityOptions.length > 1 ? (
-              <section className={styles.quality} aria-label="Качество видео">
+              <section className={styles.quality} aria-label={qualityLabel}>
                 <div className={styles.qualityHead}>
-                  <strong>Качество видео</strong>
+                  <strong>{qualityLabel}</strong>
                   {adminFree && displayedRetailCost ? <span>обычно {money(displayedRetailCost)} ROX</span> : null}
                 </div>
-                <div className={styles.qualityOptions} role="radiogroup" aria-label="Качество видео">
+                <div className={styles.qualityOptions} role="radiogroup" aria-label={qualityLabel}>
                   {qualityOptions.map((option) => {
                     const active = option.value === chosenQuality?.value;
                     const price = optionPriceLabel(option);
