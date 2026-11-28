@@ -34,8 +34,8 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   line-height: 1.2;
   letter-spacing: -.02em;
 }
@@ -98,7 +98,14 @@
     padding-inline: 5px;
     gap: 1px;
   }
-  .bottom-nav button { padding-inline: 0; }
+  /* Six destinations: reserve more width for longer Russian labels, without
+     sacrificing the 44px touch targets or the existing single-line contract. */
+  .bottom-nav:has(> button[data-roxy-customer-route="ai-chat"]) {
+    grid-template-columns: minmax(44px, 1fr) minmax(44px, .85fr) minmax(44px, 1fr) minmax(44px, .85fr) minmax(44px, 1.15fr) minmax(44px, 1.1fr);
+    padding-inline: 3px;
+  }
+  .bottom-nav:has(> button[data-roxy-customer-route="ai-chat"]) > button { padding-inline: 0; }
+  .bottom-nav:has(> button[data-roxy-customer-route="ai-chat"]) > button small { letter-spacing: -.035em; }
   .bottom-nav button small {
     font-size: 11px;
   }

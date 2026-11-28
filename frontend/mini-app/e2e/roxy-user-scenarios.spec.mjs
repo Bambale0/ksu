@@ -652,6 +652,8 @@ test('ИИ ЧАТ moves all assistants out of catalog and preserves standalone n
     const rect = node.getBoundingClientRect();
     const label = node.querySelector('small');
     return rect.width >= 44 && rect.height >= 44 && rect.left >= 0 && rect.right <= innerWidth + 1
+      && getComputedStyle(label).whiteSpace === 'nowrap'
+      && parseFloat(getComputedStyle(label).fontSize) >= 11
       && label.scrollWidth <= label.clientWidth + 1;
   }))).toBe(true);
   await page.reload();
