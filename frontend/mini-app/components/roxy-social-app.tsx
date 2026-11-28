@@ -9,7 +9,7 @@ import { assertUploadFileType } from "@/lib/upload-file-types";
 
 import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage, isGenerationMediaReady, isTerminalGeneration, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { SavedReferencePicker } from "@/lib/reference-memory";
@@ -39,7 +39,8 @@ import { RouteFeatureLoader } from "./route-feature-loader";
 import { TelegramChatConnection } from "./telegram-chat-connection";
 import { WebProfileLogout } from "./web-profile-logout";
 
-const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
+const AiChatScreen = lazy(() => import("./catalog-feature-hub").then(module => ({ default: module.AiChatScreen })));
+const ROUTES: Route[] = ["home", "feed", "catalog", "create", "ai-chat", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const PROMO_SLIDES = [
@@ -750,6 +751,7 @@ export function RoxySocialApp() {
           window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
         }} />}
         {route === "create" && (models.length ? <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} showToast={showToast} /> : <section className="screen"><ScreenHead kicker="Создание" title="Новая работа" /><ModelAvailability status={modelsStatus} onRetry={() => void loadModels()} /></section>)}
+        {route === "ai-chat" && <Suspense fallback={<section className="screen ai-chat-screen" role="status">Загружаю инструменты…</section>}><AiChatScreen /></Suspense>}
         {route === "history" && <HistoryScreen items={history} status={historyStatus} hasMore={historyHasMore} onRetry={() => void loadHistory(Boolean(historyRetryBefore), historyRetryBefore)} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
@@ -1140,7 +1142,7 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
-  const menu: Array<[Route, IconName, string, string?]> = [["home", "catalog", "Каталог", "catalog"], ["feed", "heart", "Лента"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
+  const menu: Array<[Route, IconName, string, string?]> = [["home", "catalog", "Каталог", "catalog"], ["feed", "heart", "Лента"], ["create", "create", "Создать"], ["ai-chat", "comment", "ИИ ЧАТ"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
   return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label, customerRoute]) => <button type="button" key={key} data-roxy-customer-route={customerRoute || key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
 }
 

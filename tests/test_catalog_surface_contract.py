@@ -16,7 +16,7 @@ def test_catalog_replaces_studio_in_customer_bottom_navigation() -> None:
     keyboard = _read(ROOT / "app" / "bot" / "keyboards.py")
 
     assert ".bottom-nav button:first-child" not in css
-    assert "['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']" in e2e
+    assert "['Каталог', 'Лента', 'Создать', 'ИИ ЧАТ', 'Партнёры', 'Профиль']" in e2e
     assert 'return "home"' in launcher
     assert 'return app_launcher_menu(route="home")' in keyboard
     assert 'data-roxy-customer-route={customerRoute || key}' in _read(

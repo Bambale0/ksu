@@ -51,7 +51,7 @@ const INITIAL_HASH_KEY = "__roxy_initial_hash";
 const INITIAL_SEARCH_KEY = "__roxy_initial_search";
 const URL_START_PARAM_NAMES = ["tgWebAppStartParam", "start_payload", "startapp"];
 const MINI_APP_RETURN_KEY = "__roxy_standalone_return_v1";
-const MAIN_ROUTES = new Set(["home", "feed", "catalog", "create", "history", "profile", "partners"]);
+const MAIN_ROUTES = new Set(["home", "feed", "catalog", "create", "ai-chat", "history", "profile", "partners"]);
 const managedTelegramApps = new WeakSet<object>();
 let returnTrackerInstalled = false;
 

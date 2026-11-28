@@ -43,11 +43,11 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     await expect(page.locator('[data-roxy-customer-route="home"]')).to_have_count(1, timeout=8000)
     await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).to_have_count(1)
     await expect(page.locator('.home-screen')).to_be_visible()
-    for route in ("home", "catalog", "create", "history", "profile"):
+    for route in ("home", "catalog", "create", "ai-chat", "history", "profile"):
         await robust_route(page, route)
         report.controls_seen.add(f"primary:{route}")
 
-    await robust_route(page, "catalog")
+    await robust_route(page, "ai-chat")
     prompt = page.locator('[data-catalog-feature="prompt-image"]:visible').first
     await expect(prompt).to_be_visible(timeout=10000)
     await prompt.click()
@@ -57,10 +57,10 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     )
     await page.go_back()
     await expect(page).to_have_url(
-        re.compile(r"[?&]route=home(?:&|$)"),
+        re.compile(r"[?&]route=ai-chat(?:&|$)"),
         timeout=7000,
     )
-    report.controls_seen.add("catalog:prompt-tools/back")
+    report.controls_seen.add("ai-chat:prompt-tools/back")
     await suite.legacy.seed_main_wallet()
     report.ok("boot + canonical navigation + Back")
 
@@ -136,7 +136,7 @@ async def scenario_profile_support_partner(page: Page, report: suite.legacy.Repo
 
 
 async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None:
-    for route in ("feed", "catalog", "create", "history", "profile", "partners"):
+    for route in ("feed", "catalog", "create", "ai-chat", "history", "profile", "partners"):
         await robust_route(page, route)
         main = page.locator("main.main-shell")
         await expect(main).to_be_visible(timeout=10000)
@@ -154,7 +154,7 @@ async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None
 
 
 async def inventory_visible_controls(page: Page, report: suite.legacy.Report) -> None:
-    for route in ("home", "feed", "catalog", "create", "history", "profile", "partners"):
+    for route in ("home", "feed", "catalog", "create", "ai-chat", "history", "profile", "partners"):
         await robust_route(page, route)
         controls = await page.locator("button:visible").evaluate_all(
             """nodes => nodes.map((node) => ({

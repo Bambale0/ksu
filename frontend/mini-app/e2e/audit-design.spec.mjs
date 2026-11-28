@@ -68,7 +68,7 @@ for (const width of [320, 390]) {
     const price = page.locator('.family-card .price-pill').first();
     expect(await price.evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(11);
     const labels = page.locator('.bottom-nav button small');
-    await expect(labels).toHaveCount(5);
+    await expect(labels).toHaveCount(6);
     for (const label of await labels.all()) {
       await expect(label).toBeVisible();
       expect(await label.evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(11);

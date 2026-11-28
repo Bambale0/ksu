@@ -84,10 +84,19 @@ function openFeature(feature: CatalogFeature) {
 }
 
 export function CatalogFeatureHub() {
+  return <FeatureHub mode="catalog" />;
+}
+
+export function AiChatScreen() {
+  return <section className="screen ai-chat-screen"><FeatureHub mode="tools" /></section>;
+}
+
+function FeatureHub({ mode }: { mode: "catalog" | "tools" }) {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [tools, setTools] = useState<PromptToolCatalogItem[]>([]);
 
   useEffect(() => {
+    if (mode !== "catalog") return;
     let frame = 0;
     const sync = () => {
       cancelAnimationFrame(frame);
@@ -100,10 +109,10 @@ export function CatalogFeatureHub() {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
-    if (!host) return;
+    if (mode !== "tools") return;
     let active = true;
     void api.promptTools()
       .then((payload) => {
@@ -113,7 +122,7 @@ export function CatalogFeatureHub() {
         if (active) setTools([]);
       });
     return () => { active = false; };
-  }, [host]);
+  }, [mode]);
 
   const features = useMemo<CatalogFeature[]>(() => {
     const byId = new Map(tools.map((tool) => [tool.id, tool]));
@@ -150,8 +159,8 @@ export function CatalogFeatureHub() {
       },
       {
         id: "pinterest-repeat",
-        title: "Повтори фото",
-        copy: "Сцена, свет и поза из Pinterest — с вашей внешностью",
+        title: "PINTEREST AI",
+        copy: "Повтори любое фото с Pinterest — с твоей внешностью",
         icon: "image",
         badge: "Новое",
         href: "/mini-app/pinterest-repeat/",
@@ -218,10 +227,10 @@ export function CatalogFeatureHub() {
     ];
   }, [tools]);
 
-  if (!host) return null;
+  if (mode === "catalog" && !host) return null;
 
-  return createPortal(
-    <section className="catalog-feature-hub" aria-label="Создание и инструменты ROXY">
+  const content = (
+    <section className="catalog-feature-hub" aria-label={mode === "tools" ? "ИИ-помощники ROXY" : "Создание и инструменты ROXY"}>
       <style>{`
         .catalog-feature-hub {
           display: grid;
@@ -370,6 +379,7 @@ export function CatalogFeatureHub() {
         }
       `}</style>
 
+      {mode === "catalog" ? <>
       <div className="catalog-feature-hero">
         <span className="kicker">Быстрый старт</span>
         <h2>Создавайте с ROXY</h2>
@@ -382,24 +392,25 @@ export function CatalogFeatureHub() {
         </div>
       </div>
 
-      <div className="catalog-feature-section">
-        <div className="catalog-feature-section-title">
-          <div><span className="kicker">Инструменты</span><h2>Помощники и режимы</h2></div>
-        </div>
-        <div className="catalog-feature-grid">
-          {features.filter((feature) => feature.href).map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
-        </div>
-      </div>
-
       <details className="catalog-disclosure">
         <summary>Работы, сообщество и профиль</summary>
         <div className="catalog-feature-grid">
           {features.filter((feature) => feature.route && feature.route !== "create").map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
         </div>
       </details>
-    </section>,
-    host,
+      </> : <>
+        <header className="screen-head">
+          <div><span className="kicker">Инструменты</span><h1>ИИ ЧАТ</h1><p className="muted">Помощники и режимы для ваших идей</p></div>
+        </header>
+        <div className="catalog-feature-section">
+          <div className="catalog-feature-grid">
+            {features.filter((feature) => feature.href).map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
+          </div>
+        </div>
+      </>}
+    </section>
   );
+  return mode === "tools" ? content : host ? createPortal(content, host) : null;
 }
 
 function FeatureCard({ feature }: { feature: CatalogFeature }) {

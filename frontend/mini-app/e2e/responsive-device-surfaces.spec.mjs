@@ -173,7 +173,7 @@ const devices = [
   { name: '1920 desktop', viewport: { width: 1920, height: 1080 } },
 ];
 
-const rootRoutes = ['home', 'feed', 'catalog', 'create', 'history', 'profile', 'partners'];
+const rootRoutes = ['home', 'feed', 'catalog', 'create', 'ai-chat', 'history', 'profile', 'partners'];
 
 for (const device of devices) {
   for (const route of rootRoutes) {
