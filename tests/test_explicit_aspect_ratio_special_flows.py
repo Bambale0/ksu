@@ -147,6 +147,8 @@ async def test_remix_prepare_removes_old_auto_and_requests_an_explicit_frame(mon
     assert "9:16" in prepared["aspect_ratio_options"]
     assert "auto" not in prepared["aspect_ratio_options"]
     assert prepared["prompt"] == ""
+    assert prepared["resolution_options"] == ["1K", "2K", "4K"]
+    assert prepared["default_resolution"] == "2K"
     assert source.parameters["aspect_ratio"] == "auto"  # History is immutable.
 
 
@@ -278,3 +280,31 @@ async def test_kling_frame_remix_quote_preserves_ratio_omission(monkeypatch) -> 
     assert "aspect_ratio" not in captured["parameters"]
     assert captured["parameters"]["reference_images"] == [own_image.source_url]
     assert quote["cost_rox"] == "75.00"
+
+
+async def test_remix_resolution_override_is_validated_and_shared_by_quote_and_launch(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    source = _source_with_auto()
+    await _stub_source(monkeypatch, source)
+    captured = {}
+
+    async def prepare(_session, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id=kwargs["model_id"]), kwargs["parameters"], Decimal("30"), None, Decimal("30")
+
+    async def billing(_session, *, user_id, retail_cost):
+        return SimpleNamespace(effective_cost=retail_cost, retail_cost=retail_cost, admin_free=False)
+
+    monkeypatch.setattr("app.services.feed_remix.GenerationService.prepare_request", prepare)
+    monkeypatch.setattr("app.services.feed_remix.BillingAccessService.decision", billing)
+    kwargs = dict(source_generation_id=source.id, remix_author_id=uuid.uuid4(), surface="feed",
+                  prompt_override=None, reference_ids=[], confirm_own_references=True, aspect_ratio="9:16")
+    with pytest.raises(FeedRemixReferenceError):
+        await FeedRemixService.quote(object(), resolution="8K", **kwargs)
+    assert captured == {}
+    quote = await FeedRemixService.quote(object(), resolution="4K", **kwargs)
+    assert quote["cost_rox"] == "30.00"
+    assert captured["parameters"]["resolution"] == "4K"
+    _, _, _, params, _ = await FeedRemixService._composition(object(), resolution="4K", **kwargs)
+    assert params == captured["parameters"]
+    assert source.parameters["resolution"] == "2K"
+    assert RemixCompositionRequest(resolution="4K").model_dump()["resolution"] == "4K"
