@@ -484,7 +484,7 @@ async def list_collection_items(
             if TrendCollectionService.assigned_collection(state, trend.id) != collection_id:
                 continue
             try:
-                view = await TrendService.public_view(session, trend)
+                view = await TrendService.public_view(session, trend, include_image_quality_options=False)
             except (ValueError, KeyError):
                 continue
             if media_type and view.get("media_type") != media_type:
