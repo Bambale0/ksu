@@ -42,6 +42,8 @@ A derivative has `source_feed_gen_id != NULL`.
 
 The source prompt is never accepted from the client during remix.
 
+For supported image models, the prepare response additionally publishes native `resolution_options` and `default_resolution`. The same optional `resolution` override is validated in quote and launch before generation admission. The frontend invalidates the previous quote when the user changes resolution or reference files. WAN 2.7 Image Pro supports 4K only without input images; prepare publishes a reference-specific option list and quote/launch validate actual viewer-owned references. Omitting the override preserves source settings for legacy clients. Author media and private prompt rules are unchanged; the current server tariff determines the charge.
+
 ## Surface authorization
 
 Every interaction receives or derives a surface:

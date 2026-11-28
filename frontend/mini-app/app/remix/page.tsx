@@ -58,6 +58,7 @@ export default function FeedRemixPage() {
   const [surface, setSurface] = useState<FeedSurface>("feed");
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState("");
+  const [resolution, setResolution] = useState("");
   const [references, setReferences] = useState<OwnedReference[]>([]);
   const [quote, setQuote] = useState<FeedRemixQuote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +84,8 @@ export default function FeedRemixPage() {
         if (!active) return;
         setDraft(prepared);
         setAspectRatio(selectedAspectRatio(prepared));
+        const options = prepared.resolution_options || [];
+        setResolution(options.includes(prepared.default_resolution || "") ? prepared.default_resolution || "" : options[0] || "");
         setSurface(prepared.surface || query.surface);
         setPrompt(prepared.prompt || "");
         setError("");
@@ -118,6 +121,9 @@ export default function FeedRemixPage() {
   ), [counts, draft, isSeedanceAuthorReplay, referenceRequirements]);
 
   const ratioReady = Boolean(draft && isAspectRatioReady(draft, aspectRatio));
+  const availableResolutions = (counts.image > 0 ? draft?.resolution_options_with_references ?? draft?.resolution_options : draft?.resolution_options) || [];
+  const selectedResolution = availableResolutions.includes(resolution) ? resolution
+    : availableResolutions.includes(draft?.default_resolution || "") ? draft?.default_resolution || "" : availableResolutions[0] || "";
 
   useEffect(() => {
     const seq = ++quoteSeq.current;
@@ -134,6 +140,7 @@ export default function FeedRemixPage() {
           reference_ids: references.map((item) => item.id),
           confirm_own_references: true,
           ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+          ...(selectedResolution ? { resolution: selectedResolution } : {}),
         });
         if (quoteSeq.current === seq) {
           setQuote(next);
@@ -147,11 +154,13 @@ export default function FeedRemixPage() {
       }
     }, 260);
     return () => { window.clearTimeout(timer); quoteSeq.current += 1; };
-  }, [aspectRatio, draft, launching, prompt, ratioReady, references, requirementsMet, sourceId, surface, uploading]);
+  }, [aspectRatio, draft, launching, prompt, ratioReady, references, requirementsMet, selectedResolution, sourceId, surface, uploading]);
 
   const upload = async (files: File[], expectedKind?: OwnedReference["kind"], maxFiles = 12) => {
     const selectedFiles = files.slice(0, Math.max(0, Math.min(12, maxFiles)));
     if (!selectedFiles.length || uploading) return;
+    quoteSeq.current += 1;
+    setQuote(null);
     setUploading(true);
     setError("");
     try {
@@ -217,7 +226,7 @@ export default function FeedRemixPage() {
   };
 
   const launch = async () => {
-    if (!draft || !sourceId || !requirementsMet || !ratioReady || !quote || launching) return;
+    if (!draft || !sourceId || !requirementsMet || !ratioReady || !quote || uploading || launching) return;
     setLaunching(true);
     setError("");
     try {
@@ -227,6 +236,7 @@ export default function FeedRemixPage() {
         reference_ids: references.map((item) => item.id),
         confirm_own_references: true,
         ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+        ...(selectedResolution ? { resolution: selectedResolution } : {}),
       });
       notify("success");
       haptic("medium");
@@ -312,7 +322,7 @@ export default function FeedRemixPage() {
               </label>}
 
               {references.length ? <div className="upload-list">
-                {references.map((reference) => <button type="button" key={reference.id} onClick={() => setReferences((current) => current.filter((item) => item.id !== reference.id))}>{reference.name} ×</button>)}
+                {references.map((reference) => <button type="button" key={reference.id} onClick={() => { quoteSeq.current += 1; setQuote(null); setReferences((current) => current.filter((item) => item.id !== reference.id)); }}>{reference.name} ×</button>)}
               </div> : null}
 
               {!requirementsMet ? <p className="muted">Сначала добавьте все свои референсы, которые нужны для этой работы.</p> : null}
@@ -324,6 +334,18 @@ export default function FeedRemixPage() {
             <h2>{draft.model_title || "Повтор работы"}</h2>
             <p className="muted">{isSeedanceAuthorReplay ? "ROXY восстановит авторский рецепт на сервере и передаст фото как референсы внешности." : "Настройки исходной работы сохранены. ROXY автоматически выберет text/reference режим модели по вашим файлам."}</p>
             <AspectRatioSelect options={draft} value={aspectRatio} disabled={launching} onChange={(value) => { setAspectRatio(value); setQuote(null); }} />
+            {Boolean(availableResolutions.length) ? <fieldset className="field" style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <legend className="label">Разрешение</legend>
+              <div role="radiogroup" aria-label="Разрешение" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))", gap: 8 }}>
+                {availableResolutions.map(value => <button key={value} type="button" role="radio" aria-checked={selectedResolution === value} disabled={launching} className={selectedResolution === value ? "primary" : "secondary"} onClick={() => {
+                  if (selectedResolution === value) return;
+                  haptic("light");
+                  quoteSeq.current += 1;
+                  setResolution(value);
+                  setQuote(null);
+                }}>{value}</button>)}
+              </div>
+            </fieldset> : null}
             <div className="quote-box">
               <span>Стоимость</span>
               <strong>{quote?.cost_rox ? `${quote.cost_rox} ROX` : "—"}</strong>

@@ -90,7 +90,7 @@ async def popular_trends_payload(session: AsyncSession, *, limit: int = 12) -> d
         try:
             # Reuse the same validation and public/active visibility contract as
             # the authenticated trend catalog. Never expose the recipe itself.
-            view = await TrendService.public_view(session, row)
+            view = await TrendService.public_view(session, row, include_image_quality_options=False)
         except (KeyError, TypeError, ValueError, LookupError) as exc:
             logger.debug("public_site_trend_skipped trend_id=%s cause=%s", row.id, type(exc).__name__)
             continue

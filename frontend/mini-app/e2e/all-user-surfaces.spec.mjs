@@ -455,3 +455,32 @@ for (const [batch, labels] of catalogChunks.entries()) {
     expect(body).not.toHaveProperty('prompt');
   });
 }
+
+
+test('image trend exposes priced resolution choices and sends selected 4K', async ({ page }) => {
+  await mockApi(page);
+  let runBody = null;
+  await page.route('**/api/v1/trends/trend_simple', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ ...simpleTrend, cost_rox: '20.00', quality_options: [
+      { value: '1K', label: '1K', cost_rox: '20.00', default: true },
+      { value: '2K', label: '2K', cost_rox: '25.00', default: false },
+      { value: '4K', label: '4K', cost_rox: '30.00', default: false },
+    ] }),
+  }));
+  await page.route('**/api/v1/trends/trend_simple/run', async route => {
+    runBody = route.request().postDataJSON();
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'trend_generation', status: 'queued' }) });
+  });
+  await page.goto('/mini-app/trend/?id=trend_simple');
+  const resolution = page.getByRole('radiogroup', { name: 'Разрешение' });
+  await expect(resolution.getByRole('radio')).toHaveCount(3);
+  await expect(resolution.getByRole('radio', { name: /1K/ })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: '9:16', exact: true }).click();
+  await resolution.getByRole('radio', { name: /4K/ }).click();
+  const run = page.getByRole('button', { name: /Сгенерировать · 30 ROX/ });
+  await expect(run).toBeEnabled();
+  await run.click();
+  await expect.poll(() => runBody?.resolution).toBe('4K');
+  expect(runBody.aspect_ratio).toBe('9:16');
+});

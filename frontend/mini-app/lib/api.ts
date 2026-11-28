@@ -122,6 +122,9 @@ export type FeedRemixDraft = {
   aspect_ratio_options?: string[];
   aspect_ratio_required?: boolean;
   default_aspect_ratio?: string | null;
+  resolution_options?: string[];
+  resolution_options_with_references?: string[];
+  default_resolution?: string | null;
   billing_seconds?: number | null;
   reference_requirements: {
     image_count: number;
@@ -140,6 +143,7 @@ export type FeedRemixComposition = {
   reference_ids: string[];
   confirm_own_references: boolean;
   aspect_ratio?: string | null;
+  resolution?: string | null;
 };
 
 export type FeedRemixQuote = {
