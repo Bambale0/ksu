@@ -1043,6 +1043,9 @@ async def test_image_trend_quality_choices_and_override(monkeypatch) -> None:  #
         ("1K", "20.00"), ("2K", "25.00"), ("4K", "30.00"),
     ]
     assert view["quality_options"][0]["default"] is True
+    compact_view = await TrendService.public_view(session, item, include_image_quality_options=False)
+    assert "quality_options" not in compact_view
+    assert compact_view["cost_credits"] == "20.00"
     create = AsyncMock(return_value=_generation())
     monkeypatch.setattr(GenerationService, "create", create)
     kwargs = dict(user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/ref.jpg"], aspect_ratio="1:1")
